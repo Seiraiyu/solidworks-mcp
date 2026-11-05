@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "description": "A document open in SOLIDWORKS.",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "The document's title as SOLIDWORKS shows it."
+    },
+    "path": {
+      "type": "string",
+      "description": "The full path, absent while the document has never been saved."
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "part",
+        "assembly",
+        "drawing"
+      ],
+      "description": "Part, assembly or drawing."
+    },
+    "dirty": {
+      "type": "boolean",
+      "description": "True when the document has unsaved changes."
+    }
+  },
+  "required": [
+    "title",
+    "type",
+    "dirty"
+  ],
+  "additionalProperties": false
+}

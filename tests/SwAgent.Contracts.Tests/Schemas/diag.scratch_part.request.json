@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "description": "Fault testing only: creates a part from the default part template, saves it as a new file in the live suite's scratch directory, and marks it as having unsaved changes. Refused unless diagnostics are on.",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "The new part's full path: a .SLDPRT file under %LOCALAPPDATA%/solidworks-mcp/live-scratch that does not exist yet."
+    }
+  },
+  "required": [
+    "path"
+  ],
+  "additionalProperties": false
+}
