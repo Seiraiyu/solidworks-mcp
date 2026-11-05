@@ -1,0 +1,78 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Linq;
+using System.Reflection;
+using System.Text.RegularExpressions;
+using SwAgent.Contracts.Serialization;
+
+namespace SwAgent.Contracts;
+
+/// <summary>Names the operation a request type starts and the type of its result. Nothing else names an operation.</summary>
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
+public sealed class OperationAttribute : Attribute
+{
+    public OperationAttribute(string name, Type resultType)
+    {
+        Name = name;
+        ResultType = resultType;
+    }
+
+    public string Name { get; }
+    public Type ResultType { get; }
+    public string Family => Name.IndexOf('.') < 0 ? Name : Name.Substring(0, Name.IndexOf('.'));
+}
+
+public sealed class OperationDescriptor
+{
+    public OperationDescriptor(string name, string family, Type requestType, Type resultType, string description)
+    {
+        Name = name;
+        Family = family;
+        RequestType = requestType;
+        ResultType = resultType;
+        Description = description;
+    }
+
+    public string Name { get; }
+    public string Family { get; }
+    public Type RequestType { get; }
+    public Type ResultType { get; }
+    public string Description { get; }
+}
+
+/// <summary>Every operation the contracts declare, validated once.</summary>
+public static class OperationCatalog
+{
+    static readonly Regex NamePattern = new Regex("^[a-z][a-z0-9]*(\\.[a-z][a-z0-9_]*)+$", RegexOptions.CultureInvariant);
+
+    static readonly Lazy<IReadOnlyList<OperationDescriptor>> AllOperations =
+        new Lazy<IReadOnlyList<OperationDescriptor>>(() => FromAssembly(typeof(OperationCatalog).Assembly));
+
+    public static IReadOnlyList<OperationDescriptor> All => AllOperations.Value;
+
+    public static OperationDescriptor? Find(string name) => All.FirstOrDefault(o => o.Name == name);
+
+    public static IReadOnlyList<OperationDescriptor> FromAssembly(Assembly assembly) =>
+        FromTypes(assembly.GetTypes().Where(t => t.GetCustomAttribute<OperationAttribute>() != null));
+
+    public static IReadOnlyList<OperationDescriptor> FromTypes(IEnumerable<Type> requestTypes)
+    {
+        var list = new List<OperationDescriptor>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var type in requestTypes)
+        {
+            var a = type.GetCustomAttribute<OperationAttribute>()
+                ?? throw new ArgumentException($"{type.FullName} has no [Operation] attribute");
+            if (!NamePattern.IsMatch(a.Name))
+                throw new ArgumentException($"operation name '{a.Name}' on {type.Name} is not family.verb in lower case");
+            if (!seen.Add(a.Name))
+                throw new ArgumentException($"two request types claim operation '{a.Name}'");
+            TypeMeta.For(type);
+            TypeMeta.For(a.ResultType);
+            list.Add(new OperationDescriptor(a.Name, a.Family, type, a.ResultType,
+                type.GetCustomAttribute<DescriptionAttribute>()?.Description ?? ""));
+        }
+        return list.OrderBy(d => d.Name, StringComparer.Ordinal).ToList();
+    }
+}
