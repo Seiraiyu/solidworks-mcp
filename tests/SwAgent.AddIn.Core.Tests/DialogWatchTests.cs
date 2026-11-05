@@ -156,13 +156,14 @@ public class DialogWatchTests
         var entry = Running(ledger, 5, new CapturingReply());
         windows.Show(Dialogs.Box(900, "Q", "OK"));
         watch.Tick();
-        windows.AfterAnswer = _ => ThreadPool.QueueUserWorkItem(__ =>
+        // A dedicated thread, not the pool: a busy 2-core CI runner can hold a pool work item past the wait.
+        windows.AfterAnswer = _ => new Thread(() =>
         {
             Thread.Sleep(50);
             entry.Outcome = RpcResponse.Success(5, new JsonObject { ["text"] = "done" });
             ledger.Finish(entry);
-        });
-        var result = watch.Respond(new DialogRespondRequest { Dialog = watch.Current!.Id, Button = "OK" }, T0.AddSeconds(10));
+        }) { IsBackground = true }.Start();
+        var result = watch.Respond(new DialogRespondRequest { Dialog = watch.Current!.Id, Button = "OK", WaitMs = DialogWatch.MaxWaitMs }, T0.AddSeconds(100));
         Assert.Equal(DialogOutcome.Result, result.Outcome);
         Assert.Equal("done", result.Result!["text"]);
     }
