@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Win32;
 using SwAgent.Client;
@@ -38,6 +40,9 @@ public sealed class CliEnvironment
 
     /// <summary>Runs the MCP server on stdio until the client disconnects; a fake in tests.</summary>
     public Func<SupervisorOptions, Task<int>> Serve { get; init; } = options => McpHost.RunAsync(options);
+
+    /// <summary>Ends <c>events --follow</c> (Ctrl+C).</summary>
+    public CancellationToken Stop { get; init; }
 }
 
 public sealed class UsageException : Exception
@@ -54,6 +59,8 @@ public static class Cli
         "usage:\n" +
         "  swmcp [serve] [--pid N]          MCP server on stdio (the default)\n" +
         "  swmcp call <method> [json-params] [--pid N] [--deadline-ms N]\n" +
+        "  swmcp status [--pid N]\n" +
+        "  swmcp events [--after-seq N] [--follow] [--pid N]\n" +
         "  swmcp addin register [--path <SwAgent.AddIn.dll>]\n" +
         "  swmcp addin load [--pid N]\n" +
         "  swmcp addin unregister\n" +
@@ -80,6 +87,10 @@ public static class Cli
                     return await ServeAsync(args.Skip(1).ToArray(), env).ConfigureAwait(false);
                 case "call":
                     return await CallAsync(args.Skip(1).ToArray(), env).ConfigureAwait(false);
+                case "status":
+                    return await StatusAsync(args.Skip(1).ToArray(), env).ConfigureAwait(false);
+                case "events":
+                    return await EventsAsync(args.Skip(1).ToArray(), env).ConfigureAwait(false);
                 case "addin":
                     return await AddinAsync(args.Skip(1).ToArray(), env).ConfigureAwait(false);
                 default:
@@ -136,11 +147,68 @@ public static class Cli
         int? deadlineMs = a.Int("--deadline-ms");
         if (pid != null) env.Client.ProcessId = pid;
 
-        using var client = await SwAgentClient.ConnectAsync(env.Client).ConfigureAwait(false);
+        using var supervisor = new Supervisor(Options(env));
         TimeSpan? deadline = deadlineMs == null ? null : TimeSpan.FromMilliseconds(deadlineMs.Value);
-        object? result = await client.CallAsync(method, parameters, deadline).ConfigureAwait(false);
+        object? result = await supervisor.CallAsync(method, parameters, deadline).ConfigureAwait(false);
         Write(env, result);
         return ExitCodes.Success;
+    }
+
+    /// <summary>What sw_status answers, from a terminal. Always exits 0: a SOLIDWORKS that is absent or starting is a state.</summary>
+    static async Task<int> StatusAsync(string[] args, CliEnvironment env)
+    {
+        var a = Args.Parse(args, "--pid");
+        if (a.Positional.Count > 0) throw new UsageException("status takes no arguments besides --pid");
+        int? pid = a.Int("--pid");
+        if (pid != null) env.Client.ProcessId = pid;
+        using var supervisor = new Supervisor(Options(env));
+        Write(env, JsonCodec.ToJson(await supervisor.StatusAsync().ConfigureAwait(false)));
+        return ExitCodes.Success;
+    }
+
+    /// <summary>
+    /// The events the add-in still holds (after --after-seq, in the add-in's own numbering) as one JSON document; with
+    /// --follow, each held event and then each new one as a line of JSON, until Ctrl+C.
+    /// </summary>
+    static async Task<int> EventsAsync(string[] args, CliEnvironment env)
+    {
+        var a = Args.Parse(args, new[] { "--follow" }, "--pid", "--after-seq");
+        if (a.Positional.Count > 0) throw new UsageException("events takes no arguments besides --after-seq, --follow and --pid");
+        int? pid = a.Int("--pid");
+        if (pid != null) env.Client.ProcessId = pid;
+        var request = new AddinEventsRequest { AfterSeq = a.Int("--after-seq") };
+
+        using var supervisor = new Supervisor(Options(env));
+        if (!a.Flags.Contains("--follow"))
+        {
+            Write(env, JsonCodec.ToJson(await supervisor.CallAsync<AddinEventsRequest, AddinEventsResult>(request).ConfigureAwait(false)));
+            return ExitCodes.Success;
+        }
+
+        using var live = new BlockingCollection<EventEnvelope>();
+        supervisor.EventReceived += live.Add;
+        var held = await supervisor.CallAsync<AddinEventsRequest, AddinEventsResult>(request).ConfigureAwait(false);
+        long printed = request.AfterSeq ?? 0;
+        foreach (var e in held.Events) printed = Line(env, e);
+        try
+        {
+            while (true)
+            {
+                var e = live.Take(env.Stop);
+                if (e.Seq > printed || e.Seq == 1) printed = Line(env, e); // seq 1 again: the add-in was loaded again
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return ExitCodes.Success;
+        }
+    }
+
+    static long Line(CliEnvironment env, EventEnvelope e)
+    {
+        env.Out.WriteLine(Json.Write(JsonCodec.ToJson(e)));
+        env.Out.Flush();
+        return e.Seq;
     }
 
     /// <summary>The supervisor every command that reaches SOLIDWORKS uses, so each loads the add-in the same way.</summary>
@@ -270,7 +338,12 @@ public static class Cli
 
         public Dictionary<string, string> Options { get; } = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        public static Args Parse(string[] args, params string[] allowed)
+        /// <summary>The flags given (options that take no value).</summary>
+        public HashSet<string> Flags { get; } = new HashSet<string>(StringComparer.Ordinal);
+
+        public static Args Parse(string[] args, params string[] allowed) => Parse(args, Array.Empty<string>(), allowed);
+
+        public static Args Parse(string[] args, string[] flags, params string[] allowed)
         {
             var parsed = new Args();
             for (int i = 0; i < args.Length; i++)
@@ -279,6 +352,11 @@ public static class Cli
                 if (!arg.StartsWith("--", StringComparison.Ordinal))
                 {
                     parsed.Positional.Add(arg);
+                    continue;
+                }
+                if (flags.Contains(arg))
+                {
+                    parsed.Flags.Add(arg);
                     continue;
                 }
                 if (!allowed.Contains(arg)) throw new UsageException($"unknown option '{arg}'");
