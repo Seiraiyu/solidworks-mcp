@@ -66,6 +66,9 @@ public sealed class Dispatcher : IDisposable
 
     public RequestLedger Ledger => _ledger;
 
+    /// <summary>The modal dialog open now, or null; wired by the host to the dialog watch. Nothing starts while one is open.</summary>
+    public Func<DialogInfo?>? OpenDialog { get; set; }
+
     /// <summary>Runs on the UI thread after every request (the document table refresh); its exceptions are logged.</summary>
     public Action? AfterEachRequest { get; set; }
 
@@ -156,8 +159,15 @@ public sealed class Dispatcher : IDisposable
         _running = true;
         try
         {
-            while (_actions.TryDequeue(out var posted)) RunAction(posted.Name, posted.Action);
             var now = _utcNow();
+            var dialog = OpenDialog?.Invoke();
+            if (dialog != null)
+            {
+                // Nothing runs under a modal dialog: queued requests are refused, posted actions wait for it to close.
+                foreach (var waiting in _ledger.TakeAllQueued()) AnswerDialogOpen(waiting, dialog, now);
+                return;
+            }
+            while (_actions.TryDequeue(out var posted)) RunAction(posted.Name, posted.Action);
             bool started = _ledger.TryStart(now, out var entry, out var skipped);
             foreach (var (late, ahead) in skipped) AnswerBusy(late, ahead, now);
             if (started && entry != null) RunOne(entry);
@@ -193,6 +203,7 @@ public sealed class Dispatcher : IDisposable
             }
             var started = entry.StartedUtc ?? _utcNow();
             var response = _executor.ExecuteResponse(entry.Request, entry.ReceivedUtc, started);
+            entry.Outcome = response;
             if (!entry.TryAnswer(RpcCodec.FormatResponse(response), "result"))
             {
                 _log.Info($"request {entry.Request.Id} {entry.Request.Method} finished after its client was answered {entry.AnsweredAs}");
@@ -225,6 +236,14 @@ public sealed class Dispatcher : IDisposable
         var error = DeadlineErrors.Busy(late, null, _ledger.LastFinished, ahead, now);
         if (late.TryAnswer(RpcCodec.Failure(late.Request.Id, RpcErrorCodes.ServerError, error), "busy"))
             _log.Info($"request {late.Request.Id} {late.Request.Method}: busy, not started after {(now - late.ReceivedUtc).TotalMilliseconds:0} ms");
+    }
+
+    /// <summary>A queued request refused because a modal dialog is open: never started, safe to retry once it is answered.</summary>
+    void AnswerDialogOpen(LedgerEntry entry, DialogInfo dialog, DateTime now)
+    {
+        var error = DeadlineErrors.DialogOpen(entry, dialog, started: false);
+        if (entry.TryAnswer(RpcCodec.Failure(entry.Request.Id, RpcErrorCodes.ServerError, error), "dialog_open"))
+            _log.Info($"request {entry.Request.Id} {entry.Request.Method}: dialog_open, not started: dialog {dialog.Id} \"{dialog.Title}\" is open");
     }
 
     static string Unloading(long id) =>
