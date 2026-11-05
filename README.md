@@ -75,6 +75,18 @@ swmcp call session.status
 
 `call` prints the result, or the typed error, as JSON. It exits 0 on success and with a code per error otherwise (`swmcp --help`).
 
+`addin.state` answers even while SOLIDWORKS is busy with another request, and shows what is running, what waits, the open documents and whether the automation preferences are applied:
+
+```powershell
+& "$app\swmcp.exe" call addin.state
+```
+
+A call that names no `--deadline-ms` gets its operation family's default (10 s for `session.*`, 5 s for `addin.*`). Any deadline must be between 1 ms and one hour.
+
+A request whose deadline passes before SOLIDWORKS can start it is answered `busy` (it never ran; retrying is safe). One that started but ran past its deadline is answered `timeout`; it keeps running, and its outcome is raised as an `operation.completed` event.
+
+While a client is connected, the add-in turns off three SOLIDWORKS preferences that stall automation: the dimension value box on creation, the save reminder, and the prompt to close an open sketch. Your values come back when the client disconnects or SOLIDWORKS closes. If SOLIDWORKS crashes first, they come back the next time the add-in loads, from `%LOCALAPPDATA%\solidworks-mcp\preferences-journal.json`.
+
 ## Logs
 
 Logs are in `%LOCALAPPDATA%\solidworks-mcp\logs\` and are kept 14 days:
