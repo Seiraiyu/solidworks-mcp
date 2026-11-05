@@ -214,12 +214,47 @@ public abstract class LiveRun : IDisposable
         {
             try
             {
+                CloseOwnDocuments();
                 _supervisor?.Dispose();
             }
             finally
             {
                 WriteReport();
             }
+        }
+    }
+
+    /// <summary>
+    /// Best effort, when the run ends however it ends (a STOP skips the suite's own closing case): closes, discarding
+    /// changes, every open document this run created, and nothing else. Never ends SOLIDWORKS; a failure is only said.
+    /// </summary>
+    void CloseOwnDocuments()
+    {
+        if (_supervisor == null || Guard.CreatedPaths.Count == 0) return;
+        try
+        {
+            var closing = Task.Run(async () =>
+            {
+                var state = await AddinStateAsync().ConfigureAwait(false);
+                foreach (var d in state.Documents.Where(d => d.Path != null && Guard.CreatedPaths.Contains(Path.GetFullPath(d.Path))))
+                {
+                    try
+                    {
+                        await Supervisor.CallAsync<DocumentCloseRequest, DocumentCloseResult>(
+                            new DocumentCloseRequest { Document = d.Path, Discard = true, UsersDocument = true }, TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+                        Say($"closed this run's {d.Path}");
+                    }
+                    catch (Exception e)
+                    {
+                        Say($"could not close this run's {d.Path}: {e.Message}");
+                    }
+                }
+            });
+            if (!closing.Wait(TimeSpan.FromMinutes(2))) Say("closing this run's documents took over 2 min; left open");
+        }
+        catch (Exception e)
+        {
+            Say($"this run's documents were not closed: {(e is AggregateException a ? a.InnerException?.Message : e.Message)}");
         }
     }
 
