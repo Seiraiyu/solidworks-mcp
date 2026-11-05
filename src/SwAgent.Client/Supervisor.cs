@@ -23,6 +23,17 @@ public sealed class SupervisorOptions
     /// <summary>Where the add-in is registered; required, since only swmcp knows how to read it.</summary>
     public IAddinRegistration? Registration { get; set; }
 
+    public IProcessWatch Processes { get; set; } = SystemProcessWatch.Instance;
+
+    /// <summary>How long after the pipe closes the supervisor waits for the process to exit before deciding it lives.</summary>
+    public TimeSpan ClassifyWait { get; set; } = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// After session.closing, how long SOLIDWORKS may take to exit before the supervisor decides only the add-in was
+    /// turned off (and the next call may load it again).
+    /// </summary>
+    public TimeSpan ClosingExitWait { get; set; } = TimeSpan.FromSeconds(15);
+
     /// <summary>How long the add-in's UI thread may go without pumping, while nothing runs, before SOLIDWORKS counts as not responding.</summary>
     public TimeSpan NotRespondingAfter { get; set; } = TimeSpan.FromSeconds(5);
 
@@ -45,6 +56,8 @@ public sealed class Supervisor : IDisposable
     Link? _link;
     int? _pinned;
     SupervisorState _state = SupervisorState.NotRunning;
+    CrashInfo? _lastCrash;
+    SwAgentError? _unreportedCrash;
     DateTime? _hungSince;
     bool _disposed;
 
@@ -83,13 +96,16 @@ public sealed class Supervisor : IDisposable
 
     /// <summary>
     /// Runs one operation, connecting first (and loading the add-in) within its deadline; the add-in then gets the
-    /// whole deadline.
+    /// whole deadline. A call that was in flight when SOLIDWORKS died gets sw_crashed; when none was, the next call
+    /// does, once per crash.
     /// </summary>
     public async Task<object?> CallAsync(string method, JsonObject parameters, TimeSpan? deadline = null, CancellationToken cancellationToken = default)
     {
         var limit = deadline ?? OperationFamilies.DefaultFor(method, _options.Client.DefaultDeadline);
         OperationFamilies.ValidateOverride((long)Math.Ceiling(limit.TotalMilliseconds));
+        ThrowUnreportedCrash();
         var link = await ConnectAsync(DateTime.UtcNow + limit, cancellationToken).ConfigureAwait(false);
+        var call = link.Track(method);
         try
         {
             return await link.Client.CallAsync(method, parameters, limit, cancellationToken).ConfigureAwait(false);
@@ -98,6 +114,10 @@ public sealed class Supervisor : IDisposable
         {
             // The connection broke under the call: answer with what broke it, not a generic disconnect.
             throw new SwAgentException(await link.Classified.ConfigureAwait(false));
+        }
+        finally
+        {
+            link.Untrack(call);
         }
     }
 
@@ -116,7 +136,7 @@ public sealed class Supervisor : IDisposable
     public SwEventsResult ReadEvents(SwEventsRequest request) => Events.Read(request.AfterSeq, request.Kinds, request.Limit);
 
     /// <summary>
-    /// Drops the connection, forgets failed add-in loads, and uses process
+    /// Drops the connection, forgets failed add-in loads and the last crash, and uses process
     /// <paramref name="processId"/> (or the only SOLIDWORKS) from now on; answers with the status.
     /// </summary>
     public async Task<SwStatusResult> ReconnectAsync(int? processId, TimeSpan? deadline = null, CancellationToken cancellationToken = default)
@@ -130,6 +150,8 @@ public sealed class Supervisor : IDisposable
                 old = _link;
                 _link = null;
                 _pinned = processId;
+                _lastCrash = null;
+                _unreportedCrash = null;
             }
             old?.Drop();
             foreach (int pid in _options.Client.Processes.SolidWorksProcessIds()) Loader.Forget(pid);
@@ -155,6 +177,7 @@ public sealed class Supervisor : IDisposable
             SwmcpVersion = SwAgentClient.Version,
             ProcessIds = _options.Client.Processes.SolidWorksProcessIds().ToList(),
         };
+        lock (_gate) result.LastCrash = _lastCrash;
 
         Link link;
         AddinStateResult addin;
@@ -176,6 +199,7 @@ public sealed class Supervisor : IDisposable
         result.State = SupervisorState.Ready;
         result.ProcessId = link.ProcessId;
         result.Addin = addin;
+        link.Documents(addin.Documents, addin.DocumentsAsOf);
 
         bool stalled = addin.Running == null && addin.UiLastPumpedMs is long pumped && pumped > _options.NotRespondingAfter.TotalMilliseconds;
         bool hung = _options.SolidWorks.IsHung(link.ProcessId);
@@ -265,7 +289,7 @@ public sealed class Supervisor : IDisposable
             try
             {
                 var client = await SwAgentClient.ConnectAsync(ClientOptionsFor(pid, link), cancellationToken).ConfigureAwait(false);
-                link.Start(client);
+                link.Start(client, _options.Processes.WatchAsync(pid, link.Watching));
             }
             catch (SwAgentException e)
             {
@@ -312,14 +336,31 @@ public sealed class Supervisor : IDisposable
         if (changed) _log.LogInformation("supervisor: {State}: {Why}", WireNames.ForEnum(state), why);
     }
 
-    /// <summary>Called once per link when its connection ends.</summary>
-    void Ended(Link link, SwAgentError error)
+    void ThrowUnreportedCrash()
+    {
+        SwAgentError? crash;
+        lock (_gate)
+        {
+            crash = _unreportedCrash;
+            _unreportedCrash = null;
+        }
+        if (crash != null) throw new SwAgentException(crash);
+    }
+
+    /// <summary>Called once per link when its connection ends; records the classification.</summary>
+    void Ended(Link link, SwAgentError error, CrashInfo? crash, bool reportedToCalls)
     {
         lock (_gate)
         {
             if (ReferenceEquals(_link, link)) _link = null;
+            if (crash != null)
+            {
+                _lastCrash = crash;
+                _unreportedCrash = reportedToCalls ? null : error;
+            }
         }
-        SetState(error.Code == ErrorCode.SwNotRunning ? SupervisorState.NotRunning : SupervisorState.AddinUnavailable, error.Message);
+        SetState(crash != null ? SupervisorState.Crashed : error.Code == ErrorCode.SwNotRunning ? SupervisorState.NotRunning : SupervisorState.AddinUnavailable,
+            error.Message);
     }
 
     SwStatusResult Unavailable(SwStatusResult result, SwAgentError error)
@@ -343,6 +384,7 @@ public sealed class Supervisor : IDisposable
             SupervisorState.Starting => error.Message,
             _ => error.Message,
         };
+        lock (_gate) result.LastCrash = _lastCrash;
         return result;
     }
 
@@ -363,11 +405,18 @@ public sealed class Supervisor : IDisposable
         return $"SOLIDWORKS (process {pid}) is ready";
     }
 
-    /// <summary>One connection to one SOLIDWORKS, and what ended it.</summary>
+    /// <summary>One connection to one SOLIDWORKS: its calls in flight, its last document table, how it ended.</summary>
     sealed class Link
     {
         readonly Supervisor _owner;
+        readonly ConcurrentDictionary<long, (string Method, Stopwatch Clock)> _inFlight = new ConcurrentDictionary<long, (string, Stopwatch)>();
         readonly TaskCompletionSource<SwAgentError> _classified = new TaskCompletionSource<SwAgentError>(TaskCreationOptions.RunContinuationsAsynchronously);
+        readonly CancellationTokenSource _watch = new CancellationTokenSource();
+        readonly object _documentsGate = new object();
+        List<DocumentInfo> _documents = new List<DocumentInfo>();
+        string? _documentsAsOf;
+        long _nextCall;
+        volatile bool _closingSeen;
         volatile bool _dropped;
         SwAgentClient? _client;
 
@@ -381,24 +430,27 @@ public sealed class Supervisor : IDisposable
 
         public SwAgentClient Client => _client!;
 
-        /// <summary>What ended this connection; completes when it ends.</summary>
+        /// <summary>What ended this connection, classified; completes within a second or so of the end.</summary>
         public Task<SwAgentError> Classified => _classified.Task;
 
-        public void Start(SwAgentClient client)
+        /// <summary>Cancelled when the link ends, so the process watch (a handle and a wait) does not outlive it.</summary>
+        public CancellationToken Watching => _watch.Token;
+
+        public void Start(SwAgentClient client, Task<int?> exit)
         {
             _client = client;
-            _ = MonitorAsync(client);
+            _ = MonitorAsync(client, exit);
         }
 
-        /// <summary>After reconnecting to the same process: the events missed while disconnected.</summary>
+        /// <summary>After connecting: the add-in's document table, and the events missed since the last connection to this process.</summary>
         public async Task CatchUpAsync(CancellationToken cancellationToken)
         {
-            if (_owner.Events.ProcessId != ProcessId) return;
             try
             {
                 var state = await Client.CallAsync<AddinStateRequest, AddinStateResult>(new AddinStateRequest(), OperationFamilies.DefaultDeadline("addin"), cancellationToken)
                     .ConfigureAwait(false);
-                if (_owner.Events.LastAddinSeq < state.LastEventSeq)
+                Documents(state.Documents, state.DocumentsAsOf);
+                if (_owner.Events.ProcessId == ProcessId && _owner.Events.LastAddinSeq < state.LastEventSeq)
                 {
                     var missed = await Client.CallAsync<AddinEventsRequest, AddinEventsResult>(
                             new AddinEventsRequest { AfterSeq = _owner.Events.LastAddinSeq }, OperationFamilies.DefaultDeadline("addin"), cancellationToken)
@@ -408,7 +460,25 @@ public sealed class Supervisor : IDisposable
             }
             catch (SwAgentException e)
             {
-                _owner._log.LogWarning("could not catch up on events after connecting: {Message}", e.Message);
+                _owner._log.LogWarning("could not read the add-in's state after connecting: {Message}", e.Message);
+            }
+        }
+
+        public long Track(string method)
+        {
+            long id = Interlocked.Increment(ref _nextCall);
+            _inFlight[id] = (method, Stopwatch.StartNew());
+            return id;
+        }
+
+        public void Untrack(long id) => _inFlight.TryRemove(id, out _);
+
+        public void Documents(List<DocumentInfo> documents, string? asOf)
+        {
+            lock (_documentsGate)
+            {
+                _documents = documents;
+                _documentsAsOf = asOf;
             }
         }
 
@@ -434,20 +504,101 @@ public sealed class Supervisor : IDisposable
             {
                 _owner._log.LogError(e, "an event handler failed");
             }
+            if (envelope.Kind == "session.closing") _closingSeen = true;
+            else if (envelope.Kind == "documents.changed")
+            {
+                try
+                {
+                    Documents(JsonCodec.FromJson<DocumentsChangedEvent>(envelope.Data).Documents, envelope.Time);
+                }
+                catch (SwAgentException e)
+                {
+                    _owner._log.LogWarning("ignored a documents.changed that does not match the contract: {Message}", e.Message);
+                }
+            }
         }
 
-        /// <summary>Ends the connection on purpose (reconnect, shutdown).</summary>
+        /// <summary>Ends the connection on purpose (reconnect, shutdown): not classified as a failure.</summary>
         public void Drop()
         {
             _dropped = true;
             _client?.Dispose();
+            _watch.Cancel();
         }
 
-        async Task MonitorAsync(SwAgentClient client)
+        async Task MonitorAsync(SwAgentClient client, Task<int?> exit)
         {
-            var reason = await client.Closed.ConfigureAwait(false);
-            if (!_dropped) _owner.Ended(this, reason);
-            _classified.TrySetResult(reason);
+            var first = await Task.WhenAny(client.Closed, exit).ConfigureAwait(false);
+            if (_dropped)
+            {
+                _classified.TrySetResult(await client.Closed.ConfigureAwait(false));
+                return;
+            }
+            bool exited = first == exit || await Task.WhenAny(exit, Task.Delay(_owner._options.ClassifyWait)).ConfigureAwait(false) == exit;
+            // Let a last session.closing that raced the exit be read before deciding.
+            if (exited) await Task.WhenAny(client.Closed, Task.Delay(_owner._options.ClassifyWait)).ConfigureAwait(false);
+            // A SOLIDWORKS that said session.closing may take a while to exit; until it has, it is closing, not an add-in to reload.
+            if (!exited && _closingSeen) exited = await Task.WhenAny(exit, Task.Delay(_owner._options.ClosingExitWait)).ConfigureAwait(false) == exit;
+            int? exitCode = exited ? await exit.ConfigureAwait(false) : null;
+            _watch.Cancel();
+            bool closing = _closingSeen;
+            var inFlight = _inFlight.Values.Select(c => new InFlightRequest { Method = c.Method, RunningMs = c.Clock.ElapsedMilliseconds }).ToList();
+
+            SwAgentError error;
+            CrashInfo? crash = null;
+            if (exited && closing)
+            {
+                error = new SwAgentError(ErrorCode.SwNotRunning,
+                    $"SOLIDWORKS (process {ProcessId}) was closed; start it from the 3DEXPERIENCE dashboard in the browser, and the next call connects to it",
+                    new JsonObject { ["process_id"] = (long)ProcessId, ["exit_code"] = exitCode });
+            }
+            else if (exited)
+            {
+                crash = new CrashInfo
+                {
+                    ProcessId = ProcessId,
+                    ExitCode = exitCode,
+                    At = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture),
+                    InFlight = inFlight,
+                };
+                lock (_documentsGate)
+                {
+                    crash.DirtyDocuments = _documents.Where(d => d.Dirty).ToList();
+                    crash.DocumentsAsOf = _documentsAsOf;
+                }
+                error = new SwAgentError(ErrorCode.SwCrashed, CrashMessage(crash), (JsonObject)JsonCodec.ToJson(crash)!);
+            }
+            else if (closing)
+            {
+                error = new SwAgentError(ErrorCode.AddinNotLoaded,
+                    $"the add-in was turned off in SOLIDWORKS (process {ProcessId}); the next call loads it again",
+                    new JsonObject { ["process_id"] = (long)ProcessId });
+            }
+            else
+            {
+                error = new SwAgentError(ErrorCode.AddinNotLoaded,
+                    $"the add-in in SOLIDWORKS (process {ProcessId}) stopped answering without closing; its log is in {AddinLoader.LogDirectory}. " +
+                    "The next call loads it again",
+                    new JsonObject { ["process_id"] = (long)ProcessId, ["log_directory"] = AddinLoader.LogDirectory });
+            }
+            _owner._log.LogWarning("connection to SOLIDWORKS process {Pid} ended: {Code} (process exited: {Exited}, exit code {ExitCode}, session.closing seen: {Closing}, calls in flight: {InFlight})",
+                ProcessId, WireNames.ForEnum(error.Code), exited, exitCode, closing, inFlight.Count);
+            client.Dispose();
+            _owner.Ended(this, error, crash, reportedToCalls: inFlight.Count > 0);
+            _classified.TrySetResult(error);
+        }
+
+        static string CrashMessage(CrashInfo crash)
+        {
+            string calls = crash.InFlight.Count == 0
+                ? "no call was in flight"
+                : $"in flight: {string.Join(", ", crash.InFlight.Select(c => $"{c.Method} ({c.RunningMs} ms)"))}";
+            string dirty = crash.DirtyDocuments.Count == 0
+                ? "no document had unsaved changes"
+                : $"unsaved changes were lost in: {string.Join(", ", crash.DirtyDocuments.Select(d => d.Title))}";
+            return $"SOLIDWORKS (process {crash.ProcessId}) crashed (exit code {(crash.ExitCode?.ToString(CultureInfo.InvariantCulture) ?? "unknown")}); {calls}; {dirty}" +
+                   (crash.DocumentsAsOf != null ? $" (as of {crash.DocumentsAsOf})" : "") +
+                   ". Start SOLIDWORKS from the 3DEXPERIENCE dashboard in the browser; the next call reattaches";
         }
     }
 }

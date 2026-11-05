@@ -61,3 +61,28 @@ sealed class FakeRegistration : IAddinRegistration
 
     public AddinRegistrationInfo Read() => Info;
 }
+
+/// <summary>SOLIDWORKS processes that exit when a test says so.</summary>
+sealed class FakeProcessWatch : IProcessWatch
+{
+    readonly System.Collections.Concurrent.ConcurrentDictionary<int, System.Threading.Tasks.TaskCompletionSource<int?>> _exits =
+        new System.Collections.Concurrent.ConcurrentDictionary<int, System.Threading.Tasks.TaskCompletionSource<int?>>();
+
+    /// <summary>The token of every watch started, in order.</summary>
+    public System.Collections.Generic.List<System.Threading.CancellationToken> Watches { get; } = new System.Collections.Generic.List<System.Threading.CancellationToken>();
+
+    public System.Threading.Tasks.Task<int?> WatchAsync(int processId, System.Threading.CancellationToken cancellationToken)
+    {
+        lock (Watches) Watches.Add(cancellationToken);
+        return Exit(processId).Task;
+    }
+
+    /// <summary>Process <paramref name="processId"/> exits with <paramref name="code"/>.</summary>
+    public void Exited(int processId, int? code) => Exit(processId).TrySetResult(code);
+
+    /// <summary>A new process with the same id (the test process stands in for every SOLIDWORKS).</summary>
+    public void Restarted(int processId) => _exits[processId] = new System.Threading.Tasks.TaskCompletionSource<int?>(System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
+
+    System.Threading.Tasks.TaskCompletionSource<int?> Exit(int processId) =>
+        _exits.GetOrAdd(processId, _ => new System.Threading.Tasks.TaskCompletionSource<int?>(System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously));
+}

@@ -34,6 +34,8 @@ public class SupervisorTests
                 },
                 SolidWorks = Attach,
                 Registration = new FakeRegistration(),
+                Processes = Exits,
+                ClosingExitWait = TimeSpan.FromMilliseconds(1500),
                 PipeWait = TimeSpan.FromMilliseconds(300),
             };
             Supervisor = new Supervisor(Options);
@@ -42,6 +44,7 @@ public class SupervisorTests
         public FakeAddin? Addin { get; set; }
         public bool Loaded { get; set; }
         public FakeAttach Attach { get; }
+        public FakeProcessWatch Exits { get; } = new FakeProcessWatch();
         public SupervisorOptions Options { get; }
         public Supervisor Supervisor { get; }
 
@@ -167,6 +170,147 @@ public class SupervisorTests
         Assert.False(rig.Supervisor.ReadEvents(new SwEventsRequest()).Missed);
     }
 
+    // ---- how a connection ends ----
+
+    [Fact]
+    public async Task SOLIDWORKS_dying_mid_call_is_sw_crashed_naming_the_call_and_the_unsaved_documents()
+    {
+        using var addin = new FakeAddin(r => r.Method == "diag.sleep" ? null : RpcCodecSuccess(r));
+        using var rig = new Rig(addin);
+        await rig.StatusCall();
+        await addin.SendEventAsync(1, "documents.changed", new DocumentsChangedEvent
+        {
+            Documents = { new DocumentInfo { Title = "Part1", Type = DocumentType.Part, Dirty = true }, new DocumentInfo { Title = "Clean", Type = DocumentType.Part } },
+        });
+        await WaitFor(() => rig.Supervisor.Events.LastAddinSeq == 1);
+        var sleeping = rig.Supervisor.CallAsync("diag.sleep", new JsonObject { ["ms"] = 30000L }, TimeSpan.FromSeconds(30));
+        addin.Next("diag.sleep");
+
+        var clock = Stopwatch.StartNew();
+        rig.Exits.Exited(Pid, -1073741819);
+        addin.Disconnect();
+        var e = await Fails(sleeping);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(3), $"took {clock.Elapsed}");
+        Assert.Equal(ErrorCode.SwCrashed, e.Code);
+        var crash = JsonCodec.FromJson<CrashInfo>(e.Error.Details);
+        Assert.Equal(-1073741819, crash.ExitCode);
+        Assert.Equal("diag.sleep", Assert.Single(crash.InFlight).Method);
+        Assert.Equal("Part1", Assert.Single(crash.DirtyDocuments).Title);
+        Assert.Contains("3DEXPERIENCE dashboard", e.Message);
+        Assert.Equal(SupervisorState.Crashed, rig.Supervisor.State);
+    }
+
+    [Fact]
+    public async Task A_crash_with_nothing_in_flight_is_told_to_the_next_call_once()
+    {
+        using var addin = new FakeAddin();
+        using var rig = new Rig(addin);
+        await rig.StatusCall();
+        rig.Exits.Exited(Pid, 1);
+        addin.Disconnect();
+        await WaitFor(() => rig.Supervisor.State == SupervisorState.Crashed);
+
+        Assert.Equal(ErrorCode.SwCrashed, (await Fails(rig.StatusCall())).Code);
+        rig.Options.Client.Processes = new FakeProcesses();
+        Assert.Equal(ErrorCode.SwNotRunning, (await Fails(rig.StatusCall())).Code);
+    }
+
+    [Fact]
+    public async Task SOLIDWORKS_closed_normally_is_sw_not_running_not_a_crash()
+    {
+        using var addin = new FakeAddin(r => r.Method == "diag.sleep" ? null : RpcCodecSuccess(r));
+        using var rig = new Rig(addin);
+        await rig.StatusCall();
+        var sleeping = rig.Supervisor.CallAsync("diag.sleep", new JsonObject(), TimeSpan.FromSeconds(30));
+        addin.Next("diag.sleep");
+        await addin.CloseAsync(1);
+        rig.Exits.Exited(Pid, 0);
+        Assert.Equal(ErrorCode.SwNotRunning, (await Fails(sleeping)).Code);
+        Assert.Null((await rig.Supervisor.StatusAsync()).LastCrash);
+    }
+
+    [Fact]
+    public async Task An_addin_turned_off_is_addin_not_loaded_and_the_next_call_loads_it_again()
+    {
+        using var addin = new FakeAddin(r => r.Method == "diag.sleep" ? null : RpcCodecSuccess(r));
+        using var rig = new Rig(addin);
+        await rig.StatusCall();
+        var sleeping = rig.Supervisor.CallAsync("diag.sleep", new JsonObject(), TimeSpan.FromSeconds(30));
+        addin.Next("diag.sleep");
+        rig.Loaded = false;
+        await addin.CloseAsync(1);
+        var e = await Fails(sleeping);
+        Assert.Equal(ErrorCode.AddinNotLoaded, e.Code);
+        Assert.Contains("turned off", e.Message);
+
+        using var again = new FakeAddin();
+        rig.Addin = again;
+        Assert.NotNull(await rig.StatusCall());
+        Assert.Equal(1, rig.Attach.Loads);
+    }
+
+    [Fact]
+    public async Task A_slow_exit_after_session_closing_is_still_a_close()
+    {
+        using var addin = new FakeAddin(r => r.Method == "diag.sleep" ? null : RpcCodecSuccess(r));
+        using var rig = new Rig(addin);
+        await rig.StatusCall();
+        var sleeping = rig.Supervisor.CallAsync("diag.sleep", new JsonObject(), TimeSpan.FromSeconds(30));
+        addin.Next("diag.sleep");
+        await addin.CloseAsync(1);
+        _ = Task.Delay(1200).ContinueWith(_ => rig.Exits.Exited(Pid, 0)); // longer than ClassifyWait (1 s)
+        Assert.Equal(ErrorCode.SwNotRunning, (await Fails(sleeping)).Code);
+        Assert.Equal(SupervisorState.NotRunning, rig.Supervisor.State);
+    }
+
+    [Fact]
+    public async Task Dropping_a_connection_stops_watching_its_process()
+    {
+        using var addin = new FakeAddin();
+        using var rig = new Rig(addin);
+        await rig.StatusCall();
+        using var second = new FakeAddin(); // a fake add-in serves one connection
+        rig.Addin = second;
+        Assert.Equal(SupervisorState.Ready, (await rig.Supervisor.ReconnectAsync(null)).State);
+        Assert.True(rig.Exits.Watches.Count >= 2);
+        Assert.True(rig.Exits.Watches[0].IsCancellationRequested);
+        Assert.False(rig.Exits.Watches[rig.Exits.Watches.Count - 1].IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task An_addin_that_stops_without_closing_is_addin_not_loaded_with_its_log()
+    {
+        using var addin = new FakeAddin(r => r.Method == "diag.sleep" ? null : RpcCodecSuccess(r));
+        using var rig = new Rig(addin);
+        await rig.StatusCall();
+        var sleeping = rig.Supervisor.CallAsync("diag.sleep", new JsonObject(), TimeSpan.FromSeconds(30));
+        addin.Next("diag.sleep");
+        addin.Disconnect();
+        var e = await Fails(sleeping);
+        Assert.Equal(ErrorCode.AddinNotLoaded, e.Code);
+        Assert.Equal(AddinLoader.LogDirectory, e.Error.Details!["log_directory"]);
+    }
+
+    [Fact]
+    public async Task After_a_crash_the_next_SOLIDWORKS_is_reattached_without_help()
+    {
+        using var addin = new FakeAddin();
+        using var rig = new Rig(addin);
+        await rig.StatusCall();
+        rig.Exits.Exited(Pid, 1);
+        addin.Disconnect();
+        await WaitFor(() => rig.Supervisor.State == SupervisorState.Crashed);
+        Assert.Equal(ErrorCode.SwCrashed, (await Fails(rig.StatusCall())).Code);
+
+        rig.Exits.Restarted(Pid);
+        rig.Loaded = false;
+        using var next = new FakeAddin();
+        rig.Addin = next;
+        Assert.NotNull(await rig.StatusCall());
+        Assert.Equal(1, rig.Attach.Loads);
+        Assert.Equal(SupervisorState.Ready, rig.Supervisor.State);
+    }
+
     // ---- sw_status ----
 
     [Fact]
@@ -265,6 +409,22 @@ public class SupervisorTests
 
         gate.Set();
         Assert.NotNull(await first);
+    }
+
+    [Fact]
+    public async Task Status_shows_the_last_crash_until_reconnect()
+    {
+        using var addin = new FakeAddin();
+        using var rig = new Rig(addin);
+        await rig.StatusCall();
+        rig.Exits.Exited(Pid, 3);
+        addin.Disconnect();
+        await WaitFor(() => rig.Supervisor.State == SupervisorState.Crashed);
+        rig.Options.Client.Processes = new FakeProcesses();
+        var status = await rig.Supervisor.StatusAsync();
+        Assert.Equal(SupervisorState.NotRunning, status.State);
+        Assert.Equal(3, status.LastCrash!.ExitCode);
+        Assert.Null((await rig.Supervisor.ReconnectAsync(null)).LastCrash);
     }
 
     static string RpcCodecSuccess(Contracts.Rpc.RpcRequest r) =>
