@@ -30,6 +30,41 @@ dotnet test SolidWorksMcp.slnx -c Release --no-build
 
 The build needs no SOLIDWORKS: the interop assemblies it compiles against are in `lib/solidworks/`.
 
+## Live fault suite
+
+`tests/SwAgent.Live.Tests` drives a real SOLIDWORKS through the client library, exactly as `swmcp serve` does. It covers:
+
+- the add-in loaded by the first call;
+- preferences applied per connection and restored;
+- `sw_status` answering while SOLIDWORKS is busy;
+- `busy`, `timeout` and the late `operation.completed`;
+- dialogs during an operation and with nothing running;
+- a second client;
+- the client dropping the pipe;
+- SOLIDWORKS killed mid-operation (`sw_crashed`);
+- SOLIDWORKS closed normally (`sw_not_running`);
+- reattaching after each restart.
+
+Every case is skipped unless `SWMCP_LIVE=1`, so a plain `dotnet test` and CI never touch SOLIDWORKS.
+
+Run it against a SOLIDWORKS started from the 3DEXPERIENCE tab, with no documents open and the add-in not yet loaded:
+
+```powershell
+$env:SWMCP_LIVE = "1"
+dotnet test tests/SwAgent.Live.Tests -c Release --filter "FullyQualifiedName~SwAgent.Live.Tests.FaultSuite"
+Remove-Item env:SWMCP_LIVE
+```
+
+The run sets `HKCU\Software\solidworks-mcp\Diagnostics` to 1, which turns on the add-in's diagnostic operations, and deletes it at the end. It writes to `%LOCALAPPDATA%\solidworks-mcp\live-runs\<run>\`:
+
+- `progress.log`, which you follow while it runs. A line starting `ACTION` asks for something only you can do: start SOLIDWORKS from the 3DEXPERIENCE tab, or open Tools > Options. A line starting `STOP` ends the run.
+- `client.log`.
+- `report.md`, with the SOLIDWORKS revision, the versions, and a result per case.
+
+The suite ends SOLIDWORKS twice. Each time it first reads the open documents again through its own connection, and it refuses if a document it did not create is open, or a dialog is open. It ends SOLIDWORKS only by process id. It creates documents only under `%LOCALAPPDATA%\solidworks-mcp\live-scratch\`.
+
+The SP4 canary, `Canary`, checks that a sketch call made through COM from outside SOLIDWORKS still crashes it. It is expected to crash SOLIDWORKS. It never runs by default: it needs `SWMCP_CANARY=1` as well, and is run on its own with `--filter "FullyQualifiedName~Canary"`, after a SOLIDWORKS update.
+
 ## Install
 
 ```powershell
