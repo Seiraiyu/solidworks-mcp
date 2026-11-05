@@ -45,8 +45,9 @@ sealed class FakeSketch
         };
         c.Segments.AddRange(Segments);
         c.Points.AddRange(Points);
-        c.Relations.AddRange(Relations.Select(r => new SketchRelationRecord((int)r.Type, r.Entities)));
+        c.Relations.AddRange(Relations.Select(r => new SketchRelationRecord(SolidWorksCodes.Constraint(r.Type), r.Entities)));
         c.Dimensions.AddRange(Dimensions.Select(d => new DimensionRecord(d.Entity, d.FullName, d.Value, d.Kind == DimensionKind.Angle, d.Driving, Name)));
+        if (Doc.SketchChangesAfterRead) Segments.Add(new SketchSegmentRecord(new object(), SketchSegmentKind.Line, "Line99", false));
         return c;
     }
 }

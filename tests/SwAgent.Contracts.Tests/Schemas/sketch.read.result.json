@@ -1,0 +1,388 @@
+{
+  "type": "object",
+  "description": "A sketch, read back.",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty"
+      ],
+      "additionalProperties": false,
+      "description": "The part."
+    },
+    "sketch": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Its name, for example Sketch3."
+        },
+        "reference": {
+          "type": "string",
+          "description": "Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one."
+        },
+        "solve": {
+          "type": "string",
+          "enum": [
+            "fully_defined",
+            "under_defined",
+            "over_defined",
+            "no_solution",
+            "unknown"
+          ],
+          "description": "fully_defined, under_defined (allowed), over_defined, no_solution or unknown."
+        },
+        "origin": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number",
+              "description": "X, mm."
+            },
+            "y": {
+              "type": "number",
+              "description": "Y, mm."
+            },
+            "z": {
+              "type": "number",
+              "description": "Z, mm."
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "additionalProperties": false,
+          "description": "The sketch's origin in the part, mm."
+        },
+        "x_axis": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number",
+              "description": "X component."
+            },
+            "y": {
+              "type": "number",
+              "description": "Y component."
+            },
+            "z": {
+              "type": "number",
+              "description": "Z component."
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "additionalProperties": false,
+          "description": "The sketch's x axis in the part."
+        },
+        "y_axis": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number",
+              "description": "X component."
+            },
+            "y": {
+              "type": "number",
+              "description": "Y component."
+            },
+            "z": {
+              "type": "number",
+              "description": "Z component."
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "additionalProperties": false,
+          "description": "The sketch's y axis in the part."
+        },
+        "normal": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number",
+              "description": "X component."
+            },
+            "y": {
+              "type": "number",
+              "description": "Y component."
+            },
+            "z": {
+              "type": "number",
+              "description": "Z component."
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "additionalProperties": false,
+          "description": "The sketch plane's normal in the part (x axis × y axis)."
+        }
+      },
+      "required": [
+        "name",
+        "solve",
+        "origin",
+        "x_axis",
+        "y_axis",
+        "normal"
+      ],
+      "additionalProperties": false,
+      "description": "The sketch."
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A sketch segment.",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "line",
+              "arc",
+              "circle",
+              "ellipse",
+              "spline",
+              "other"
+            ],
+            "description": "line, arc, circle, ellipse, spline or other."
+          },
+          "name": {
+            "type": "string",
+            "description": "SOLIDWORKS' name for it, for example Line1."
+          },
+          "reference": {
+            "type": "string",
+            "description": "Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one."
+          },
+          "construction": {
+            "type": "boolean",
+            "description": "True for construction geometry (centerlines included)."
+          },
+          "start": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "Where a line, arc or spline starts, mm in the sketch."
+          },
+          "end": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "Where a line, arc or spline ends, mm in the sketch."
+          },
+          "center": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "The centre of an arc or circle, mm in the sketch."
+          },
+          "radius_mm": {
+            "type": "number",
+            "description": "The radius of an arc or circle, mm."
+          },
+          "length_mm": {
+            "type": "number",
+            "description": "Its length, mm."
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "construction",
+          "length_mm"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Every segment, in SOLIDWORKS' order."
+    },
+    "points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A sketch point.",
+        "properties": {
+          "reference": {
+            "type": "string",
+            "description": "Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one."
+          },
+          "at": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "Where it is, mm in the sketch."
+          }
+        },
+        "required": [
+          "at"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Every sketch point, the ends and centres of segments included."
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A sketch relation.",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Its type: one of the relation types sketch.create takes (horizontal, coincident, equal …), or SOLIDWORKS' own name for any other (distance and radius are a dimension's own)."
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What it relates: references, or a name where SOLIDWORKS gives no reference (origin for the sketch's origin)."
+          }
+        },
+        "required": [
+          "type",
+          "entities"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Every relation."
+    },
+    "dimensions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A dimension.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Its full name, for example width@Sketch3 or D1@Boss-Extrude1; dimension.set takes it."
+          },
+          "value": {
+            "type": "number",
+            "description": "Its value: mm, or degrees when unit is deg."
+          },
+          "unit": {
+            "type": "string",
+            "description": "mm or deg."
+          },
+          "driving": {
+            "type": "boolean",
+            "description": "True when it drives the geometry; false when it only reports it (driven)."
+          },
+          "feature": {
+            "type": "string",
+            "description": "The feature or sketch it belongs to."
+          },
+          "reference": {
+            "type": "string",
+            "description": "Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one."
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "unit",
+          "driving"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Every dimension."
+    }
+  },
+  "required": [
+    "document",
+    "sketch",
+    "segments",
+    "points",
+    "relations",
+    "dimensions"
+  ],
+  "additionalProperties": false
+}

@@ -224,3 +224,65 @@ public class SketchCreateTests : DocumentTestBase
         Assert.Empty(doc.Sketches);
     }
 }
+
+public class SketchReadTests : DocumentTestBase
+{
+    static Point2 P(double x, double y) => new Point2(x, y);
+
+    FakeDocument Part()
+    {
+        var doc = Sw.Track(FakeDocument.Part("Part1", PathOf("part1.SLDPRT")));
+        doc.MassProperties = new ModelMassResult();
+        return doc;
+    }
+
+    SketchCreateResult Plate() => Run(new SketchCreateOperation(Services), new SketchCreateRequest
+    {
+        On = "front",
+        Name = "profile",
+        Rectangles = new List<SketchRectangle> { new SketchRectangle { Id = "outline", Corner1 = P(0, 0), Corner2 = P(40, 20) } },
+        Circles = new List<SketchCircle> { new SketchCircle { Id = "hole", Center = P(20, 10), RadiusMm = 2.5 } },
+        CenterLines = new List<SketchCenterLine> { new SketchCenterLine { Id = "axis", Start = P(0, 10), End = P(40, 10) } },
+        Relations = new List<SketchRelationItem>
+        {
+            new SketchRelationItem { Type = SketchRelationType.Equal, Entities = new List<string> { "outline.bottom", "outline.top" } },
+            new SketchRelationItem { Type = SketchRelationType.Midpoint, Entities = new List<string> { "hole.center", "axis" } },
+        },
+        Dimensions = new List<SketchDimensionItem> { new SketchDimensionItem { Name = "width", Entities = new List<string> { "outline.bottom" }, Value = 40 } },
+    });
+
+    SketchReadResult Read(string sketch) => Run(new SketchReadOperation(Services), new SketchReadRequest { Sketch = sketch });
+
+    [Fact]
+    public void Reads_back_every_segment_relation_and_dimension_with_references()
+    {
+        Part();
+        var made = Plate();
+        var read = Read("profile");
+        Assert.Equal("profile", read.Sketch.Name);
+        Assert.Equal(made.Sketch.Reference, read.Sketch.Reference);
+        Assert.Equal(4, read.Segments.Count(s => s.Kind == SketchSegmentKind.Line && !s.Construction));
+        Assert.Single(read.Segments, s => s.Kind == SketchSegmentKind.Line && s.Construction);
+        var hole = Assert.Single(read.Segments, s => s.Kind == SketchSegmentKind.Circle);
+        Assert.Equal(2.5, hole.RadiusMm);
+        Assert.Equal(20, hole.Center!.X);
+        Assert.All(read.Segments, s => Assert.StartsWith("r1.sketch_entity.", s.Reference));
+        Assert.Contains(made.Ids.Single(i => i.Id == "hole").References[0], read.Segments.Select(s => s.Reference));
+
+        Assert.Equal(new[] { "equal", "midpoint" }, read.Relations.Select(r => r.Type));
+        Assert.Equal(made.Ids.Single(i => i.Id == "outline").References[0], read.Relations[0].Entities[0]);
+        Assert.Equal("width@profile", read.Dimensions.Single().Name);
+        Assert.Equal(40, read.Dimensions.Single().Value);
+        Assert.True(read.Dimensions.Single().Driving);
+    }
+
+    [Fact]
+    public void A_sketch_is_named_by_its_name_or_its_reference_and_nothing_else()
+    {
+        var doc = Part();
+        var made = Plate();
+        Assert.Equal("profile", Read(made.Sketch.Reference!).Sketch.Name);
+        Assert.Equal(ErrorCode.InvalidArgument, Fails(() => Read("front")).Code);
+        Assert.Equal(ErrorCode.InvalidArgument, Fails(() => Read("Sketch99")).Code);
+    }
+}

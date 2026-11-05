@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "description": "Reads a sketch back: every segment (its kind, geometry in mm in the sketch, whether it is construction geometry, and its reference), every sketch point (the ends and centres of segments included), every relation (its type and what it relates), every dimension (full name, value, driving or driven), how far it is defined, and where its plane is in the part. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "sketch": {
+      "type": "string",
+      "description": "The sketch: its name (Sketch3) or its reference exactly as a result gave it."
+    }
+  },
+  "required": [
+    "sketch"
+  ],
+  "additionalProperties": false
+}

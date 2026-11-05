@@ -424,3 +424,98 @@ public sealed class DimensionInfo
     [Description("Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one.")]
     public string? Reference { get; set; }
 }
+
+[Operation("sketch.read", typeof(SketchReadResult), ReadOnly = true)]
+[Description("Reads a sketch back: every segment (its kind, geometry in mm in the sketch, whether it is construction geometry, and its reference), every sketch point (the ends and centres of segments included), every relation (its type and what it relates), every dimension (full name, value, driving or driven), how far it is defined, and where its plane is in the part. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class SketchReadRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The sketch: its name (Sketch3) or its reference exactly as a result gave it.")]
+    public string Sketch { get; set; } = "";
+}
+
+[Description("A sketch, read back.")]
+public sealed class SketchReadResult
+{
+    [Required]
+    [Description("The part.")]
+    public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Required]
+    [Description("The sketch.")]
+    public SketchSummary Sketch { get; set; } = new SketchSummary();
+
+    [Required]
+    [Description("Every segment, in SOLIDWORKS' order.")]
+    public List<SketchSegmentInfo> Segments { get; set; } = new List<SketchSegmentInfo>();
+
+    [Required]
+    [Description("Every sketch point, the ends and centres of segments included.")]
+    public List<SketchPointInfo> Points { get; set; } = new List<SketchPointInfo>();
+
+    [Required]
+    [Description("Every relation.")]
+    public List<SketchRelationInfo> Relations { get; set; } = new List<SketchRelationInfo>();
+
+    [Required]
+    [Description("Every dimension.")]
+    public List<DimensionInfo> Dimensions { get; set; } = new List<DimensionInfo>();
+}
+
+[Description("A sketch segment.")]
+public sealed class SketchSegmentInfo
+{
+    [Description("line, arc, circle, ellipse, spline or other.")]
+    public SketchSegmentKind Kind { get; set; }
+
+    [Required]
+    [Description("SOLIDWORKS' name for it, for example Line1.")]
+    public string Name { get; set; } = "";
+
+    [Description("Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+    public string? Reference { get; set; }
+
+    [Description("True for construction geometry (centerlines included).")]
+    public bool Construction { get; set; }
+
+    [Description("Where a line, arc or spline starts, mm in the sketch.")]
+    public Point2? Start { get; set; }
+
+    [Description("Where a line, arc or spline ends, mm in the sketch.")]
+    public Point2? End { get; set; }
+
+    [Description("The centre of an arc or circle, mm in the sketch.")]
+    public Point2? Center { get; set; }
+
+    [Description("The radius of an arc or circle, mm.")]
+    public double? RadiusMm { get; set; }
+
+    [Description("Its length, mm.")]
+    public double LengthMm { get; set; }
+}
+
+[Description("A sketch point.")]
+public sealed class SketchPointInfo
+{
+    [Description("Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+    public string? Reference { get; set; }
+
+    [Required]
+    [Description("Where it is, mm in the sketch.")]
+    public Point2 At { get; set; } = new Point2();
+}
+
+[Description("A sketch relation.")]
+public sealed class SketchRelationInfo
+{
+    [Required]
+    [Description("Its type: one of the relation types sketch.create takes (horizontal, coincident, equal …), or SOLIDWORKS' own name for any other (distance and radius are a dimension's own).")]
+    public string Type { get; set; } = "";
+
+    [Required]
+    [Description("What it relates: references, or a name where SOLIDWORKS gives no reference (origin for the sketch's origin).")]
+    public List<string> Entities { get; set; } = new List<string>();
+}

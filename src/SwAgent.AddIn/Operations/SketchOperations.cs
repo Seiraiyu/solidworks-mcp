@@ -65,6 +65,61 @@ public sealed class SketchCreateOperation : ModelChangeOperation<SketchCreateReq
     }
 }
 
+public sealed class SketchReadOperation : Operation<SketchReadRequest, SketchReadResult>
+{
+    readonly AddInServices _services;
+
+    public SketchReadOperation(AddInServices services)
+    {
+        _services = services;
+    }
+
+    protected override SketchReadResult Run(SketchReadRequest request, IOperationContext context)
+    {
+        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "sketch.read");
+        var (sketch, _) = _services.References.Resolve(doc, request.Sketch, "sketch", ReferenceKind.Sketch);
+        var c = doc.ReadSketch(sketch);
+        var references = _services.References;
+        string Name(object entity)
+        {
+            if (entity is SketchOrigin || doc.KindOf(entity) == null) return entity is SketchOrigin ? "origin" : "?";
+            var info = references.Describe(doc, entity);
+            return info.Reference ?? info.Name ?? "?";
+        }
+        return new SketchReadResult
+        {
+            Document = doc.Info(),
+            Sketch = Sketches.Summary(references, doc, c),
+            Segments = c.Segments.Select(s => new SketchSegmentInfo
+            {
+                Kind = s.Kind,
+                Name = s.Name,
+                Reference = references.Describe(doc, s.Entity).Reference,
+                Construction = s.Construction,
+                Start = s.Start,
+                End = s.End,
+                Center = s.Center,
+                RadiusMm = s.RadiusMm,
+                LengthMm = s.LengthMm,
+            }).ToList(),
+            Points = c.Points.Select(p => new SketchPointInfo { Reference = references.Describe(doc, p.Entity).Reference, At = p.At }).ToList(),
+            Relations = c.Relations.Select(r => new SketchRelationInfo { Type = SolidWorksCodes.RelationName(r.Type), Entities = r.Entities.Select(Name).ToList() }).ToList(),
+            Dimensions = c.Dimensions.Select(d => Sketches.Info(references, doc, d)).ToList(),
+        };
+    }
+
+    /// <summary>Read again, the sketch has the same segments and dimensions.</summary>
+    protected override void Verify(SketchReadRequest request, SketchReadResult result, IOperationContext context)
+    {
+        var doc = DocumentLocator.Find(_services.SolidWorks, DocumentKeys.Of(result.Document));
+        var sketch = doc.FeatureByName(result.Sketch.Name)
+            ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"{result.Sketch.Name} is gone; ask again");
+        var again = doc.ReadSketch(sketch);
+        if (again.Segments.Count != result.Segments.Count || !again.Dimensions.Select(d => d.FullName).SequenceEqual(result.Dimensions.Select(d => d.Name)))
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"{result.Sketch.Name} changed while it was read; ask again");
+    }
+}
+
 /// <summary>What the sketch operations share: names, external references, filling a result, and the checks on a sketch read back.</summary>
 public static class Sketches
 {

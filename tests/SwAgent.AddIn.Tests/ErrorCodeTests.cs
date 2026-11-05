@@ -89,4 +89,36 @@ public class ErrorCodeTests : DocumentTestBase
         Assert.Empty(doc.Sketches);
         Assert.Equal(new[] { false }, doc.Rebuilds);
     }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    public void Sketch_read_reaches_every_listed_code(ErrorCode code)
+    {
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Fails(() => Run(new SketchReadOperation(Services), new SketchReadRequest { Sketch = "Sketch1" })).Code);
+            return;
+        }
+        var doc = Part();
+        var made = Create(Circle());
+        string sketch = "Sketch1";
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                sketch = "front";
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                sketch = made.Sketch.Reference!;
+                doc.DeleteFeature(doc.Sketches[0].Feature);
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.SketchChangesAfterRead = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Run(new SketchReadOperation(Services), new SketchReadRequest { Sketch = sketch })).Code);
+    }
 }
