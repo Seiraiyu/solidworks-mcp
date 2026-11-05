@@ -2,8 +2,11 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Pipes;
 using System.Linq;
+using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using SwAgent.Contracts;
 using SwAgent.Contracts.Rpc;
@@ -197,4 +200,36 @@ static class Requests
 
     public static RpcRequest Other(long id, long deadlineMs = 10000) =>
         new RpcRequest(id, "test.other", new Contracts.Serialization.JsonObject(), deadlineMs);
+}
+
+/// <summary>A bare line client, so pipe tests do not depend on SwAgent.Client (plan 1.B).</summary>
+sealed class RawClient : IDisposable
+{
+    readonly NamedPipeClientStream _pipe;
+    readonly StreamReader _reader;
+    readonly StreamWriter _writer;
+
+    public RawClient(string pipeName)
+    {
+        _pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        _pipe.Connect(5000);
+        _reader = new StreamReader(_pipe, new UTF8Encoding(false));
+        _writer = new StreamWriter(_pipe, new UTF8Encoding(false)) { NewLine = "\n", AutoFlush = true };
+    }
+
+    public Task SendAsync(string line) => _writer.WriteLineAsync(line);
+
+    public async Task<string?> ReadLineAsync(int timeoutMs = 10000)
+    {
+        var read = _reader.ReadLineAsync();
+        if (await Task.WhenAny(read, Task.Delay(timeoutMs)) != read) throw new TimeoutException("no line from the pipe");
+        return await read;
+    }
+
+    public void Dispose() => _pipe.Dispose();
+}
+
+static class PipeNames
+{
+    public static string Unique() => "swagent-test-" + Guid.NewGuid().ToString("N");
 }
