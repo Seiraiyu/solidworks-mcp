@@ -48,6 +48,8 @@ public sealed class AddinStateOperation : PipeOperation<AddinStateRequest, Addin
             Documents = docs?.Current.ToList() ?? new System.Collections.Generic.List<DocumentInfo>(),
             DocumentsAsOf = docs?.AsOfUtc?.ToString("o", CultureInfo.InvariantCulture),
             LastEventSeq = _runtime.Events.LastSeq,
+            Dialog = _runtime.Dialogs?.Current,
+            DialogWatchAlive = _runtime.Dialogs?.IsAlive ?? false,
         };
     }
 

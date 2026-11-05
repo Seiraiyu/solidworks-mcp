@@ -36,6 +36,12 @@ public sealed class AgentRuntime
     /// <summary>Set by the add-in; null when preferences are not managed (tests).</summary>
     public PreferenceGuard? Preferences { get; set; }
 
+    /// <summary>SOLIDWORKS' main frame window, read on the UI thread at load; zero when unknown (then no dialog watch).</summary>
+    public IntPtr MainWindow { get; set; }
+
+    /// <summary>Set by the host when <see cref="MainWindow"/> is known; null otherwise.</summary>
+    public DialogWatch? Dialogs { get; set; }
+
     /// <summary>Wired by the host to the dispatcher.</summary>
     public Func<DateTime?> LastPumpedUtc { get; set; } = () => null;
 
