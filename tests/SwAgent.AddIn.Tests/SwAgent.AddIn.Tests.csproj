@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <RootNamespace>SwAgent.AddIn.Tests</RootNamespace>
+    <SolidWorksInteropPrivate>true</SolidWorksInteropPrivate>
+  </PropertyGroup>
+  <Import Project="..\..\build\SolidWorksInterop.props" />
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SwAgent.AddIn\SwAgent.AddIn.csproj" />
+  </ItemGroup>
+</Project>

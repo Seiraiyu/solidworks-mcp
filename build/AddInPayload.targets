@@ -1,0 +1,27 @@
+<Project>
+  <!--
+    Puts the add-in (SwAgent.AddIn.dll with the SwAgent.AddIn.Core.dll and SwAgent.Contracts.dll it loads) in an
+    addin\ folder of this project's output, and of its publish folder, so `swmcp addin register` finds it by default.
+    The add-in is net48 and cannot be a normal project reference of a net10.0 project, so it is built here with the
+    MSBuild task, inheriting this build's global properties so a solution build shares one build of it.
+  -->
+  <Target Name="SwAgentAddInPayload" AfterTargets="Build">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)..\src\SwAgent.AddIn\SwAgent.AddIn.csproj" Targets="Build">
+      <Output TaskParameter="TargetOutputs" ItemName="_SwAgentAddInAssembly" />
+    </MSBuild>
+    <PropertyGroup>
+      <_SwAgentAddInDir>@(_SwAgentAddInAssembly->'%(RootDir)%(Directory)')</_SwAgentAddInDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_SwAgentAddInFile Include="$(_SwAgentAddInDir)*.dll;$(_SwAgentAddInDir)*.pdb" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_SwAgentAddInFile)" DestinationFolder="$(OutDir)addin" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="SwAgentAddInPublishPayload" AfterTargets="Publish">
+    <ItemGroup>
+      <_SwAgentAddInPublished Include="$(OutDir)addin\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_SwAgentAddInPublished)" DestinationFolder="$(PublishDir)addin" SkipUnchangedFiles="true" />
+  </Target>
+</Project>
