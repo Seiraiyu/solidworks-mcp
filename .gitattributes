@@ -2,3 +2,4 @@
 *.cs text eol=crlf
 *.json text eol=lf
 *.dll binary
+lib/** -text
