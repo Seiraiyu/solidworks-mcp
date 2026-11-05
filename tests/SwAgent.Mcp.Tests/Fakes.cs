@@ -27,3 +27,15 @@ sealed class FakePipes : IPipeDirectory
 
     public bool Exists(string pipeName) => _exists(pipeName);
 }
+
+sealed class FakeAttach : SwAgent.Mcp.ISolidWorksAttach
+{
+    readonly Func<int, string, int> _load;
+
+    public FakeAttach(Func<int, string, int> load)
+    {
+        _load = load;
+    }
+
+    public int LoadAddIn(int processId, string dllPath) => _load(processId, dllPath);
+}

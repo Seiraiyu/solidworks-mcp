@@ -25,6 +25,12 @@ public sealed class CliEnvironment
 
     /// <summary>Where swmcp.exe is; the add-in is expected in its addin\ folder.</summary>
     public string BaseDirectory { get; init; } = AppContext.BaseDirectory;
+
+    /// <summary>How swmcp asks a running SOLIDWORKS to load the add-in; a fake in tests.</summary>
+    public ISolidWorksAttach SolidWorks { get; init; } = ComSolidWorksAttach.Instance;
+
+    /// <summary>How long <c>addin load</c> waits for the add-in's pipe after LoadAddIn returns.</summary>
+    public TimeSpan AddinLoadWait { get; init; } = TimeSpan.FromSeconds(30);
 }
 
 public sealed class UsageException : Exception
@@ -41,6 +47,7 @@ public static class Cli
         "usage:\n" +
         "  swmcp call <method> [json-params] [--pid N] [--deadline-ms N]\n" +
         "  swmcp addin register [--path <SwAgent.AddIn.dll>]\n" +
+        "  swmcp addin load [--pid N]\n" +
         "  swmcp addin unregister\n" +
         "  swmcp addin status\n" +
         "  swmcp --version";
@@ -64,7 +71,7 @@ public static class Cli
                 case "call":
                     return await CallAsync(args.Skip(1).ToArray(), env).ConfigureAwait(false);
                 case "addin":
-                    return Addin(args.Skip(1).ToArray(), env);
+                    return await AddinAsync(args.Skip(1).ToArray(), env).ConfigureAwait(false);
                 default:
                     throw new UsageException($"unknown command '{args[0]}'");
             }
@@ -117,9 +124,9 @@ public static class Cli
         return ExitCodes.Success;
     }
 
-    static int Addin(string[] args, CliEnvironment env)
+    static async Task<int> AddinAsync(string[] args, CliEnvironment env)
     {
-        if (args.Length == 0) throw new UsageException("addin needs register, unregister or status");
+        if (args.Length == 0) throw new UsageException("addin needs register, load, unregister or status");
         var registrar = new AddinRegistrar(env.RegistryRoot);
         var rest = args.Skip(1).ToArray();
         switch (args[0])
@@ -141,10 +148,12 @@ public static class Cli
                     ["clsid"] = AddInIdentity.ClsidKey,
                     ["next"] = loaded.Count > 0
                         ? $"SOLIDWORKS (process {string.Join(", ", loaded)}) has the add-in loaded and its DLL locked; restart SOLIDWORKS to load this build"
-                        : "start SOLIDWORKS; the add-in loads at startup",
+                        : "run `swmcp addin load` once SOLIDWORKS is running (start it from the 3DEXPERIENCE launcher)",
                 });
                 return ExitCodes.Success;
             }
+            case "load":
+                return await LoadAsync(registrar, Args.Parse(rest, "--pid"), env).ConfigureAwait(false);
             case "unregister":
             {
                 var a = Args.Parse(rest);
@@ -185,6 +194,64 @@ public static class Cli
             default:
                 throw new UsageException($"unknown addin command '{args[0]}'");
         }
+    }
+
+    /// <summary>
+    /// Asks the running SOLIDWORKS to load the registered add-in (SOLIDWORKS does not discover per-user add-ins at
+    /// startup), then waits for its pipe. Attaches only: SOLIDWORKS is started by the user, never by swmcp.
+    /// </summary>
+    static async Task<int> LoadAsync(AddinRegistrar registrar, Args a, CliEnvironment env)
+    {
+        if (a.Positional.Count > 0) throw new UsageException("addin load takes no arguments besides --pid");
+        int? wanted = a.Int("--pid") ?? env.Client.ProcessId;
+
+        var status = registrar.Status();
+        if (!status.Registered || status.Path == null)
+        {
+            throw new SwAgentException(ErrorCode.AddinNotLoaded,
+                status.Path != null && !status.FileExists
+                    ? $"the add-in is registered at {status.Path}, which no longer exists; run `swmcp addin register` first"
+                    : "the add-in is not registered for this user; run `swmcp addin register` first",
+                new JsonObject { ["registered_path"] = status.Path, ["file_exists"] = status.FileExists });
+        }
+
+        int pid = new AddinLocator(env.Client.Processes, env.Client.Pipes, env.Client.PipeNameFor).LocateProcess(wanted);
+        string pipe = env.Client.PipeNameFor(pid);
+        if (env.Client.Pipes.Exists(pipe))
+        {
+            Write(env, new JsonObject { ["loaded"] = true, ["already_loaded"] = true, ["process_id"] = (long)pid, ["path"] = status.Path });
+            return ExitCodes.Success;
+        }
+
+        int result = env.SolidWorks.LoadAddIn(pid, status.Path);
+        var deadline = DateTime.UtcNow + env.AddinLoadWait;
+        while (!env.Client.Pipes.Exists(pipe))
+        {
+            if (DateTime.UtcNow >= deadline)
+            {
+                string logs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "solidworks-mcp", "logs");
+                throw new SwAgentException(ErrorCode.AddinNotLoaded,
+                    $"SOLIDWORKS (process {pid}) did not start the add-in: LoadAddIn returned {result} and \\\\.\\pipe\\{pipe} " +
+                    $"did not appear within {env.AddinLoadWait.TotalSeconds:0.#} s; the add-in's log is in {logs}",
+                    new JsonObject
+                    {
+                        ["process_id"] = (long)pid,
+                        ["path"] = status.Path,
+                        ["load_addin_result"] = (long)result,
+                        ["log_directory"] = logs,
+                    });
+            }
+            await Task.Delay(100).ConfigureAwait(false);
+        }
+        Write(env, new JsonObject
+        {
+            ["loaded"] = true,
+            ["already_loaded"] = false,
+            ["process_id"] = (long)pid,
+            ["path"] = status.Path,
+            ["load_addin_result"] = (long)result,
+        });
+        return ExitCodes.Success;
     }
 
     static List<(int ProcessId, bool AddinLoaded)> RunningSolidWorks(CliEnvironment env) =>

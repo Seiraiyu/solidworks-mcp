@@ -46,7 +46,7 @@ public class DiscoveryTests
     {
         var e = Assert.Throws<SwAgentException>(() => Locator(new[] { 10 }, _ => false).Locate(null));
         Assert.Equal(ErrorCode.AddinNotLoaded, e.Code);
-        Assert.Contains("swmcp addin register", e.Message);
+        Assert.Contains("swmcp addin load", e.Message);
     }
 
     [Fact]

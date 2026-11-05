@@ -73,6 +73,19 @@ public sealed class AddinLocator
     /// <summary>The process id of the SOLIDWORKS to connect to; throws a typed <see cref="SwAgentException"/> otherwise.</summary>
     public int Locate(int? processId)
     {
+        int pid = LocateProcess(processId);
+        if (!_pipes.Exists(_pipeNameFor(pid)))
+        {
+            throw new SwAgentException(ErrorCode.AddinNotLoaded,
+                $"SOLIDWORKS (process {pid}) is running but the add-in is not loaded; run `swmcp addin load` (after `swmcp addin register` if it is not registered)",
+                new JsonObject { ["process_id"] = (long)pid });
+        }
+        return pid;
+    }
+
+    /// <summary>The SOLIDWORKS process meant (the one named, or the only one running), whether or not its add-in is up.</summary>
+    public int LocateProcess(int? processId)
+    {
         var ids = _processes.SolidWorksProcessIds();
         int pid;
         if (processId is int wanted)
@@ -99,13 +112,6 @@ public sealed class AddinLocator
         else
         {
             pid = ids[0];
-        }
-
-        if (!_pipes.Exists(_pipeNameFor(pid)))
-        {
-            throw new SwAgentException(ErrorCode.AddinNotLoaded,
-                $"SOLIDWORKS (process {pid}) is running but the add-in is not loaded; run `swmcp addin register` and restart SOLIDWORKS",
-                new JsonObject { ["process_id"] = (long)pid });
         }
         return pid;
     }

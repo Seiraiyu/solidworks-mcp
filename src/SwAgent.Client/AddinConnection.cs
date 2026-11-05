@@ -57,7 +57,7 @@ public sealed class AddinConnection : IDisposable
         {
             pipe.Dispose();
             throw new SwAgentException(ErrorCode.AddinNotLoaded,
-                $"could not connect to the add-in's pipe \\\\.\\pipe\\{pipeName} ({e.Message}); restart SOLIDWORKS if the add-in was unloaded",
+                $"could not connect to the add-in's pipe \\\\.\\pipe\\{pipeName} ({e.Message}); run `swmcp addin load` if the add-in was unloaded",
                 new JsonObject { ["pipe"] = pipeName });
         }
         catch
