@@ -257,4 +257,18 @@ public class CliTests
         Assert.Equal(ExitCodes.For(ErrorCode.AddinNotLoaded), run.Exit);
         Assert.Equal(2L, ((JsonObject)run.Json["details"]!)["load_addin_result"]);
     }
+
+    [Fact]
+    public async Task Addin_unregister_while_loaded_says_to_unregister_again_after_the_restart()
+    {
+        using var scratch = Registered();
+        var env = new CliEnvironmentBuilder
+        {
+            Root = scratch.Root,
+            Client = new Client.ClientOptions { Processes = new FakeProcesses(77), Pipes = new FakePipes(_ => true) },
+        };
+        var run = await RunAsync(env, "addin", "unregister");
+        Assert.Equal(ExitCodes.Success, run.Exit);
+        Assert.Contains("run `swmcp addin unregister` again", (string)run.Json["next"]!);
+    }
 }

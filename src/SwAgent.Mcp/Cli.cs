@@ -164,7 +164,10 @@ public static class Cli
                 {
                     ["unregistered"] = true,
                     ["removed_keys"] = removed.Select(k => (object?)k).ToList(),
-                    ["next"] = loaded ? "restart SOLIDWORKS to unload the add-in" : "nothing; SOLIDWORKS will not load the add-in",
+                    // SOLIDWORKS writes AddInsStartup for every add-in it has loaded when it exits, so that key comes back once.
+                    ["next"] = loaded
+                        ? "restart SOLIDWORKS to unload the add-in, then run `swmcp addin unregister` again: SOLIDWORKS rewrites the add-in's AddInsStartup entry when it exits"
+                        : "nothing; SOLIDWORKS will not load the add-in",
                 });
                 return ExitCodes.Success;
             }
