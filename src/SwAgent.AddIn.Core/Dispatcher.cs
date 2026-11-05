@@ -22,11 +22,14 @@ public interface IReplyChannel
 /// After each request control goes back to SOLIDWORKS' message loop: the next queued request is started by a
 /// 10 ms timer, and Windows delivers WM_TIMER only after posted, input and paint messages, so SOLIDWORKS repaints
 /// and handles input between requests. At most one start message is outstanding, so requests never nest.
+/// Requests live in a <see cref="RequestLedger"/>; one the watchdog already answered still runs, and its outcome is
+/// raised as operation.completed.
 /// </summary>
 public sealed class Dispatcher : IDisposable
 {
     const int WmApp = 0x8000;
     const int WmRun = WmApp + 0x5A1;
+    const int WmProbe = WmApp + 0x5A2;
     const int WmTimer = 0x0113;
     static readonly UIntPtr TimerId = new UIntPtr(0x5A1);
     const uint BacklogDelayMs = 10;
@@ -34,7 +37,9 @@ public sealed class Dispatcher : IDisposable
     readonly RequestExecutor _executor;
     readonly ILog _log;
     readonly Func<DateTime> _utcNow;
-    readonly ConcurrentQueue<WorkItem> _queue = new ConcurrentQueue<WorkItem>();
+    readonly RequestLedger _ledger;
+    readonly EventHub? _events;
+    readonly ConcurrentQueue<(string Name, Action Action)> _actions = new ConcurrentQueue<(string, Action)>();
     readonly object _gate = new object();
     readonly MessageWindow _window;
     readonly IntPtr _hwnd;
@@ -42,15 +47,16 @@ public sealed class Dispatcher : IDisposable
     int _scheduled;
     bool _running;
     volatile bool _disposed;
-    volatile string? _currentMethod;
-    long _currentStartedTicks;
+    long _lastPumpTicks;
 
     /// <summary>Call on the UI thread: the window, and so every request, belongs to the calling thread.</summary>
-    public Dispatcher(RequestExecutor executor, ILog log, Func<DateTime>? utcNow = null)
+    public Dispatcher(RequestExecutor executor, ILog log, Func<DateTime>? utcNow = null, RequestLedger? ledger = null, EventHub? events = null)
     {
         _executor = executor;
         _log = log;
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
+        _ledger = ledger ?? new RequestLedger();
+        _events = events;
         UiThreadId = Thread.CurrentThread.ManagedThreadId;
         _window = new MessageWindow(this);
         _hwnd = _window.Handle;
@@ -58,20 +64,28 @@ public sealed class Dispatcher : IDisposable
 
     public int UiThreadId { get; }
 
+    public RequestLedger Ledger => _ledger;
+
+    /// <summary>Runs on the UI thread after every request (the document table refresh); its exceptions are logged.</summary>
+    public Action? AfterEachRequest { get; set; }
+
     /// <summary>The operation running now, or null.</summary>
-    public string? CurrentMethod => _currentMethod;
+    public string? CurrentMethod => _ledger.Running?.Request.Method;
 
     /// <summary>When the running operation started, or null.</summary>
-    public DateTime? CurrentStartedUtc
+    public DateTime? CurrentStartedUtc => _ledger.Running?.StartedUtc;
+
+    public int QueuedRequests => _ledger.QueuedCount;
+
+    /// <summary>When the UI thread last ran this dispatcher's window procedure; null before it ever has.</summary>
+    public DateTime? LastPumpedUtc
     {
         get
         {
-            long ticks = Interlocked.Read(ref _currentStartedTicks);
+            long ticks = Interlocked.Read(ref _lastPumpTicks);
             return ticks == 0 ? (DateTime?)null : new DateTime(ticks, DateTimeKind.Utc);
         }
     }
-
-    public int QueuedRequests => _queue.Count;
 
     /// <summary>Queues a request; safe from any thread.</summary>
     public void Enqueue(RpcRequest request, DateTime receivedUtc, IReplyChannel reply)
@@ -80,12 +94,29 @@ public sealed class Dispatcher : IDisposable
         {
             if (!_disposed)
             {
-                _queue.Enqueue(new WorkItem(request, receivedUtc, reply));
+                _ledger.Enqueue(request, receivedUtc, reply);
                 Schedule(afterIdle: false);
                 return;
             }
         }
         reply.Send(Unloading(request.Id));
+    }
+
+    /// <summary>Runs <paramref name="action"/> on the UI thread before the next request; safe from any thread.</summary>
+    public void Post(string name, Action action)
+    {
+        lock (_gate)
+        {
+            if (_disposed) return;
+            _actions.Enqueue((name, action));
+            Schedule(afterIdle: false);
+        }
+    }
+
+    /// <summary>Asks the UI thread to record that it pumped messages; safe from any thread.</summary>
+    public void Probe()
+    {
+        if (!_disposed) PostMessage(_hwnd, WmProbe, IntPtr.Zero, IntPtr.Zero);
     }
 
     /// <summary>Call on the UI thread. Queued requests are answered addin_not_loaded.</summary>
@@ -97,7 +128,7 @@ public sealed class Dispatcher : IDisposable
         {
             if (_disposed) return;
             _disposed = true;
-            while (_queue.TryDequeue(out var item)) item.Reply.Send(Unloading(item.Request.Id));
+            foreach (var entry in _ledger.TakeAllQueued()) entry.TryAnswer(Unloading(entry.Request.Id), "unloading");
         }
         KillTimer(_hwnd, TimerId);
         _window.DestroyHandle();
@@ -116,64 +147,89 @@ public sealed class Dispatcher : IDisposable
         }
     }
 
+    void MarkPumped() => Interlocked.Exchange(ref _lastPumpTicks, _utcNow().Ticks);
+
     void OnRun()
     {
-        if (_running) return; // defensive: a nested pump never takes a request; the outer run reschedules
+        if (_running) return; // defensive: a nested pump never takes work; the outer run reschedules
         if (_disposed) return;
         _running = true;
         try
         {
-            if (_queue.TryDequeue(out var item)) RunOne(item);
+            while (_actions.TryDequeue(out var posted)) RunAction(posted.Name, posted.Action);
+            var now = _utcNow();
+            bool started = _ledger.TryStart(now, out var entry, out var skipped);
+            foreach (var (late, ahead) in skipped) AnswerBusy(late, ahead, now);
+            if (started && entry != null) RunOne(entry);
         }
         finally
         {
             _running = false;
             Volatile.Write(ref _scheduled, 0);
-            if (!_queue.IsEmpty && !_disposed) Schedule(afterIdle: true);
+            if ((_ledger.QueuedCount > 0 || !_actions.IsEmpty) && !_disposed) Schedule(afterIdle: true);
         }
     }
 
-    void RunOne(WorkItem item)
+    void RunAction(string name, Action action)
     {
-        if (!item.Reply.IsOpen)
-        {
-            _log.Info($"request {item.Request.Id} {item.Request.Method} dropped: its client disconnected");
-            return;
-        }
-        _currentMethod = item.Request.Method;
-        Interlocked.Exchange(ref _currentStartedTicks, _utcNow().Ticks);
         try
         {
-            item.Reply.Send(_executor.Execute(item.Request, item.ReceivedUtc));
+            action();
         }
         catch (Exception e)
         {
-            _log.Error($"dispatcher: request {item.Request.Id} could not be answered", e);
+            _log.Error($"dispatcher: posted action '{name}' failed", e);
+        }
+    }
+
+    void RunOne(LedgerEntry entry)
+    {
+        try
+        {
+            if (!entry.Reply.IsOpen)
+            {
+                _log.Info($"request {entry.Request.Id} {entry.Request.Method} dropped: its client disconnected");
+                return;
+            }
+            var started = entry.StartedUtc ?? _utcNow();
+            var response = _executor.ExecuteResponse(entry.Request, entry.ReceivedUtc, started);
+            if (!entry.TryAnswer(RpcCodec.FormatResponse(response), "result"))
+            {
+                _log.Info($"request {entry.Request.Id} {entry.Request.Method} finished after its client was answered {entry.AnsweredAs}");
+                _events?.Publish("operation.completed", new OperationCompletedEvent
+                {
+                    Id = entry.Request.Id,
+                    Method = entry.Request.Method,
+                    Ok = response.IsSuccess,
+                    Error = response.Error,
+                    DurationMs = (long)(_utcNow() - started).TotalMilliseconds,
+                    AnsweredAs = entry.AnsweredAs ?? "unknown",
+                });
+            }
+        }
+        catch (Exception e)
+        {
+            _log.Error($"dispatcher: request {entry.Request.Id} could not be answered", e);
         }
         finally
         {
-            _currentMethod = null;
-            Interlocked.Exchange(ref _currentStartedTicks, 0);
+            _ledger.Finish(entry, _utcNow());
+            var hook = AfterEachRequest;
+            if (hook != null) RunAction("after each request", hook);
         }
+    }
+
+    /// <summary>A request the ledger refused to start because its deadline had passed: busy, naming what ran before it.</summary>
+    void AnswerBusy(LedgerEntry late, int ahead, DateTime now)
+    {
+        var error = DeadlineErrors.Busy(late, null, _ledger.LastFinished, ahead, now);
+        if (late.TryAnswer(RpcCodec.Failure(late.Request.Id, RpcErrorCodes.ServerError, error), "busy"))
+            _log.Info($"request {late.Request.Id} {late.Request.Method}: busy, not started after {(now - late.ReceivedUtc).TotalMilliseconds:0} ms");
     }
 
     static string Unloading(long id) =>
         RpcCodec.Failure(id, RpcErrorCodes.ServerError, new SwAgentError(ErrorCode.AddinNotLoaded,
             "the add-in is unloading: SOLIDWORKS is closing or the add-in was turned off"));
-
-    sealed class WorkItem
-    {
-        public WorkItem(RpcRequest request, DateTime receivedUtc, IReplyChannel reply)
-        {
-            Request = request;
-            ReceivedUtc = receivedUtc;
-            Reply = reply;
-        }
-
-        public RpcRequest Request { get; }
-        public DateTime ReceivedUtc { get; }
-        public IReplyChannel Reply { get; }
-    }
 
     sealed class MessageWindow : NativeWindow
     {
@@ -188,12 +244,17 @@ public sealed class Dispatcher : IDisposable
 
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == WmRun || (m.Msg == WmTimer && m.WParam == (IntPtr)(long)TimerId.ToUInt64()))
+            bool run = m.Msg == WmRun || (m.Msg == WmTimer && m.WParam == (IntPtr)(long)TimerId.ToUInt64());
+            if (run || m.Msg == WmProbe)
             {
-                if (m.Msg == WmTimer) KillTimer(m.HWnd, TimerId);
                 try
                 {
-                    _owner.OnRun();
+                    _owner.MarkPumped();
+                    if (run)
+                    {
+                        if (m.Msg == WmTimer) KillTimer(m.HWnd, TimerId);
+                        _owner.OnRun();
+                    }
                 }
                 catch (Exception e)
                 {
