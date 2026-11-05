@@ -17,6 +17,13 @@ public static class OperationFamilies
         ["addin"] = TimeSpan.FromSeconds(5),
         ["dialog"] = TimeSpan.FromSeconds(10),
         ["diag"] = TimeSpan.FromMinutes(10),
+        ["document"] = TimeSpan.FromSeconds(60),
+        ["sketch"] = TimeSpan.FromSeconds(30),
+        ["feature"] = TimeSpan.FromSeconds(60),
+        ["model"] = TimeSpan.FromSeconds(30),
+        ["selection"] = TimeSpan.FromSeconds(30),
+        ["export"] = TimeSpan.FromSeconds(120),
+        ["api"] = TimeSpan.FromSeconds(30),
     };
 
     public static bool TryGetDefault(string family, out TimeSpan deadline) => Defaults.TryGetValue(family, out deadline);

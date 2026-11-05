@@ -45,7 +45,26 @@ public class OperationCatalogTests
         Assert.Equal("Ui/internal", Shape("diag.dialog"));
         Assert.Equal("Ui/internal", Shape("diag.scratch_part"));
         Assert.Equal("Ui/internal", Shape("session.hello"));
-        Assert.Equal("Ui/tool", Shape("session.status"));
+        Assert.Equal("Ui/internal", Shape("session.status"));
+    }
+
+    [Fact]
+    public void Read_only_operations_are_marked_and_the_rest_are_not()
+    {
+        var readOnly = OperationCatalog.All.Where(o => o.ReadOnly).Select(o => o.Name).ToArray();
+        Assert.Contains("session.status", readOnly);
+        Assert.Contains("addin.state", readOnly);
+        Assert.DoesNotContain("dialog.respond", readOnly);
+        Assert.False(OperationCatalog.FromTypes(new[] { typeof(OneRequest) }).Single().ReadOnly);
+    }
+
+    [Theory]
+    [InlineData("dialog.respond", "sw_dialog_respond")]
+    [InlineData("document.save_as", "sw_document_save_as")]
+    public void A_tool_name_is_sw_and_the_operation_with_underscores(string operation, string tool)
+    {
+        var descriptor = new OperationDescriptor(operation, operation.Split('.')[0], typeof(OneRequest), typeof(EmptyResult), "");
+        Assert.Equal(tool, descriptor.ToolName);
     }
 
     [Fact]
@@ -81,7 +100,7 @@ public class OperationCatalogTests
     public void Pipe_name_carries_the_process_id()
     {
         Assert.Equal("solidworks-mcp-1234", Protocol.PipeName(1234));
-        Assert.Equal(2, Protocol.Version);
+        Assert.Equal(3, Protocol.Version);
     }
 
     [Fact]

@@ -138,6 +138,6 @@ public sealed class SwAgentClient : IDisposable
         if (addinProtocol != null) details["addin_protocol_version"] = addinProtocol.Value;
         if (addinVersion != null) details["addin_version"] = addinVersion;
         return new SwAgentException(ErrorCode.AddinIncompatible,
-            $"{what}; install the add-in and swmcp from the same release (swmcp {Version}, add-in {addinVersion ?? "unknown"})", details);
+            $"{what}; restart SOLIDWORKS from the 3DEXPERIENCE dashboard to load the new add-in, and install the add-in and swmcp from the same release (swmcp {Version}, add-in {addinVersion ?? "unknown"})", details);
     }
 }

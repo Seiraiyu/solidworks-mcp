@@ -3,7 +3,7 @@ using System.ComponentModel;
 
 namespace SwAgent.Contracts;
 
-[Operation("addin.state", typeof(AddinStateResult), Thread = OperationThread.Pipe, Internal = true)]
+[Operation("addin.state", typeof(AddinStateResult), Thread = OperationThread.Pipe, Internal = true, ReadOnly = true)]
 [Description("The add-in's own state, answered even while SOLIDWORKS' UI thread is busy: what runs, what waits, documents, preferences.")]
 public sealed class AddinStateRequest
 {
@@ -93,7 +93,7 @@ public sealed class QueuedRequestInfo
     public long WaitedMs { get; set; }
 }
 
-[Operation("addin.events", typeof(AddinEventsResult), Thread = OperationThread.Pipe, Internal = true)]
+[Operation("addin.events", typeof(AddinEventsResult), Thread = OperationThread.Pipe, Internal = true, ReadOnly = true)]
 [Description("Events the add-in still holds, after a sequence number, for a client that missed them.")]
 public sealed class AddinEventsRequest
 {

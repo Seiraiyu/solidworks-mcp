@@ -23,12 +23,12 @@ public class McpServerTests
     static FakeAddin Stalling() => new FakeAddin(r => r.Method == "dialog.respond" ? null : RpcCodec.Success(r.Id, JsonCodec.ToJson(FakeAddin.SampleStatus())));
 
     [Fact]
-    public async Task Lists_the_four_tools_each_with_its_contract_schema_and_deadline_ms()
+    public async Task Lists_every_tool_each_with_its_contract_schema_and_deadline_ms()
     {
         await using var server = await InProcessServer.StartAsync(NoSolidWorks());
         Assert.Equal(McpHost.ServerName, server.Client.ServerInfo!.Name);
         var tools = (await server.Client.ListToolsAsync()).ToDictionary(t => t.Name);
-        Assert.Equal(new[] { "sw_dialog_respond", "sw_events", "sw_reconnect", "sw_status" }, tools.Keys.OrderBy(k => k, StringComparer.Ordinal).ToArray());
+        Assert.Equal(ToolCatalog.All.Select(t => t.Name).ToArray(), tools.Keys.OrderBy(k => k, StringComparer.Ordinal).ToArray());
 
         Assert.Equal(ServerToolCatalog.Find("sw_status")!.Description, tools["sw_status"].Description);
         Assert.Equal(Json.Write(SwTool.WithDeadline(JsonSchema.For(typeof(SwStatusRequest)))), Json.Write(Json.Parse(tools["sw_status"].JsonSchema.GetRawText())));
@@ -225,6 +225,36 @@ public class McpServerTests
         }
         Assert.Equal(ToolCatalog.All.Count, ToolCatalog.All.Select(t => t.Name).Distinct().Count());
         Assert.Equal(ServerToolCatalog.All.Select(t => t.Name).OrderBy(n => n), ToolCatalog.All.Where(t => t.Operation == null).Select(t => t.Name).OrderBy(n => n));
+    }
+
+    [Fact]
+    public void Every_operation_that_is_not_internal_is_a_tool_named_from_it()
+    {
+        var expected = OperationCatalog.All.Where(o => !o.Internal).Select(o => o.ToolName)
+            .Concat(ServerToolCatalog.All.Select(t => t.Name)).OrderBy(n => n, StringComparer.Ordinal);
+        Assert.Equal(expected, ToolCatalog.All.Select(t => t.Name));
+        foreach (var tool in ToolCatalog.All.Where(t => t.Operation != null))
+        {
+            var op = OperationCatalog.Find(tool.Operation!)!;
+            Assert.Equal(op.ToolName, tool.Name);
+            Assert.Equal(op.ReadOnly, tool.ReadOnly);
+        }
+        Assert.True(ToolCatalog.All.Single(t => t.Name == "sw_status").ReadOnly);
+        Assert.True(ToolCatalog.All.Single(t => t.Name == "sw_events").ReadOnly);
+        Assert.False(ToolCatalog.All.Single(t => t.Name == "sw_reconnect").ReadOnly);
+    }
+
+    [Fact]
+    public void Build_leaves_out_internal_operations()
+    {
+        var ops = new[]
+        {
+            new OperationDescriptor("model.mass", "model", typeof(SwStatusRequest), typeof(SwStatusResult), "", readOnly: true),
+            new OperationDescriptor("diag.thing", "diag", typeof(SwStatusRequest), typeof(SwStatusResult), "", isInternal: true),
+        };
+        var tools = ToolCatalog.Build(Array.Empty<ServerToolDescriptor>(), ops);
+        Assert.Equal(new[] { "sw_model_mass" }, tools.Select(t => t.Name).ToArray());
+        Assert.True(tools[0].ReadOnly);
     }
 
     [Fact]

@@ -31,7 +31,7 @@ public sealed class SessionHelloResult
     public int ProcessId { get; set; }
 }
 
-[Operation("session.status", typeof(SessionStatusResult))]
+[Operation("session.status", typeof(SessionStatusResult), Internal = true, ReadOnly = true)]
 [Description("Reports the SOLIDWORKS session: versions, the active document and how many requests are waiting.")]
 public sealed class SessionStatusRequest
 {

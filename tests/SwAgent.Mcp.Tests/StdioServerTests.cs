@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using ModelContextProtocol.Client;
 using SwAgent.Mcp.Server;
@@ -32,10 +33,10 @@ public class StdioServerTests
         await using (var client = await McpClient.CreateAsync(transport))
         {
             Assert.Equal(McpHost.ServerName, client.ServerInfo!.Name);
-            Assert.Equal(4, (await client.ListToolsAsync()).Count);
+            Assert.Equal(ToolCatalog.All.Count, (await client.ListToolsAsync()).Count);
         }
         string log = File.ReadAllText(Assert.Single(Directory.GetFiles(logs, "server-*.log")));
-        Assert.Contains("serving MCP on stdio; tools: sw_status, sw_dialog_respond, sw_events, sw_reconnect", log);
+        Assert.Contains("serving MCP on stdio; tools: " + string.Join(", ", ToolCatalog.All.Select(t => t.Name)), log);
     }
 
     [Fact]

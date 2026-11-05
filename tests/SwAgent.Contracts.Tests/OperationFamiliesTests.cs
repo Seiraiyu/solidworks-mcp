@@ -20,6 +20,13 @@ public class OperationFamiliesTests
         Assert.Equal(TimeSpan.FromSeconds(5), OperationFamilies.DefaultDeadline("addin"));
         Assert.Equal(TimeSpan.FromSeconds(10), OperationFamilies.DefaultDeadline("dialog"));
         Assert.Equal(TimeSpan.FromMinutes(10), OperationFamilies.DefaultDeadline("diag"));
+        Assert.Equal(TimeSpan.FromSeconds(60), OperationFamilies.DefaultDeadline("document"));
+        Assert.Equal(TimeSpan.FromSeconds(30), OperationFamilies.DefaultDeadline("sketch"));
+        Assert.Equal(TimeSpan.FromSeconds(60), OperationFamilies.DefaultDeadline("feature"));
+        Assert.Equal(TimeSpan.FromSeconds(30), OperationFamilies.DefaultDeadline("model"));
+        Assert.Equal(TimeSpan.FromSeconds(30), OperationFamilies.DefaultDeadline("selection"));
+        Assert.Equal(TimeSpan.FromSeconds(120), OperationFamilies.DefaultDeadline("export"));
+        Assert.Equal(TimeSpan.FromSeconds(30), OperationFamilies.DefaultDeadline("api"));
     }
 
     [Fact]
