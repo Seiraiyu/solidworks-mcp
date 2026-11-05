@@ -8,6 +8,16 @@ using SwAgent.Contracts.Serialization;
 
 namespace SwAgent.Contracts;
 
+/// <summary>Where the add-in runs an operation.</summary>
+public enum OperationThread
+{
+    /// <summary>Queued and run on SOLIDWORKS' UI thread, one at a time. Every operation that calls SOLIDWORKS.</summary>
+    Ui,
+
+    /// <summary>Answered at once on the pipe's reader thread, even while the UI thread is busy. Never calls SOLIDWORKS.</summary>
+    Pipe,
+}
+
 /// <summary>Names the operation a request type starts and the type of its result. Nothing else names an operation.</summary>
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = false)]
 public sealed class OperationAttribute : Attribute
@@ -20,18 +30,28 @@ public sealed class OperationAttribute : Attribute
 
     public string Name { get; }
     public Type ResultType { get; }
+
+    /// <summary>Where the add-in runs it; the UI thread unless the operation only reads the add-in's own state.</summary>
+    public OperationThread Thread { get; set; } = OperationThread.Ui;
+
+    /// <summary>True for operations the client uses itself and never offers to an agent as an MCP tool.</summary>
+    public bool Internal { get; set; }
+
     public string Family => Name.IndexOf('.') < 0 ? Name : Name.Substring(0, Name.IndexOf('.'));
 }
 
 public sealed class OperationDescriptor
 {
-    public OperationDescriptor(string name, string family, Type requestType, Type resultType, string description)
+    public OperationDescriptor(string name, string family, Type requestType, Type resultType, string description,
+        OperationThread thread = OperationThread.Ui, bool isInternal = false)
     {
         Name = name;
         Family = family;
         RequestType = requestType;
         ResultType = resultType;
         Description = description;
+        Thread = thread;
+        Internal = isInternal;
     }
 
     public string Name { get; }
@@ -39,6 +59,8 @@ public sealed class OperationDescriptor
     public Type RequestType { get; }
     public Type ResultType { get; }
     public string Description { get; }
+    public OperationThread Thread { get; }
+    public bool Internal { get; }
 }
 
 /// <summary>Every operation the contracts declare, validated once.</summary>
@@ -71,7 +93,7 @@ public static class OperationCatalog
             TypeMeta.For(type);
             TypeMeta.For(a.ResultType);
             list.Add(new OperationDescriptor(a.Name, a.Family, type, a.ResultType,
-                type.GetCustomAttribute<DescriptionAttribute>()?.Description ?? ""));
+                type.GetCustomAttribute<DescriptionAttribute>()?.Description ?? "", a.Thread, a.Internal));
         }
         return list.OrderBy(d => d.Name, StringComparer.Ordinal).ToList();
     }

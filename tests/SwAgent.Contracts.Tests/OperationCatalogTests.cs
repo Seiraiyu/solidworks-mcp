@@ -13,6 +13,7 @@ public sealed class EmptyResult { }
 [Operation("test.one", typeof(EmptyResult))] public sealed class OneRequest { }
 [Operation("test.one", typeof(EmptyResult))] public sealed class OneAgainRequest { }
 [Operation("Bad Name", typeof(EmptyResult))] public sealed class BadNameRequest { }
+[Operation("test.peek", typeof(EmptyResult), Thread = OperationThread.Pipe, Internal = true)] public sealed class PeekRequest { }
 
 public class OperationCatalogTests
 {
@@ -26,6 +27,22 @@ public class OperationCatalogTests
         Assert.Equal(typeof(SessionStatusResult), status.ResultType);
         Assert.False(string.IsNullOrEmpty(status.Description));
         Assert.Null(OperationCatalog.Find("session.nope"));
+    }
+
+    [Fact]
+    public void Thread_and_internal_default_to_ui_and_public()
+    {
+        var one = OperationCatalog.FromTypes(new[] { typeof(OneRequest) }).Single();
+        Assert.Equal(OperationThread.Ui, one.Thread);
+        Assert.False(one.Internal);
+    }
+
+    [Fact]
+    public void Thread_and_internal_are_read_from_the_attribute()
+    {
+        var peek = OperationCatalog.FromTypes(new[] { typeof(PeekRequest) }).Single();
+        Assert.Equal(OperationThread.Pipe, peek.Thread);
+        Assert.True(peek.Internal);
     }
 
     [Fact]
