@@ -47,7 +47,8 @@ public class CliTests
             BaseDirectory = AppContext.BaseDirectory,
             SolidWorks = SolidWorks,
             AddinLoadWait = TimeSpan.FromMilliseconds(300),
-            Serve = client => { Served.Add(client.ProcessId); return Task.FromResult(ExitCodes.Success); },
+            Serve = options => { Served.Add(options.Client.ProcessId); return Task.FromResult(ExitCodes.Success); },
+            Processes = new FakeProcessWatch(),
         };
     }
 

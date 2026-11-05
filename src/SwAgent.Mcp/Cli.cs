@@ -33,8 +33,11 @@ public sealed class CliEnvironment
     /// <summary>How long <c>addin load</c> waits for the add-in's pipe after LoadAddIn returns.</summary>
     public TimeSpan AddinLoadWait { get; init; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>Tells when a SOLIDWORKS process exits; a fake in tests.</summary>
+    public IProcessWatch Processes { get; init; } = SystemProcessWatch.Instance;
+
     /// <summary>Runs the MCP server on stdio until the client disconnects; a fake in tests.</summary>
-    public Func<ClientOptions, Task<int>> Serve { get; init; } = client => McpHost.RunAsync(client);
+    public Func<SupervisorOptions, Task<int>> Serve { get; init; } = options => McpHost.RunAsync(options);
 }
 
 public sealed class UsageException : Exception
@@ -107,7 +110,7 @@ public static class Cli
         if (a.Positional.Count > 0) throw new UsageException("serve takes no arguments besides --pid");
         int? pid = a.Int("--pid");
         if (pid != null) env.Client.ProcessId = pid;
-        return await env.Serve(env.Client).ConfigureAwait(false);
+        return await env.Serve(Options(env)).ConfigureAwait(false);
     }
 
     static async Task<int> CallAsync(string[] args, CliEnvironment env)
@@ -139,6 +142,16 @@ public static class Cli
         Write(env, result);
         return ExitCodes.Success;
     }
+
+    /// <summary>The supervisor every command that reaches SOLIDWORKS uses, so each loads the add-in the same way.</summary>
+    static SupervisorOptions Options(CliEnvironment env) => new SupervisorOptions
+    {
+        Client = env.Client,
+        SolidWorks = env.SolidWorks,
+        Registration = new RegistrarAddinRegistration(new AddinRegistrar(env.RegistryRoot)),
+        Processes = env.Processes,
+        PipeWait = env.AddinLoadWait,
+    };
 
     static async Task<int> AddinAsync(string[] args, CliEnvironment env)
     {

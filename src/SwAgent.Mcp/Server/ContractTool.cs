@@ -1,102 +1,52 @@
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-using ModelContextProtocol;
-using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
+using SwAgent.Client;
 using SwAgent.Contracts;
 using SwAgent.Contracts.Serialization;
 
 namespace SwAgent.Mcp.Server;
 
 /// <summary>
-/// An MCP tool made from an operation contract: its input schema is the contract's request schema, and a call is
-/// forwarded to the add-in as that operation. A typed error comes back as an <c>isError</c> result whose text is
-/// <c>{code, message, details}</c>, so the agent can branch on <c>code</c>. Anything else is a server bug: it is
-/// logged and reported as a protocol-level internal error.
+/// An MCP tool made from an operation contract: its input schema is the contract's request schema plus deadline_ms,
+/// and a call is forwarded to the add-in as that operation, through the supervisor.
 /// </summary>
-public sealed class ContractTool : McpServerTool
+public sealed class ContractTool : SwTool
 {
     readonly OperationDescriptor _operation;
-    readonly AddinSession _session;
-    readonly ILogger _log;
-    readonly Tool _tool;
+    readonly Supervisor _supervisor;
 
-    public ContractTool(ToolDefinition definition, OperationDescriptor operation, AddinSession session, ILogger? log = null)
+    public ContractTool(ToolDefinition definition, OperationDescriptor operation, Supervisor supervisor, ILogger? log = null)
+        : base(definition, operation.RequestType, operation.Description, operation.Name, log)
     {
         _operation = operation;
-        _session = session;
-        _log = log ?? NullLogger.Instance;
-        _tool = new Tool
-        {
-            Name = definition.Name,
-            Description = operation.Description,
-            InputSchema = ToElement(JsonSchema.For(operation.RequestType)),
-            Annotations = new ToolAnnotations { ReadOnlyHint = definition.ReadOnly, OpenWorldHint = false },
-        };
+        _supervisor = supervisor;
     }
-
-    public override Tool ProtocolTool => _tool;
-
-    public override IReadOnlyList<object> Metadata => Array.Empty<object>();
 
     /// <summary>The operation this tool runs on the pipe.</summary>
     public string Operation => _operation.Name;
 
-    public override async ValueTask<CallToolResult> InvokeAsync(RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
+    protected override Task<object?> RunAsync(JsonObject parameters, TimeSpan? deadline, CancellationToken cancellationToken) =>
+        _supervisor.CallAsync(_operation.Name, parameters, deadline, cancellationToken);
+}
+
+/// <summary>An MCP tool the server answers itself, from the supervisor: its schema is its server-tool contract plus deadline_ms.</summary>
+public sealed class ServerTool : SwTool
+{
+    readonly ServerToolDescriptor _contract;
+    readonly Func<object, TimeSpan?, CancellationToken, Task<object>> _run;
+
+    public ServerTool(ToolDefinition definition, ServerToolDescriptor contract, Func<object, TimeSpan?, CancellationToken, Task<object>> run, ILogger? log = null)
+        : base(definition, contract.RequestType, contract.Description, "", log)
     {
-        var watch = Stopwatch.StartNew();
-        string outcome = "ok";
-        try
-        {
-            var parameters = Parameters(request.Params?.Arguments);
-            if (_log.IsEnabled(LogLevel.Debug)) _log.LogDebug("{Tool} params {Params}", _tool.Name, Json.Write(parameters));
-            object? result = await _session.CallAsync(_operation.Name, parameters, cancellationToken).ConfigureAwait(false);
-            return Result(Json.Write(result, indented: true), isError: false);
-        }
-        catch (SwAgentException e)
-        {
-            outcome = WireNames.ForEnum(e.Error.Code);
-            return Result(Json.Write(JsonCodec.ToJson(e.Error), indented: true), isError: true);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            outcome = "cancelled";
-            throw;
-        }
-        catch (Exception e)
-        {
-            outcome = "internal_error";
-            _log.LogError(e, "{Tool} ({Operation}) failed with a server bug", _tool.Name, _operation.Name);
-            throw new McpProtocolException($"internal error in {_tool.Name}; see the swmcp server log", e, McpErrorCode.InternalError);
-        }
-        finally
-        {
-            _log.LogInformation("{Tool} {Operation}: {Outcome} in {DurationMs} ms", _tool.Name, _operation.Name, outcome, watch.ElapsedMilliseconds);
-        }
+        _contract = contract;
+        _run = run;
     }
 
-    /// <summary>The MCP arguments as the pipe's JSON tree; none is an empty object.</summary>
-    static JsonObject Parameters(IDictionary<string, JsonElement>? arguments)
+    protected override async Task<object?> RunAsync(JsonObject parameters, TimeSpan? deadline, CancellationToken cancellationToken)
     {
-        if (arguments == null || arguments.Count == 0) return new JsonObject();
-        return (JsonObject)Json.Parse(JsonSerializer.Serialize(arguments))!;
-    }
-
-    static CallToolResult Result(string text, bool isError) => new CallToolResult
-    {
-        Content = new List<ContentBlock> { new TextContentBlock { Text = text } },
-        IsError = isError,
-    };
-
-    static JsonElement ToElement(JsonObject schema)
-    {
-        using var document = JsonDocument.Parse(Json.Write(schema));
-        return document.RootElement.Clone();
+        object request = JsonCodec.FromJson(parameters, _contract.RequestType)!;
+        return JsonCodec.ToJson(await _run(request, deadline, cancellationToken).ConfigureAwait(false));
     }
 }

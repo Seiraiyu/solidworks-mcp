@@ -32,10 +32,10 @@ public class StdioServerTests
         await using (var client = await McpClient.CreateAsync(transport))
         {
             Assert.Equal(McpHost.ServerName, client.ServerInfo!.Name);
-            Assert.Equal("sw_status", Assert.Single(await client.ListToolsAsync()).Name);
+            Assert.Equal(4, (await client.ListToolsAsync()).Count);
         }
         string log = File.ReadAllText(Assert.Single(Directory.GetFiles(logs, "server-*.log")));
-        Assert.Contains("serving MCP on stdio; tools: sw_status", log);
+        Assert.Contains("serving MCP on stdio; tools: sw_status, sw_dialog_respond, sw_events, sw_reconnect", log);
     }
 
     [Fact]
