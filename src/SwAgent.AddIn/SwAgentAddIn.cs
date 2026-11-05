@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using SolidWorks.Interop.sldworks;
@@ -37,11 +38,11 @@ public sealed class SwAgentAddIn : ISwAddin
             var app = new SolidWorksApplication(_sw);
             int pid = Process.GetCurrentProcess().Id;
             _log.Info($"loading add-in {Version} into SOLIDWORKS {app.RevisionNumber} (process {pid}, CLR {System.Environment.Version}, cookie {Cookie})");
-            var services = new AddInServices(app, Version);
+            var runtime = new AgentRuntime(Version, pid, _log, diagnosticsEnabled: DiagnosticsSetting.Enabled(Microsoft.Win32.Registry.CurrentUser));
+            if (runtime.DiagnosticsEnabled) _log.Warn("diagnostic operations are ON (HKCU\\Software\\solidworks-mcp\\Diagnostics = 1)");
+            var services = new AddInServices(app, Version, runtime);
             var registry = CreateRegistry(services);
-            _host = AgentHost.Start(Protocol.PipeName(pid), registry, _log);
-            var dispatcher = _host.Dispatcher;
-            services.QueuedRequests = () => dispatcher.QueuedRequests;
+            _host = AgentHost.Start(Protocol.PipeName(pid), registry, runtime);
             _log.Info("add-in loaded");
             return true;
         }
@@ -74,10 +75,13 @@ public sealed class SwAgentAddIn : ISwAddin
         return true;
     }
 
-    /// <summary>Exactly one operation per contract, each built with <paramref name="services"/>.</summary>
+    /// <summary>Exactly one operation per contract: the add-in's own (built with the services) and the core's (built with the runtime).</summary>
     internal static OperationRegistry CreateRegistry(AddInServices services) =>
-        OperationRegistry.Discover(OperationCatalog.All, typeof(SwAgentAddIn).Assembly.GetTypes(),
-            type => (IOperation)Activator.CreateInstance(type, services));
+        OperationRegistry.Discover(OperationCatalog.All,
+            typeof(SwAgentAddIn).Assembly.GetTypes().Concat(typeof(AgentRuntime).Assembly.GetTypes()),
+            type => type.GetConstructor(new[] { typeof(AgentRuntime) }) != null
+                ? (IOperation)Activator.CreateInstance(type, services.Runtime)
+                : (IOperation)Activator.CreateInstance(type, services));
 
     void Teardown()
     {

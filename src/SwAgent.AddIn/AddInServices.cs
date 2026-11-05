@@ -1,20 +1,25 @@
 using System;
+using SwAgent.AddIn.Core;
 
 namespace SwAgent.AddIn;
 
-/// <summary>What every operation is constructed with: the registry passes it to each operation's constructor.</summary>
+/// <summary>What every UI-thread operation is constructed with: the registry passes it to each operation's constructor.</summary>
 public sealed class AddInServices
 {
-    public AddInServices(ISolidWorksApplication solidWorks, string addinVersion)
+    public AddInServices(ISolidWorksApplication solidWorks, string addinVersion, AgentRuntime? runtime = null)
     {
         SolidWorks = solidWorks;
         AddinVersion = addinVersion;
+        Runtime = runtime ?? new AgentRuntime(addinVersion, 0, NullLog.Instance);
+        QueuedRequests = () => Runtime.Ledger.QueuedCount;
     }
 
     public ISolidWorksApplication SolidWorks { get; }
 
     public string AddinVersion { get; }
 
-    /// <summary>Requests waiting on the UI thread; wired to the dispatcher once the host has started.</summary>
-    public Func<int> QueuedRequests { get; set; } = () => 0;
+    public AgentRuntime Runtime { get; }
+
+    /// <summary>Requests waiting on the UI thread.</summary>
+    public Func<int> QueuedRequests { get; set; }
 }
