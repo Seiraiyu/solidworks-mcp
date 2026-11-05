@@ -13,11 +13,12 @@ namespace SwAgent.Contracts.Tests;
 public class EventCatalogTests
 {
     [Fact]
-    public void Catalog_holds_the_phase_2A_kinds()
+    public void Catalog_holds_the_phase_2B_kinds()
     {
         Assert.Equal(
             new[]
             {
+                "dialog.answered", "dialog.closed", "dialog.opened",
                 "document.activated", "document.closed", "document.opened", "document.rebuilt", "document.saved",
                 "documents.changed", "operation.completed", "session.closing",
             },

@@ -138,6 +138,70 @@
     "last_event_seq": {
       "type": "integer",
       "description": "The sequence number of the last event raised, 0 before any."
+    },
+    "dialog": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Names this dialog until it closes; pass it to dialog.respond."
+        },
+        "title": {
+          "type": "string",
+          "description": "The dialog's title bar text."
+        },
+        "text": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The dialog's text, one entry per static text control; empty when it could not be read."
+        },
+        "buttons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A push button on a dialog.",
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "The button's text, without its & accelerator marks."
+              },
+              "control_id": {
+                "type": "integer",
+                "description": "The button's control id; dialog.respond accepts it in place of the text."
+              }
+            },
+            "required": [
+              "text",
+              "control_id"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Its push buttons; empty when they could not be read (close still works)."
+        },
+        "request_id": {
+          "type": "integer",
+          "description": "The request that was running when it opened; absent when none was."
+        },
+        "opened_at": {
+          "type": "string",
+          "description": "When it was first seen, UTC, ISO 8601."
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "text",
+        "buttons",
+        "opened_at"
+      ],
+      "additionalProperties": false,
+      "description": "The modal dialog SOLIDWORKS is showing; absent when none is open."
+    },
+    "dialog_watch_alive": {
+      "type": "boolean",
+      "description": "True while the dialog watch thread is alive."
     }
   },
   "required": [
@@ -150,7 +214,8 @@
     "preferences_recovered",
     "preferences_not_applied",
     "documents",
-    "last_event_seq"
+    "last_event_seq",
+    "dialog_watch_alive"
   ],
   "additionalProperties": false
 }

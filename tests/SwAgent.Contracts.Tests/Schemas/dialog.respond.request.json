@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "description": "Presses a button on the modal dialog SOLIDWORKS is showing, or closes it. Answered even while the dialog holds SOLIDWORKS' UI thread. When the dialog belonged to a running request, waits for that request's outcome.",
+  "properties": {
+    "dialog": {
+      "type": "string",
+      "description": "The dialog id, from a dialog_open error or addin.state."
+    },
+    "button": {
+      "type": "string",
+      "description": "A button's text (case and & ignored), its control id, or close."
+    },
+    "wait_ms": {
+      "type": "integer",
+      "description": "How long to wait for the outcome of the request the dialog belonged to, 0 to 60000 ms; 5000 when absent."
+    }
+  },
+  "required": [
+    "dialog",
+    "button"
+  ],
+  "additionalProperties": false
+}

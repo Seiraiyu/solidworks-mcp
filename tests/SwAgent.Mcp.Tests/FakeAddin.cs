@@ -22,7 +22,8 @@ sealed class FakeAddin : IDisposable
     readonly Func<RpcRequest, string?> _handler;
     readonly Task _loop;
     readonly CancellationTokenSource _stop = new CancellationTokenSource();
-    StreamWriter? _writer;
+    readonly SemaphoreSlim _writeLock = new SemaphoreSlim(1, 1);
+    volatile StreamWriter? _writer;
 
     public FakeAddin(Func<RpcRequest, string?>? handler = null, int protocolVersion = Protocol.Version, bool busy = false)
     {
@@ -60,7 +61,21 @@ sealed class FakeAddin : IDisposable
     public async Task SendAsync(string line)
     {
         while (_writer == null) await Task.Delay(10);
-        await _writer.WriteLineAsync(line);
+        await WriteAsync(line);
+    }
+
+    /// <summary>One write at a time: a test's SendAsync can race the serve loop's own replies on the same writer.</summary>
+    async Task WriteAsync(string line)
+    {
+        await _writeLock.WaitAsync();
+        try
+        {
+            await _writer!.WriteLineAsync(line);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
     /// <summary>Drops the client, as SOLIDWORKS exiting would.</summary>
@@ -85,7 +100,7 @@ sealed class FakeAddin : IDisposable
             _writer = new StreamWriter(_server, new UTF8Encoding(false)) { NewLine = "\n", AutoFlush = true };
             if (Busy)
             {
-                await _writer.WriteLineAsync(RpcCodec.Failure(null, RpcErrorCodes.ServerError,
+                await WriteAsync(RpcCodec.Failure(null, RpcErrorCodes.ServerError,
                     new SwAgentError(ErrorCode.Busy, "another client (process 1) is connected", new JsonObject { ["holder_process_id"] = 1L })));
                 _server.Dispose();
                 return;
@@ -105,7 +120,7 @@ sealed class FakeAddin : IDisposable
                         ProcessId = Environment.ProcessId,
                     }))
                     : _handler(request);
-                if (reply != null) await _writer.WriteLineAsync(reply);
+                if (reply != null) await WriteAsync(reply);
             }
         }
         catch (Exception e) when (e is IOException || e is ObjectDisposedException || e is OperationCanceledException)

@@ -20,6 +20,7 @@ public sealed class LedgerEntry
     long _startedTicks;
     long _finishedTicks;
     volatile string? _answeredAs;
+    RpcResponse? _outcome;
 
     internal LedgerEntry(RpcRequest request, DateTime receivedUtc, IReplyChannel reply)
     {
@@ -45,7 +46,14 @@ public sealed class LedgerEntry
 
     public bool IsAnswered => Volatile.Read(ref _answered) != 0;
 
-    /// <summary>What the client was told first: result, busy, timeout, unloading.</summary>
+    /// <summary>The response its own run produced, set before it is finished; null while running or if it never ran.</summary>
+    public RpcResponse? Outcome
+    {
+        get => Volatile.Read(ref _outcome);
+        internal set => Volatile.Write(ref _outcome, value);
+    }
+
+    /// <summary>What the client was told first: result, busy, timeout, dialog_open, unloading.</summary>
     public string? AnsweredAs => _answeredAs;
 
     /// <summary>Sends <paramref name="line"/> if nothing answered this request yet; false if something already had.</summary>

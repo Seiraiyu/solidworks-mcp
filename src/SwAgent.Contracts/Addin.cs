@@ -54,6 +54,12 @@ public sealed class AddinStateResult
 
     [Description("The sequence number of the last event raised, 0 before any.")]
     public long LastEventSeq { get; set; }
+
+    [Description("The modal dialog SOLIDWORKS is showing; absent when none is open.")]
+    public DialogInfo? Dialog { get; set; }
+
+    [Description("True while the dialog watch thread is alive.")]
+    public bool DialogWatchAlive { get; set; }
 }
 
 [Description("The request on the UI thread.")]

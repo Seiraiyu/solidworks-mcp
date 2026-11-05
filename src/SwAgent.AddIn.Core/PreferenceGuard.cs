@@ -186,7 +186,9 @@ public sealed class PreferenceGuard
                 bool now = _store.Get(e.Id);
                 if (now != e.Applied)
                 {
-                    _log.Info($"preferences: {e.Name} left at {now}: the user changed it while the agent was connected ({why})");
+                    // No longer at the automation value, so already at the user's: they set it back by hand, or
+                    // SOLIDWORKS did not keep the applied value (it does not persist one across a kill).
+                    _log.Info($"preferences: {e.Name} already at the user's value {now}; nothing to restore ({why})");
                     continue;
                 }
                 _store.Set(e.Id, e.Original);

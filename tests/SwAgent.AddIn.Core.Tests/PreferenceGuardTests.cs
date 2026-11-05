@@ -177,4 +177,20 @@ public class PreferenceGuardTests
         Assert.True(File.Exists(journal + ".bad"));
         Assert.Empty(store.Writes);
     }
+
+    [Fact]
+    public void Recovery_with_the_users_value_already_back_says_so_and_restores_nothing()
+    {
+        var (first, store, journal) = Make(dim: true);
+        first.Apply();                   // journal: input_dim original true, applied false
+        store.Values[10] = true;         // SOLIDWORKS did not keep the applied value across the kill
+        store.Writes.Clear();
+        var log = new MemoryLog();
+        var second = new PreferenceGuard(store, Prefs, journal, log);
+        second.Recover();
+        Assert.Empty(store.Writes);
+        Assert.True(log.Contains("input_dim already at the user's value True; nothing to restore (recovered at load)"));
+        Assert.False(log.Contains("the user changed it"));
+        Assert.False(File.Exists(journal));
+    }
 }

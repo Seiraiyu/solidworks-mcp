@@ -318,4 +318,71 @@ public class DispatcherTests
         Assert.True(dispatcher.LastPumpedUtc >= before);
         ui.Invoke(dispatcher.Dispose);
     }
+
+    [Fact]
+    public void No_request_starts_while_a_dialog_is_open_and_posted_actions_wait_for_it_to_close()
+    {
+        using var ui = new UiThread();
+        int runs = 0;
+        var registry = TestOps.Registry(echo: (r, c) => { Interlocked.Increment(ref runs); return new EchoResult { Text = r.Text }; });
+        var dispatcher = Create(ui, registry, new MemoryLog());
+        DialogInfo? open = new DialogInfo { Id = "d1-10", Title = "System Options", Buttons = { new DialogButton { Text = "Cancel", ControlId = 2 } } };
+        dispatcher.OpenDialog = () => Volatile.Read(ref open);
+        var restored = new ManualResetEventSlim(false);
+        dispatcher.Post("restore", () => restored.Set());
+
+        var reply = new CapturingReply();
+        dispatcher.Enqueue(Requests.Echo(1, "a"), DateTime.UtcNow, reply);
+        var refused = reply.Next();
+        Assert.Equal(ErrorCode.DialogOpen, refused.Error!.Code);
+        Assert.True(refused.Error.Details!["started"] is false);
+        Assert.Contains("d1-10", refused.Error.Message);
+        Assert.Equal(0, runs);
+        Assert.False(restored.Wait(200));
+
+        Volatile.Write(ref open, null);
+        Assert.True(restored.Wait(TimeSpan.FromSeconds(10)));
+        dispatcher.Enqueue(Requests.Echo(2, "b"), DateTime.UtcNow, reply);
+        Assert.True(reply.Next().IsSuccess);
+        ui.Invoke(dispatcher.Dispose);
+    }
+
+    [Fact]
+    public void A_request_sent_right_after_a_respond_starts()
+    {
+        using var ui = new UiThread();
+        var ledger = new RequestLedger();
+        var hub = new EventHub(new MemoryLog());
+        var windows = new FakeWindows();
+        var watch = new DialogWatch(windows, ledger, hub, new MemoryLog());
+        var dispatcher = ui.Invoke(() => new Dispatcher(new RequestExecutor(TestOps.Registry(), new MemoryLog()), new MemoryLog(), null, ledger, hub));
+        dispatcher.OpenDialog = () => watch.Current;
+        windows.Show(Dialogs.Box(77, "Options", "OK", "Cancel"));
+        watch.Tick();
+        var reply = new CapturingReply();
+        dispatcher.Enqueue(Requests.Echo(1, "under the dialog"), DateTime.UtcNow, reply);
+        Assert.Equal(ErrorCode.DialogOpen, reply.Next().Error!.Code);
+
+        watch.Respond(new DialogRespondRequest { Dialog = watch.Current!.Id, Button = "Cancel" }, DateTime.UtcNow.AddSeconds(10));
+        dispatcher.Enqueue(Requests.Echo(2, "right after"), DateTime.UtcNow, reply);
+        var after = reply.Next();
+        Assert.Equal(2L, after.Id);
+        Assert.True(after.IsSuccess);
+        ui.Invoke(dispatcher.Dispose);
+    }
+
+    [Fact]
+    public void A_finished_request_keeps_its_outcome()
+    {
+        using var ui = new UiThread();
+        var ledger = new RequestLedger();
+        var dispatcher = ui.Invoke(() => new Dispatcher(new RequestExecutor(TestOps.Registry(), new MemoryLog()), new MemoryLog(), null, ledger));
+        var reply = new CapturingReply();
+        var entry = ledger.Enqueue(Requests.Echo(1, "kept"), DateTime.UtcNow, reply);
+        dispatcher.Enqueue(Requests.Echo(2, "x"), DateTime.UtcNow, reply); // schedules the run; entry 1 is first in the ledger
+        reply.Next();
+        reply.Next();
+        Assert.True(entry.Outcome!.IsSuccess);
+        ui.Invoke(dispatcher.Dispose);
+    }
 }

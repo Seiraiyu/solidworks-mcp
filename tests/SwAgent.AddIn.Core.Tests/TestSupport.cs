@@ -272,3 +272,109 @@ static class PipeNames
 {
     public static string Unique() => "swagent-test-" + Guid.NewGuid().ToString("N");
 }
+
+/// <summary>Dialogs that exist only in a test: shown, read and pressed without Win32.</summary>
+sealed class FakeWindows : IDialogWindows
+{
+    readonly object _gate = new object();
+    readonly List<NativeDialog> _open = new List<NativeDialog>();
+    public readonly List<string> Actions = new List<string>();
+
+    /// <summary>Runs after a press or close has taken the dialog down.</summary>
+    public Action<NativeDialog>? AfterAnswer { get; set; }
+
+    public void Show(NativeDialog dialog)
+    {
+        lock (_gate) _open.Add(dialog);
+    }
+
+    public void Hide(NativeDialog dialog)
+    {
+        lock (_gate) _open.Remove(dialog);
+    }
+
+    public IReadOnlyList<IntPtr> FindModal()
+    {
+        lock (_gate) return _open.Select(d => d.Hwnd).ToList();
+    }
+
+    public NativeDialog? Read(IntPtr dialog)
+    {
+        lock (_gate) return _open.FirstOrDefault(d => d.Hwnd == dialog);
+    }
+
+    public bool IsOpen(IntPtr dialog)
+    {
+        lock (_gate) return _open.Any(d => d.Hwnd == dialog);
+    }
+
+    public bool Press(NativeDialog dialog, NativeButton button) => Answer(dialog, "press " + button.Text);
+
+    public bool Close(NativeDialog dialog) => Answer(dialog, "close");
+
+    /// <summary>When set, every press and close fails to post and the dialog stays up.</summary>
+    public bool FailPosts { get; set; }
+
+    bool Answer(NativeDialog dialog, string action)
+    {
+        lock (_gate)
+        {
+            if (FailPosts) return false;
+            Actions.Add(action);
+            _open.Remove(dialog);
+        }
+        AfterAnswer?.Invoke(dialog);
+        return true;
+    }
+}
+
+static class Dialogs
+{
+    /// <summary>A dialog whose buttons get control ids 1, 2, 3 ... in order.</summary>
+    public static NativeDialog Box(long hwnd, string title, params string[] buttons) =>
+        new NativeDialog(new IntPtr(hwnd), title, new[] { "Something happened." },
+            buttons.Select((b, i) => new NativeButton(new IntPtr(hwnd * 10 + i), i + 1, b)).ToList());
+
+    /// <summary>The event kinds a client received, in order.</summary>
+    public static List<string> Kinds(CapturingReply client) =>
+        client.Lines.ToArray().Select(l => (string)((Contracts.Serialization.JsonObject)((Contracts.Serialization.JsonObject)Contracts.Serialization.Json.Parse(l)!)["params"]!)["kind"]!).ToList();
+}
+
+/// <summary>A window handle owned by the fake UI thread, standing in for SOLIDWORKS' main frame.</summary>
+sealed class OwnerWindow : IWin32Window
+{
+    public OwnerWindow(IntPtr handle)
+    {
+        Handle = handle;
+    }
+
+    public IntPtr Handle { get; }
+
+    public static IntPtr Create(UiThread ui) => ui.Invoke(() => new Form().Handle);
+}
+
+[Operation("test.wait", typeof(EchoResult), Thread = OperationThread.Pipe)]
+public sealed class WaitRequest
+{
+}
+
+/// <summary>A pipe-thread operation that blocks until its gate opens.</summary>
+public sealed class WaitOperation : PipeOperation<WaitRequest, EchoResult>
+{
+    readonly ManualResetEventSlim _gate;
+
+    public WaitOperation(ManualResetEventSlim gate)
+    {
+        _gate = gate;
+    }
+
+    protected override EchoResult Run(WaitRequest request, IOperationContext context)
+    {
+        _gate.Wait(TimeSpan.FromSeconds(20));
+        return new EchoResult { Text = "waited" };
+    }
+
+    protected override void Verify(WaitRequest request, EchoResult result, IOperationContext context)
+    {
+    }
+}

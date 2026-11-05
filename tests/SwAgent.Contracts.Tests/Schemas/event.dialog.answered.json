@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "description": "A button was pressed on a dialog, or it was closed.",
+  "properties": {
+    "dialog": {
+      "type": "string",
+      "description": "The dialog id."
+    },
+    "title": {
+      "type": "string",
+      "description": "The dialog's title."
+    },
+    "button": {
+      "type": "string",
+      "description": "The button pressed, or close."
+    },
+    "by": {
+      "type": "string",
+      "enum": [
+        "agent",
+        "allow_list"
+      ],
+      "description": "Who pressed it: the agent, or the add-in's allow-list of known prompts."
+    }
+  },
+  "required": [
+    "dialog",
+    "title",
+    "button",
+    "by"
+  ],
+  "additionalProperties": false
+}
