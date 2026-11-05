@@ -73,6 +73,21 @@ public abstract class Operation<TRequest, TResult> : IOperation
         Verify((TRequest)request, (TResult)result, context);
 }
 
+/// <summary>Marks an operation answered on the pipe's reader thread.</summary>
+public interface IPipeOperation : IOperation
+{
+}
+
+/// <summary>
+/// An operation answered at once on the pipe's reader thread, even while SOLIDWORKS' UI thread is busy or blocked.
+/// It may only read the add-in's own state: the registry refuses one whose assembly references SOLIDWORKS.
+/// </summary>
+public abstract class PipeOperation<TRequest, TResult> : Operation<TRequest, TResult>, IPipeOperation
+    where TRequest : class
+    where TResult : class
+{
+}
+
 public sealed class RegistryException : Exception
 {
     public RegistryException(IReadOnlyList<string> problems)
@@ -115,6 +130,26 @@ public sealed class OperationRegistry
                 problems.Add($"{op.GetType().Name} does not match the contract types of '{op.Name}'");
                 continue;
             }
+            bool isPipe = op is IPipeOperation;
+            if (contract.Thread == OperationThread.Pipe && !isPipe)
+            {
+                problems.Add($"'{op.Name}' is declared to run on the pipe thread but {op.GetType().Name} is not a PipeOperation");
+                continue;
+            }
+            if (contract.Thread == OperationThread.Ui && isPipe)
+            {
+                problems.Add($"'{op.Name}' is declared to run on the UI thread but {op.GetType().Name} is a PipeOperation");
+                continue;
+            }
+            if (isPipe)
+            {
+                var problem = PipeAssemblyProblem(op.GetType().Assembly.GetReferencedAssemblies().Select(a => a.Name ?? ""));
+                if (problem != null)
+                {
+                    problems.Add($"{op.GetType().Name}: {problem}");
+                    continue;
+                }
+            }
             if (byName.TryGetValue(op.Name, out var existing))
             {
                 problems.Add($"'{op.Name}' is implemented twice: {existing.GetType().Name} and {op.GetType().Name}");
@@ -128,6 +163,13 @@ public sealed class OperationRegistry
         }
         if (problems.Count > 0) throw new RegistryException(problems);
         return new OperationRegistry(byName);
+    }
+
+    /// <summary>Why an assembly referencing <paramref name="referencedAssemblies"/> may not hold pipe operations, or null.</summary>
+    public static string? PipeAssemblyProblem(IEnumerable<string> referencedAssemblies)
+    {
+        var sw = referencedAssemblies.FirstOrDefault(n => n.StartsWith("SolidWorks.Interop", StringComparison.Ordinal));
+        return sw == null ? null : $"pipe operations must not call SOLIDWORKS, but their assembly references {sw}";
     }
 
     /// <summary>Builds every concrete <see cref="IOperation"/> among <paramref name="candidates"/> with <paramref name="factory"/>.</summary>

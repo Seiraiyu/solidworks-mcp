@@ -64,6 +64,32 @@ public sealed class OtherRequest
 {
 }
 
+[Operation("test.peek", typeof(EchoResult), Thread = OperationThread.Pipe)]
+public sealed class PeekRequest
+{
+}
+
+/// <summary>A pipe-thread operation: answers on the reader thread.</summary>
+public sealed class PeekOperation : PipeOperation<PeekRequest, EchoResult>
+{
+    protected override EchoResult Run(PeekRequest request, IOperationContext context) =>
+        new EchoResult { Text = "peek", ThreadId = Thread.CurrentThread.ManagedThreadId };
+
+    protected override void Verify(PeekRequest request, EchoResult result, IOperationContext context)
+    {
+    }
+}
+
+/// <summary>A UI-thread operation claiming a pipe contract: the registry must refuse it.</summary>
+public sealed class WrongThreadPeekOperation : Operation<PeekRequest, EchoResult>
+{
+    protected override EchoResult Run(PeekRequest request, IOperationContext context) => new EchoResult();
+
+    protected override void Verify(PeekRequest request, EchoResult result, IOperationContext context)
+    {
+    }
+}
+
 public sealed class OtherResult
 {
 }
@@ -130,6 +156,19 @@ static class TestOps
             new DelegateOperation<EchoRequest, EchoResult>(
                 echo ?? ((r, c) => new EchoResult { Text = r.Text, ThreadId = Thread.CurrentThread.ManagedThreadId }), verify),
             new DelegateOperation<OtherRequest, EchoResult>(other ?? ((r, c) => new EchoResult { Text = "other" })),
+        });
+
+    public static readonly IReadOnlyList<OperationDescriptor> ContractsWithPeek =
+        OperationCatalog.FromTypes(new[] { typeof(EchoRequest), typeof(OtherRequest), typeof(PeekRequest) });
+
+    /// <summary><see cref="Registry"/> plus the pipe-thread test.peek.</summary>
+    public static OperationRegistry RegistryWithPeek(Func<EchoRequest, IOperationContext, EchoResult>? echo = null) =>
+        OperationRegistry.Create(ContractsWithPeek, new IOperation[]
+        {
+            new DelegateOperation<EchoRequest, EchoResult>(
+                echo ?? ((r, c) => new EchoResult { Text = r.Text, ThreadId = Thread.CurrentThread.ManagedThreadId })),
+            new DelegateOperation<OtherRequest, EchoResult>((r, c) => new EchoResult { Text = "other" }),
+            new PeekOperation(),
         });
 }
 
