@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "description": "How long the UI thread was held.",
+  "properties": {
+    "slept_ms": {
+      "type": "integer",
+      "description": "Measured milliseconds."
+    }
+  },
+  "required": [
+    "slept_ms"
+  ],
+  "additionalProperties": false
+}

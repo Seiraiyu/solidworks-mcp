@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "description": "A document an event is about.",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "The document's title as SOLIDWORKS shows it."
+    },
+    "path": {
+      "type": "string",
+      "description": "The full path, absent while the document has never been saved."
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "part",
+        "assembly",
+        "drawing"
+      ],
+      "description": "Part, assembly or drawing, when known."
+    }
+  },
+  "required": [
+    "title"
+  ],
+  "additionalProperties": false
+}

@@ -28,13 +28,21 @@ public sealed class PipeServer : IDisposable
     PipeSession? _active;
     Task _acceptLoop = Task.CompletedTask;
 
+    readonly Action<IReplyChannel>? _onConnected;
+    readonly Action<IReplyChannel>? _onDisconnected;
+
     /// <param name="onLine">Called on a pool thread for every non-empty line, with the connection to answer on.</param>
-    public PipeServer(string name, Action<string, IReplyChannel> onLine, ILog log, int maxMessageBytes = DefaultMaxMessageBytes)
+    /// <param name="onConnected">Called before a client's first line is read.</param>
+    /// <param name="onDisconnected">Called once when that client's connection closes, for any reason.</param>
+    public PipeServer(string name, Action<string, IReplyChannel> onLine, ILog log, int maxMessageBytes = DefaultMaxMessageBytes,
+        Action<IReplyChannel>? onConnected = null, Action<IReplyChannel>? onDisconnected = null)
     {
         _name = name;
         _onLine = onLine;
         _log = log;
         _maxBytes = maxMessageBytes;
+        _onConnected = onConnected;
+        _onDisconnected = onDisconnected;
     }
 
     public string Name => _name;
@@ -122,13 +130,21 @@ public sealed class PipeServer : IDisposable
             holder = _active != null && _active.IsOpen ? _active : null;
             if (holder == null && !_stopping)
             {
-                session = new PipeSession(stream, clientPid, _onLine, _log, _maxBytes);
+                session = new PipeSession(stream, clientPid, _onLine, _log, _maxBytes, _onDisconnected);
                 _active = session;
             }
         }
         if (session != null)
         {
             _log.Info($"pipe: client {clientPid} connected");
+            try
+            {
+                _onConnected?.Invoke(session);
+            }
+            catch (Exception e)
+            {
+                _log.Error("pipe: the connect handler threw", e);
+            }
             session.Start();
             return;
         }

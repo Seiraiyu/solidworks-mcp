@@ -21,6 +21,9 @@ public enum ErrorCode
     OperationFailed,
     VerificationFailed,
     ApiError,
+
+    /// <summary>SOLIDWORKS is running but has not finished starting (or waits at a sign-in or update prompt).</summary>
+    SwStarting,
 }
 
 /// <summary>A failure as an agent sees it: a stable code, what to do next, and structured details.</summary>

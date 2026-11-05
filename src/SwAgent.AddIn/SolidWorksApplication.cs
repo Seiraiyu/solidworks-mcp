@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using SolidWorks.Interop.sldworks;
 using SolidWorks.Interop.swconst;
 using SwAgent.Contracts;
@@ -15,6 +16,9 @@ public interface ISolidWorksApplication
     DocumentInfo? ActiveDocument();
 
     int OpenDocumentCount();
+
+    /// <summary>Every open document, hidden ones (loaded by an assembly) included, with its dirty flag.</summary>
+    IReadOnlyList<DocumentInfo> OpenDocuments();
 }
 
 /// <summary>The real SOLIDWORKS, through the ISldWorks it handed the add-in in ConnectToSW.</summary>
@@ -31,9 +35,23 @@ internal sealed class SolidWorksApplication : ISolidWorksApplication
 
     public int ProcessId => _sw.GetProcessID();
 
-    public DocumentInfo? ActiveDocument()
+    public DocumentInfo? ActiveDocument() => _sw.ActiveDoc is IModelDoc2 doc ? Describe(doc) : null;
+
+    public int OpenDocumentCount() => _sw.GetDocumentCount();
+
+    public IReadOnlyList<DocumentInfo> OpenDocuments()
     {
-        if (!(_sw.ActiveDoc is IModelDoc2 doc)) return null;
+        var list = new List<DocumentInfo>();
+        if (!(_sw.GetDocuments() is object[] docs)) return list;
+        foreach (var o in docs)
+        {
+            if (o is IModelDoc2 doc) list.Add(Describe(doc));
+        }
+        return list;
+    }
+
+    internal static DocumentInfo Describe(IModelDoc2 doc)
+    {
         string path = doc.GetPathName();
         return new DocumentInfo
         {
@@ -43,8 +61,6 @@ internal sealed class SolidWorksApplication : ISolidWorksApplication
             Dirty = doc.GetSaveFlag(),
         };
     }
-
-    public int OpenDocumentCount() => _sw.GetDocumentCount();
 
     internal static DocumentType MapType(int swType) => swType switch
     {

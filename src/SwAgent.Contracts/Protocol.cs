@@ -3,7 +3,8 @@ namespace SwAgent.Contracts;
 public static class Protocol
 {
     /// <summary>Bumped on any breaking change to the envelope or an existing operation.</summary>
-    public const int Version = 1;
+    /// 2: busy and timeout answered by the add-in, event notifications, addin.* operations.
+    public const int Version = 2;
 
     public const string PipeNamePrefix = "solidworks-mcp-";
 

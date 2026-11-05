@@ -23,6 +23,10 @@ sealed class FakeSolidWorks : ISolidWorksApplication
     }
 
     public int OpenDocumentCount() => Count;
+
+    public System.Collections.Generic.List<DocumentInfo> Open { get; set; } = new System.Collections.Generic.List<DocumentInfo>();
+
+    public System.Collections.Generic.IReadOnlyList<DocumentInfo> OpenDocuments() => Open;
 }
 
 sealed class TestContext : IOperationContext
@@ -118,5 +122,48 @@ public class SessionOperationTests
         var result = op.Run(request, new TestContext());
         var e = Assert.Throws<SwAgentException>(() => op.Verify(request, result, new TestContext()));
         Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+    }
+
+    sealed class FakePreferences : SwAgent.AddIn.Core.IPreferenceStore
+    {
+        public readonly System.Collections.Generic.Dictionary<int, bool> Values = new System.Collections.Generic.Dictionary<int, bool>();
+        public bool Get(int id) => Values.TryGetValue(id, out var v) ? v : true;
+        public void Set(int id, bool value) => Values[id] = value;
+    }
+
+    [Fact]
+    public void Hello_applies_the_automation_preferences()
+    {
+        var store = new FakePreferences();
+        var guard = new SwAgent.AddIn.Core.PreferenceGuard(store, AutomationPreferences.All,
+            System.IO.Path.Combine(System.IO.Path.GetTempPath(), System.Guid.NewGuid().ToString("N") + ".json"), NullLog.Instance);
+        var services = new AddInServices(new FakeSolidWorks(), "0.1.0-test") { Preferences = guard };
+        IOperation op = new SessionHelloOperation(services);
+        var request = new SessionHelloRequest { ProtocolVersion = Protocol.Version };
+        var result = op.Run(request, new TestContext());
+        op.Verify(request, result, new TestContext());
+        Assert.True(guard.Applied);
+        Assert.All(AutomationPreferences.All, p => Assert.False(store.Values[p.Id]));
+        guard.Restore("test");
+    }
+
+    sealed class StubbornPreferences : SwAgent.AddIn.Core.IPreferenceStore
+    {
+        public bool Get(int id) => true;
+        public void Set(int id, bool value) { } // SOLIDWORKS ignores it
+    }
+
+    [Fact]
+    public void A_preference_that_will_not_stick_does_not_fail_hello()
+    {
+        var guard = new SwAgent.AddIn.Core.PreferenceGuard(new StubbornPreferences(), AutomationPreferences.All,
+            System.IO.Path.Combine(System.IO.Path.GetTempPath(), System.Guid.NewGuid().ToString("N") + ".json"), NullLog.Instance);
+        var services = new AddInServices(new FakeSolidWorks(), "0.1.0-test") { Preferences = guard };
+        IOperation op = new SessionHelloOperation(services);
+        var request = new SessionHelloRequest { ProtocolVersion = Protocol.Version };
+        var result = op.Run(request, new TestContext());
+        op.Verify(request, result, new TestContext());
+        Assert.Equal(3, guard.NotTaken.Count);
+        guard.Restore("test");
     }
 }

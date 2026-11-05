@@ -168,7 +168,7 @@ public class DispatcherTests
     }
 
     [Fact]
-    public void A_request_whose_deadline_passes_in_the_queue_is_answered_timeout_without_running()
+    public void A_request_whose_deadline_passes_in_the_queue_is_answered_busy_without_running()
     {
         using var ui = new UiThread();
         int otherRuns = 0;
@@ -188,9 +188,15 @@ public class DispatcherTests
         Assert.True(reply.Next().IsSuccess);
         var late = reply.Next();
         Assert.Equal(2L, late.Id);
-        Assert.Equal(ErrorCode.Timeout, late.Error!.Code);
-        Assert.True(late.Error.Details!["started"] is false);
-        Assert.True((long)late.Error.Details["waited_ms"]! >= 50);
+        Assert.Equal(ErrorCode.Busy, late.Error!.Code);
+        var d = late.Error.Details!;
+        Assert.True(d["started"] is false);
+        Assert.True((long)d["waited_ms"]! >= 50);
+        Assert.Equal(0L, d["queued_ahead"]);
+        var ranBefore = (JsonObject)d["running"]!;
+        Assert.Equal(1L, ranBefore["id"]);
+        Assert.Equal("test.echo", ranBefore["method"]);
+        Assert.Equal(true, ranBefore["finished"]);
         Assert.Equal(0, otherRuns);
         ui.Invoke(dispatcher.Dispose);
     }
@@ -235,6 +241,81 @@ public class DispatcherTests
         var dispatcher = Create(ui, TestOps.Registry(), new MemoryLog());
         Assert.Equal(ui.ThreadId, dispatcher.UiThreadId);
         Assert.Throws<InvalidOperationException>(() => dispatcher.Dispose());
+        ui.Invoke(dispatcher.Dispose);
+    }
+
+    [Fact]
+    public void A_request_already_answered_reports_its_outcome_as_operation_completed()
+    {
+        using var ui = new UiThread();
+        var ledger = new RequestLedger();
+        var events = new EventHub(new MemoryLog());
+        var listener = new CapturingReply();
+        events.Attach(listener);
+        var started = new ManualResetEventSlim(false);
+        var release = new ManualResetEventSlim(false);
+        var registry = TestOps.Registry(echo: (r, c) => { started.Set(); release.Wait(TimeSpan.FromSeconds(10)); return new EchoResult { Text = r.Text }; });
+        var dispatcher = ui.Invoke(() => new Dispatcher(new RequestExecutor(registry, new MemoryLog()), new MemoryLog(), null, ledger, events));
+        var reply = new CapturingReply();
+        dispatcher.Enqueue(Requests.Echo(1, "slow"), DateTime.UtcNow, reply);
+        Assert.True(started.Wait(TimeSpan.FromSeconds(10)));
+        Assert.True(ledger.Running!.TryAnswer("{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":null}", "timeout"));
+        release.Set();
+
+        Assert.True(listener.Lines.TryTake(out var line, 10000));
+        var p = (JsonObject)((JsonObject)Json.Parse(line!)!)["params"]!;
+        Assert.Equal("operation.completed", p["kind"]);
+        var data = (JsonObject)p["data"]!;
+        Assert.Equal(1L, data["id"]);
+        Assert.Equal(true, data["ok"]);
+        Assert.Equal("timeout", data["answered_as"]);
+        Assert.Single(reply.Lines);
+        ui.Invoke(dispatcher.Dispose);
+    }
+
+    [Fact]
+    public void Posted_actions_run_on_the_UI_thread_before_the_next_request()
+    {
+        using var ui = new UiThread();
+        var order = new ConcurrentQueue<string>();
+        var registry = TestOps.Registry(echo: (r, c) => { order.Enqueue("request"); return new EchoResult { Text = r.Text }; });
+        var dispatcher = Create(ui, registry, new MemoryLog());
+        int actionThread = 0;
+        dispatcher.Post("restore", () => { actionThread = Thread.CurrentThread.ManagedThreadId; order.Enqueue("action"); });
+        var reply = new CapturingReply();
+        dispatcher.Enqueue(Requests.Echo(1, "a"), DateTime.UtcNow, reply);
+        reply.Next();
+        Assert.Equal(new[] { "action", "request" }, order.ToArray());
+        Assert.Equal(ui.ThreadId, actionThread);
+        ui.Invoke(dispatcher.Dispose);
+    }
+
+    [Fact]
+    public void After_each_request_the_hook_runs_on_the_UI_thread()
+    {
+        using var ui = new UiThread();
+        var dispatcher = Create(ui, TestOps.Registry(), new MemoryLog());
+        var ran = new ManualResetEventSlim(false);
+        int hookThread = 0;
+        dispatcher.AfterEachRequest = () => { hookThread = Thread.CurrentThread.ManagedThreadId; ran.Set(); };
+        var reply = new CapturingReply();
+        dispatcher.Enqueue(Requests.Echo(1, "a"), DateTime.UtcNow, reply);
+        reply.Next();
+        Assert.True(ran.Wait(TimeSpan.FromSeconds(10)));
+        Assert.Equal(ui.ThreadId, hookThread);
+        ui.Invoke(dispatcher.Dispose);
+    }
+
+    [Fact]
+    public void A_probe_records_that_the_UI_thread_pumped()
+    {
+        using var ui = new UiThread();
+        var dispatcher = Create(ui, TestOps.Registry(), new MemoryLog());
+        var before = DateTime.UtcNow;
+        dispatcher.Probe();
+        var until = DateTime.UtcNow.AddSeconds(10);
+        while ((dispatcher.LastPumpedUtc ?? DateTime.MinValue) < before && DateTime.UtcNow < until) Thread.Sleep(10);
+        Assert.True(dispatcher.LastPumpedUtc >= before);
         ui.Invoke(dispatcher.Dispose);
     }
 }

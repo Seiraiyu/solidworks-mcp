@@ -98,6 +98,10 @@ public static class RpcCodec
         return Json.Write(o);
     }
 
+    /// <summary>A notification: a method and params, no id; nothing answers it.</summary>
+    public static string FormatNotification(string method, object? parameters) =>
+        Json.Write(new JsonObject { ["jsonrpc"] = "2.0", ["method"] = method, ["params"] = parameters });
+
     public static string Success(long id, object? result) => FormatResponse(RpcResponse.Success(id, result));
 
     public static string Failure(long? id, int rpcCode, SwAgentError error) => FormatResponse(RpcResponse.Failure(id, rpcCode, error));
@@ -132,8 +136,8 @@ public static class RpcCodec
         else throw Invalid(id, "'params' must be an object");
         if (!(o.TryGetValue("deadline_ms", out var rawDeadline) && rawDeadline is long deadline && deadline > 0))
             throw Invalid(id, "the request needs a positive integer 'deadline_ms'");
-        if (deadline > int.MaxValue)
-            throw Invalid(id, $"'deadline_ms' must be at most {int.MaxValue}");
+        if (deadline > OperationFamilies.MaxDeadlineMs)
+            throw Invalid(id, $"'deadline_ms' must be between 1 and {OperationFamilies.MaxDeadlineMs} (one hour), not {deadline}");
         return new RpcRequest(id.Value, method, parameters, deadline);
     }
 

@@ -39,6 +39,24 @@ public class JsonSchemaTests
         Assert.Equal(File.ReadAllText(file).Replace("\r\n", "\n"), actual);
     }
 
+    public static IEnumerable<object[]> EventKinds() => EventCatalog.All.Select(e => new object[] { e.Kind });
+
+    [Theory]
+    [MemberData(nameof(EventKinds))]
+    public void Event_schema_matches_its_pinned_snapshot(string kind)
+    {
+        string actual = Json.Write(JsonSchema.For(EventCatalog.Find(kind)!.DataType), indented: true) + "\n";
+        string name = $"event.{kind}.json";
+        if (Environment.GetEnvironmentVariable("SWMCP_UPDATE_SNAPSHOTS") == "1")
+        {
+            File.WriteAllText(Path.Combine(SourceSchemaDirectory(), name), actual);
+            return;
+        }
+        string file = Path.Combine(AppContext.BaseDirectory, "Schemas", name);
+        Assert.True(File.Exists(file), $"no snapshot {name}; run the tests with SWMCP_UPDATE_SNAPSHOTS=1 and review the new file");
+        Assert.Equal(File.ReadAllText(file).Replace("\r\n", "\n"), actual);
+    }
+
     static string SourceSchemaDirectory([CallerFilePath] string source = "") =>
         Path.Combine(Path.GetDirectoryName(source) ?? ".", "Schemas");
 }

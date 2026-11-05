@@ -144,4 +144,11 @@ public class McpServerTests
         Assert.Equal(ToolCatalog.All.Count, ToolCatalog.All.Select(t => t.Name).Distinct().Count());
         Assert.DoesNotContain(ToolCatalog.All, t => t.Operation == "session.hello");
     }
+
+    [Fact]
+    public void No_internal_operation_is_a_tool()
+    {
+        foreach (var tool in ToolCatalog.All)
+            Assert.False(OperationCatalog.Find(tool.Operation)!.Internal, $"{tool.Name} exposes internal operation {tool.Operation}");
+    }
 }

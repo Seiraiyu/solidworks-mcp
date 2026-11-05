@@ -2,7 +2,7 @@ using System.ComponentModel;
 
 namespace SwAgent.Contracts;
 
-[Operation("session.hello", typeof(SessionHelloResult))]
+[Operation("session.hello", typeof(SessionHelloResult), Internal = true)]
 [Description("Opens a connection: exchanges protocol versions and identifies the SOLIDWORKS instance.")]
 public sealed class SessionHelloRequest
 {

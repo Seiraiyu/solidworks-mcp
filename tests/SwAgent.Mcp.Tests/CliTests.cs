@@ -296,4 +296,19 @@ public class CliTests
         Assert.Equal(ExitCodes.Success, run.Exit);
         Assert.Contains("run `swmcp addin unregister` again", (string)run.Json["next"]!);
     }
+
+    [Fact]
+    public async Task Call_refuses_a_deadline_over_one_hour()
+    {
+        using var addin = new FakeAddin();
+        var run = await RunAsync(new CliEnvironmentBuilder { Client = addin.Options() }, "call", "session.status", "{}", "--deadline-ms", "3600001");
+        Assert.Equal(ExitCodes.For(ErrorCode.InvalidArgument), run.Exit);
+        Assert.Equal("invalid_argument", run.Json["code"]);
+    }
+
+    [Fact]
+    public void Sw_starting_has_its_own_exit_code()
+    {
+        Assert.Equal(15, ExitCodes.For(ErrorCode.SwStarting));
+    }
 }

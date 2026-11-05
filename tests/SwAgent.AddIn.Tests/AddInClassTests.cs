@@ -25,4 +25,16 @@ public class AddInClassTests
         var registry = SwAgentAddIn.CreateRegistry(new AddInServices(new FakeSolidWorks(), "test"));
         Assert.Equal(OperationCatalog.All.Select(o => o.Name).OrderBy(n => n), registry.Names.OrderBy(n => n));
     }
+
+    [Fact]
+    public void Diagnostics_are_on_only_when_the_value_is_1()
+    {
+        using var root = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\SwAgentTests\" + Guid.NewGuid().ToString("N"));
+        Assert.False(DiagnosticsSetting.Enabled(root));
+        using (var key = root.CreateSubKey(@"Software\solidworks-mcp")) key.SetValue("Diagnostics", 0);
+        Assert.False(DiagnosticsSetting.Enabled(root));
+        using (var key = root.CreateSubKey(@"Software\solidworks-mcp")) key.SetValue("Diagnostics", 1);
+        Assert.True(DiagnosticsSetting.Enabled(root));
+        Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(root.Name.Substring(@"HKEY_CURRENT_USER\".Length));
+    }
 }

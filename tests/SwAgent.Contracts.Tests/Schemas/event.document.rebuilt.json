@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "description": "A rebuild finished.",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "The document's title."
+    },
+    "path": {
+      "type": "string",
+      "description": "The full path, absent while unsaved."
+    },
+    "errors": {
+      "type": "integer",
+      "description": "Rebuild errors after the rebuild."
+    },
+    "warnings": {
+      "type": "integer",
+      "description": "Rebuild warnings after the rebuild."
+    }
+  },
+  "required": [
+    "title",
+    "errors",
+    "warnings"
+  ],
+  "additionalProperties": false
+}

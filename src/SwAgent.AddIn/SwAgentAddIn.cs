@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using SolidWorks.Interop.sldworks;
@@ -22,6 +23,9 @@ public sealed class SwAgentAddIn : ISwAddin
     ISldWorks? _sw;
     FileLog? _log;
     AgentHost? _host;
+    SolidWorksEventBridge? _events;
+    PreferenceGuard? _preferences;
+    AgentRuntime? _runtime;
 
     /// <summary>The informational version: the package version and, from a CI or git build, the commit.</summary>
     public static string Version =>
@@ -37,11 +41,28 @@ public sealed class SwAgentAddIn : ISwAddin
             var app = new SolidWorksApplication(_sw);
             int pid = Process.GetCurrentProcess().Id;
             _log.Info($"loading add-in {Version} into SOLIDWORKS {app.RevisionNumber} (process {pid}, CLR {System.Environment.Version}, cookie {Cookie})");
-            var services = new AddInServices(app, Version);
+            var runtime = new AgentRuntime(Version, pid, _log, diagnosticsEnabled: DiagnosticsSetting.Enabled(Microsoft.Win32.Registry.CurrentUser));
+            _runtime = runtime;
+            _preferences = new PreferenceGuard(new SolidWorksPreferenceStore(_sw), AutomationPreferences.All, PreferenceGuard.DefaultJournalPath, _log);
+            try
+            {
+                _preferences.Recover();
+            }
+            catch (Exception e)
+            {
+                // The guard catches its own failures; this is the last line, so one COM failure cannot stop the add-in loading.
+                _log.Error("preferences: recovery at load failed; the journal (if any) is kept", e);
+            }
+            runtime.Preferences = _preferences;
+            if (runtime.DiagnosticsEnabled) _log.Warn("diagnostic operations are ON (HKCU\\Software\\solidworks-mcp\\Diagnostics = 1)");
+            var services = new AddInServices(app, Version, runtime) { Preferences = _preferences };
+            runtime.Documents = new DocumentTracker(app.OpenDocuments, runtime.Events, _log);
             var registry = CreateRegistry(services);
-            _host = AgentHost.Start(Protocol.PipeName(pid), registry, _log);
-            var dispatcher = _host.Dispatcher;
-            services.QueuedRequests = () => dispatcher.QueuedRequests;
+            _host = AgentHost.Start(Protocol.PipeName(pid), registry, runtime);
+            var preferences = _preferences;
+            _host.ClientDisconnected = () => preferences.Restore("the client disconnected");
+            _events = new SolidWorksEventBridge(_sw, runtime.Documents, _log);
+            _events.Start();
             _log.Info("add-in loaded");
             return true;
         }
@@ -65,6 +86,7 @@ public sealed class SwAgentAddIn : ISwAddin
         try
         {
             _log?.Info("unloading add-in");
+            _runtime?.Events.Publish("session.closing", new SessionClosingEvent { Reason = "SOLIDWORKS is exiting or the add-in was turned off" });
             Teardown();
         }
         catch (Exception)
@@ -74,13 +96,35 @@ public sealed class SwAgentAddIn : ISwAddin
         return true;
     }
 
-    /// <summary>Exactly one operation per contract, each built with <paramref name="services"/>.</summary>
+    /// <summary>Exactly one operation per contract: the add-in's own (built with the services) and the core's (built with the runtime).</summary>
     internal static OperationRegistry CreateRegistry(AddInServices services) =>
-        OperationRegistry.Discover(OperationCatalog.All, typeof(SwAgentAddIn).Assembly.GetTypes(),
-            type => (IOperation)Activator.CreateInstance(type, services));
+        OperationRegistry.Discover(OperationCatalog.All,
+            typeof(SwAgentAddIn).Assembly.GetTypes().Concat(typeof(AgentRuntime).Assembly.GetTypes()),
+            type => type.GetConstructor(new[] { typeof(AgentRuntime) }) != null
+                ? (IOperation)Activator.CreateInstance(type, services.Runtime)
+                : (IOperation)Activator.CreateInstance(type, services));
 
     void Teardown()
     {
+        try
+        {
+            _events?.Dispose();
+        }
+        catch (Exception e)
+        {
+            _log?.Error("unsubscribing SOLIDWORKS events failed", e);
+        }
+        _events = null;
+        try
+        {
+            _preferences?.Restore("the add-in is unloading");
+        }
+        catch (Exception e)
+        {
+            _log?.Error("restoring preferences failed; the journal is kept for the next load", e);
+        }
+        _preferences = null;
+        _runtime = null;
         var host = _host;
         _host = null;
         try

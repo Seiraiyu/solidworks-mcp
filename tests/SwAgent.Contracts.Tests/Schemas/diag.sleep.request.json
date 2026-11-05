@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "description": "Fault testing only: holds SOLIDWORKS' UI thread for a time without pumping messages. Refused unless diagnostics are on.",
+  "properties": {
+    "ms": {
+      "type": "integer",
+      "description": "How long to hold the UI thread, 1 to 600000 ms."
+    }
+  },
+  "required": [
+    "ms"
+  ],
+  "additionalProperties": false
+}

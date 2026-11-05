@@ -14,6 +14,10 @@ public sealed class SessionHelloOperation : Operation<SessionHelloRequest, Sessi
 
     protected override SessionHelloResult Run(SessionHelloRequest request, IOperationContext context)
     {
+        _services.Preferences?.Apply();
+        var notTaken = _services.Preferences?.NotTaken ?? System.Array.Empty<string>();
+        if (notTaken.Count > 0)
+            context.Log.Warn($"hello: SOLIDWORKS did not take the automation preferences {string.Join(", ", notTaken)}; continuing (reported in addin.state)");
         context.Log.Info($"hello from a client speaking protocol {request.ProtocolVersion}, version {request.ClientVersion ?? "unknown"}");
         return new SessionHelloResult
         {

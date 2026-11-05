@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "description": "Events the add-in still holds, after a sequence number, for a client that missed them.",
+  "properties": {
+    "after_seq": {
+      "type": "integer",
+      "description": "Return events after this sequence number; all held events when absent."
+    }
+  },
+  "additionalProperties": false
+}
