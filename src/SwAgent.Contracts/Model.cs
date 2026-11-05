@@ -130,3 +130,53 @@ public sealed class ModelBoundingBoxResult
     [Description("True when the box is exact.")]
     public bool Precise { get; set; }
 }
+
+[Operation("model.find", typeof(ModelFindResult), ReadOnly = true)]
+[Description("Finds a part's faces, edges or vertices by what they are, each with its persistent reference and shape: by the feature that made them, their geometry, a direction (a planar face's outward normal, or an edge's or cylinder's axis either way), or a point they contain or are near. Use it to get references to pass to other operations, such as the top face of Boss-Extrude1 or the circular edges of a hole. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class ModelFindRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("What to find: face, edge or vertex.")]
+    public TopologyKind Kind { get; set; }
+
+    [Description("Only what this feature made (for an edge or vertex, any feature of a face it lies on): its name, or a reference exactly as a result gave it.")]
+    public string? Feature { get; set; }
+
+    [Description("Only this shape, for example plane or cylinder for faces, line or circle for edges.")]
+    public GeometryType? Geometry { get; set; }
+
+    [Description("Only faces whose outward normal points this way, or edges, cylinders and cones whose axis is parallel to it.")]
+    public Vector3? Direction { get; set; }
+
+    [Description("How far from direction still counts, degrees, 0 to 90. Default 1.")]
+    public double? AngleToleranceDeg { get; set; }
+
+    [Description("Only what is within max_distance_mm of this point (mm), nearest first.")]
+    public Point3? Near { get; set; }
+
+    [Description("How far from near still counts, mm. Default 1. Needs near.")]
+    public double? MaxDistanceMm { get; set; }
+
+    [Description("At most this many, 1 to 1000. Default 50.")]
+    public int? Limit { get; set; }
+}
+
+[Description("What model.find found.")]
+public sealed class ModelFindResult
+{
+    [Required]
+    [Description("The part.")]
+    public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Required]
+    [Description("What matched, nearest first when near was given, else in SOLIDWORKS' order; at most limit.")]
+    public List<EntityInfo> Entities { get; set; } = new List<EntityInfo>();
+
+    [Description("How many matched in all.")]
+    public int Total { get; set; }
+
+    [Description("True when more matched than were returned; narrow the search or raise limit.")]
+    public bool Truncated { get; set; }
+}

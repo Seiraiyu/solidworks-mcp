@@ -121,3 +121,87 @@ public sealed class ModelBoundingBoxOperation : Operation<ModelBoundingBoxReques
             throw new SwAgentException(ErrorCode.VerificationFailed, $"SOLIDWORKS gave a box whose corners are out of order: {result.Box.Min} to {result.Box.Max}");
     }
 }
+
+public sealed class ModelFindOperation : Operation<ModelFindRequest, ModelFindResult>
+{
+    readonly AddInServices _services;
+
+    public ModelFindOperation(AddInServices services)
+    {
+        _services = services;
+    }
+
+    protected override ModelFindResult Run(ModelFindRequest request, IOperationContext context)
+    {
+        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "model.find");
+        var query = Query(doc, request);
+        var candidates = doc.Topology(request.Kind).Select(entity =>
+        {
+            var info = doc.Describe(entity);
+            if (query.Near != null && (query.Feature == null || string.Equals(info.Feature, query.Feature, StringComparison.OrdinalIgnoreCase)))
+                info.DistanceMm = doc.DistanceMm(entity, query.Near);
+            return (Entity: entity, Info: info);
+        }).ToList();
+        var (kept, total) = EntityFilter.Apply(candidates, c => c.Info, query);
+        foreach (var c in kept) c.Info.Reference = _services.References.Issue(doc, c.Entity, c.Info);
+        return new ModelFindResult
+        {
+            Document = doc.Info(),
+            Entities = kept.Select(c => c.Info).ToList(),
+            Total = total,
+            Truncated = total > kept.Count,
+        };
+    }
+
+    /// <summary>Everything returned matches the request, within its limit.</summary>
+    protected override void Verify(ModelFindRequest request, ModelFindResult result, IOperationContext context)
+    {
+        var doc = DocumentLocator.Find(_services.SolidWorks, DocumentKeys.Of(result.Document));
+        var query = Query(doc, request);
+        var wrong = result.Entities.FirstOrDefault(e => !EntityFilter.Matches(e, query) || e.Kind != Kind(request.Kind));
+        if (wrong != null)
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"model.find returned the {EntityFilter.Describe(wrong)}, which does not match the request");
+        if (result.Entities.Count > query.Limit)
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"model.find returned {result.Entities.Count} entities, more than its limit of {query.Limit}");
+    }
+
+    static ReferenceKind Kind(TopologyKind kind) => kind switch
+    {
+        TopologyKind.Edge => ReferenceKind.Edge,
+        TopologyKind.Vertex => ReferenceKind.Vertex,
+        _ => ReferenceKind.Face,
+    };
+
+    EntityQuery Query(ISwDocument doc, ModelFindRequest request)
+    {
+        var query = new EntityQuery { Geometry = request.Geometry, Direction = request.Direction, Near = request.Near };
+        if (request.Feature != null)
+        {
+            var (feature, _) = _services.References.Resolve(doc, request.Feature, "feature", ReferenceKind.Feature);
+            query.Feature = doc.Describe(feature).Name;
+        }
+        if (request.Direction != null && request.Direction.X == 0 && request.Direction.Y == 0 && request.Direction.Z == 0)
+            throw Invalid("direction", "direction must not be zero");
+        if (request.AngleToleranceDeg != null)
+        {
+            if (request.AngleToleranceDeg < 0 || request.AngleToleranceDeg > 90) throw Invalid("angle_tolerance_deg", "angle_tolerance_deg must be from 0 to 90");
+            if (request.Direction == null) throw Invalid("angle_tolerance_deg", "angle_tolerance_deg needs direction");
+            query.AngleToleranceDeg = request.AngleToleranceDeg.Value;
+        }
+        if (request.MaxDistanceMm != null)
+        {
+            if (request.MaxDistanceMm <= 0) throw Invalid("max_distance_mm", "max_distance_mm must be more than 0");
+            if (request.Near == null) throw Invalid("max_distance_mm", "max_distance_mm needs near");
+            query.MaxDistanceMm = request.MaxDistanceMm.Value;
+        }
+        if (request.Limit != null)
+        {
+            if (request.Limit < 1 || request.Limit > EntityQuery.MaxLimit) throw Invalid("limit", $"limit must be from 1 to {EntityQuery.MaxLimit}");
+            query.Limit = request.Limit.Value;
+        }
+        return query;
+    }
+
+    static SwAgentException Invalid(string field, string message) =>
+        new SwAgentException(ErrorCode.InvalidArgument, message, new SwAgent.Contracts.Serialization.JsonObject { ["field"] = field });
+}

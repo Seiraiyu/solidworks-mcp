@@ -173,6 +173,37 @@ internal sealed class SolidWorksDocument : ISwDocument
         return axis == 0 ? x : axis == 1 ? y : z;
     }
 
+    public IReadOnlyList<object> Topology(TopologyKind kind)
+    {
+        var list = new List<object>();
+        foreach (var o in SolidBodies())
+        {
+            if (!(o is IBody2 body)) continue;
+            object? items = kind switch
+            {
+                TopologyKind.Edge => body.GetEdges(),
+                TopologyKind.Vertex => body.GetVertices(),
+                _ => body.GetFaces(),
+            };
+            if (items is object[] array) list.AddRange(array);
+        }
+        return list;
+    }
+
+    public double DistanceMm(object entity, Point3 point)
+    {
+        double x = point.X / Mm, y = point.Y / Mm, z = point.Z / Mm;
+        double[] closest = entity switch
+        {
+            IFace2 face => (double[])face.GetClosestPointOn(x, y, z),
+            IEdge edge => (double[])edge.GetClosestPointOn(x, y, z),
+            IVertex vertex => (double[])vertex.GetPoint(),
+            _ => throw new SwAgentException(ErrorCode.ApiError, $"cannot measure to a {entity.GetType().Name}"),
+        };
+        double dx = closest[0] - x, dy = closest[1] - y, dz = closest[2] - z;
+        return Math.Sqrt(dx * dx + dy * dy + dz * dz) * Mm;
+    }
+
     public ReferenceKind? KindOf(object entity) => entity switch
     {
         IFeature f => FeatureKind(f.GetTypeName2()),

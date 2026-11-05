@@ -74,6 +74,12 @@ public interface ISwDocument
 
     /// <summary>The box around the solid bodies, in mm: SOLIDWORKS' quick one, or the exact one from extreme points.</summary>
     Box3? BoundingBox(bool precise);
+
+    /// <summary>Every face, edge or vertex of the part's solid bodies.</summary>
+    System.Collections.Generic.IReadOnlyList<object> Topology(TopologyKind kind);
+
+    /// <summary>The shortest distance from <paramref name="point"/> to a face, edge or vertex, in mm.</summary>
+    double DistanceMm(object entity, Point3 point);
 }
 
 /// <summary>A feature as the tree lists it.</summary>

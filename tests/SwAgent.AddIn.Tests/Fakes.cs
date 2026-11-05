@@ -84,6 +84,7 @@ sealed class FakeDocument : ISwDocument
         var copy = SwAgent.Contracts.Serialization.JsonCodec.Deserialize<EntityInfo>(json)!;
         copy.Kind = e.Kind;
         copy.Reference = null;
+        copy.DistanceMm = null;
         return copy;
     }
 
@@ -182,6 +183,22 @@ sealed class FakeDocument : ISwDocument
     public Box3? ExactBox { get; set; }
 
     public Box3? BoundingBox(bool precise) => precise ? ExactBox : QuickBox;
+
+    public IReadOnlyList<object> Topology(TopologyKind kind)
+    {
+        var want = kind == TopologyKind.Edge ? ReferenceKind.Edge : kind == TopologyKind.Vertex ? ReferenceKind.Vertex : ReferenceKind.Face;
+        return Entities.Where(e => e.Kind == want).Cast<object>().ToList();
+    }
+
+    /// <summary>Points DistanceMm was asked about.</summary>
+    public List<Point3> DistanceAsked { get; } = new List<Point3>();
+
+    /// <summary>The distance from any point is the entity's Info.DistanceMm, as SOLIDWORKS would measure it.</summary>
+    public double DistanceMm(object entity, Point3 point)
+    {
+        DistanceAsked.Add(point);
+        return ((FakeEntity)entity).Info.DistanceMm ?? 1e9;
+    }
 
     SaveOutcome Write(string path)
     {
