@@ -54,3 +54,10 @@ sealed class FakeAttach : ISolidWorksAttach
         return _load(processId, dllPath);
     }
 }
+
+sealed class FakeRegistration : IAddinRegistration
+{
+    public AddinRegistrationInfo Info { get; set; } = new AddinRegistrationInfo(true, @"C:\addin\SwAgent.AddIn.dll", true);
+
+    public AddinRegistrationInfo Read() => Info;
+}
