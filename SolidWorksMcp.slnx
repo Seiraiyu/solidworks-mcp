@@ -1,2 +1,5 @@
 <Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SwAgent.AddIn/SwAgent.AddIn.csproj" />
+  </Folder>
 </Solution>

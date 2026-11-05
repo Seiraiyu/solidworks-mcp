@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <RootNamespace>SwAgent.AddIn</RootNamespace>
+  </PropertyGroup>
+  <Import Project="..\..\build\SolidWorksInterop.props" />
+</Project>
