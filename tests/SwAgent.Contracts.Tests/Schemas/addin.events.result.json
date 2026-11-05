@@ -1,0 +1,53 @@
+{
+  "type": "object",
+  "description": "Held events.",
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "An event the add-in raised.",
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "description": "Counts up from 1 for each add-in load; a gap means events were missed."
+          },
+          "kind": {
+            "type": "string",
+            "description": "The event kind, for example document.saved."
+          },
+          "time": {
+            "type": "string",
+            "description": "When it was raised, UTC, ISO 8601."
+          },
+          "data": {
+            "type": "object",
+            "description": "The kind's data."
+          }
+        },
+        "required": [
+          "seq",
+          "kind",
+          "time",
+          "data"
+        ],
+        "additionalProperties": false
+      },
+      "description": "The events after after_seq, oldest first."
+    },
+    "missed": {
+      "type": "boolean",
+      "description": "True when events after after_seq were already dropped from the add-in's buffer."
+    },
+    "last_seq": {
+      "type": "integer",
+      "description": "The sequence number of the last event raised."
+    }
+  },
+  "required": [
+    "events",
+    "missed",
+    "last_seq"
+  ],
+  "additionalProperties": false
+}

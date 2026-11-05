@@ -1,0 +1,6 @@
+{
+  "type": "object",
+  "description": "The add-in's own state, answered even while SOLIDWORKS' UI thread is busy: what runs, what waits, documents, preferences.",
+  "properties": {},
+  "additionalProperties": false
+}

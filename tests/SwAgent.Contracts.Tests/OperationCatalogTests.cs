@@ -18,15 +18,31 @@ public sealed class EmptyResult { }
 public class OperationCatalogTests
 {
     [Fact]
-    public void Catalog_holds_the_phase_1_operations()
+    public void Catalog_holds_the_phase_2A_operations()
     {
-        Assert.Equal(new[] { "session.hello", "session.status" }, OperationCatalog.All.Select(o => o.Name).ToArray());
+        Assert.Equal(new[] { "addin.events", "addin.state", "diag.sleep", "session.hello", "session.status" },
+            OperationCatalog.All.Select(o => o.Name).ToArray());
         var status = OperationCatalog.Find("session.status")!;
         Assert.Equal("session", status.Family);
         Assert.Equal(typeof(SessionStatusRequest), status.RequestType);
         Assert.Equal(typeof(SessionStatusResult), status.ResultType);
         Assert.False(string.IsNullOrEmpty(status.Description));
         Assert.Null(OperationCatalog.Find("session.nope"));
+    }
+
+    [Fact]
+    public void Threads_and_internal_flags_are_as_designed()
+    {
+        string Shape(string name)
+        {
+            var o = OperationCatalog.Find(name)!;
+            return $"{o.Thread}/{(o.Internal ? "internal" : "tool")}";
+        }
+        Assert.Equal("Pipe/internal", Shape("addin.state"));
+        Assert.Equal("Pipe/internal", Shape("addin.events"));
+        Assert.Equal("Ui/internal", Shape("diag.sleep"));
+        Assert.Equal("Ui/internal", Shape("session.hello"));
+        Assert.Equal("Ui/tool", Shape("session.status"));
     }
 
     [Fact]
@@ -62,7 +78,7 @@ public class OperationCatalogTests
     public void Pipe_name_carries_the_process_id()
     {
         Assert.Equal("solidworks-mcp-1234", Protocol.PipeName(1234));
-        Assert.Equal(1, Protocol.Version);
+        Assert.Equal(2, Protocol.Version);
     }
 
     [Fact]
