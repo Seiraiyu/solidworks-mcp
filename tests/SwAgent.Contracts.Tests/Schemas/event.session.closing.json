@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "description": "The add-in is unloading: SOLIDWORKS is exiting or the add-in was turned off.",
+  "properties": {
+    "reason": {
+      "type": "string",
+      "description": "Why."
+    }
+  },
+  "required": [
+    "reason"
+  ],
+  "additionalProperties": false
+}

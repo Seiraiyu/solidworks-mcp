@@ -98,6 +98,10 @@ public static class RpcCodec
         return Json.Write(o);
     }
 
+    /// <summary>A notification: a method and params, no id; nothing answers it.</summary>
+    public static string FormatNotification(string method, object? parameters) =>
+        Json.Write(new JsonObject { ["jsonrpc"] = "2.0", ["method"] = method, ["params"] = parameters });
+
     public static string Success(long id, object? result) => FormatResponse(RpcResponse.Success(id, result));
 
     public static string Failure(long? id, int rpcCode, SwAgentError error) => FormatResponse(RpcResponse.Failure(id, rpcCode, error));

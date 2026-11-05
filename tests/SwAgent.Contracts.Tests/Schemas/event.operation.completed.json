@@ -1,0 +1,74 @@
+{
+  "type": "object",
+  "description": "A request that had already been answered (timeout) finished; this is how it ended.",
+  "properties": {
+    "id": {
+      "type": "integer",
+      "description": "The request id."
+    },
+    "method": {
+      "type": "string",
+      "description": "The operation."
+    },
+    "ok": {
+      "type": "boolean",
+      "description": "True when it succeeded."
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "sw_not_running",
+            "sw_crashed",
+            "sw_multiple_instances",
+            "addin_not_loaded",
+            "addin_incompatible",
+            "timeout",
+            "busy",
+            "dialog_open",
+            "invalid_argument",
+            "reference_unresolved",
+            "wrong_document_type",
+            "operation_failed",
+            "verification_failed",
+            "api_error",
+            "sw_starting"
+          ],
+          "description": "Stable error code; branch on this."
+        },
+        "message": {
+          "type": "string",
+          "description": "What happened and what to do next."
+        },
+        "details": {
+          "type": "object",
+          "description": "Structured facts about the failure."
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false,
+      "description": "Its error, when it failed."
+    },
+    "duration_ms": {
+      "type": "integer",
+      "description": "How long it ran."
+    },
+    "answered_as": {
+      "type": "string",
+      "description": "What the client had already been told, for example timeout."
+    }
+  },
+  "required": [
+    "id",
+    "method",
+    "ok",
+    "duration_ms",
+    "answered_as"
+  ],
+  "additionalProperties": false
+}
