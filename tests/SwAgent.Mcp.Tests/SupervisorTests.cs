@@ -132,6 +132,18 @@ public class SupervisorTests
     }
 
     [Fact]
+    public async Task Events_name_the_connected_process_before_any_event_arrives()
+    {
+        using var addin = new FakeAddin();
+        using var rig = new Rig(addin);
+        Assert.Null(rig.Supervisor.ReadEvents(new SwEventsRequest()).ProcessId);
+        await rig.StatusCall();
+        var events = rig.Supervisor.ReadEvents(new SwEventsRequest());
+        Assert.Empty(events.Events);
+        Assert.Equal(Pid, events.ProcessId);
+    }
+
+    [Fact]
     public async Task Events_are_kept_with_their_process()
     {
         using var addin = new FakeAddin();

@@ -133,7 +133,16 @@ public sealed class Supervisor : IDisposable
     }
 
     /// <summary>The events received, after a cursor (sw_events).</summary>
-    public SwEventsResult ReadEvents(SwEventsRequest request) => Events.Read(request.AfterSeq, request.Kinds, request.Limit);
+    public SwEventsResult ReadEvents(SwEventsRequest request)
+    {
+        var result = Events.Read(request.AfterSeq, request.Kinds, request.Limit);
+        // Before the first event arrives, the events (none yet) are the connected process's.
+        if (result.ProcessId == null)
+        {
+            lock (_gate) result.ProcessId = _link?.ProcessId;
+        }
+        return result;
+    }
 
     /// <summary>
     /// Drops the connection, forgets failed add-in loads and the last crash, and uses process
