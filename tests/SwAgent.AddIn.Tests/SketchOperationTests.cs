@@ -286,3 +286,103 @@ public class SketchReadTests : DocumentTestBase
         Assert.Equal(ErrorCode.InvalidArgument, Fails(() => Read("Sketch99")).Code);
     }
 }
+
+public class SketchModifyTests : DocumentTestBase
+{
+    static Point2 P(double x, double y) => new Point2(x, y);
+
+    FakeDocument Part()
+    {
+        var doc = Sw.Track(FakeDocument.Part("Part1", PathOf("part1.SLDPRT")));
+        doc.MassProperties = new ModelMassResult();
+        return doc;
+    }
+
+    SketchCreateResult Plate() => Run(new SketchCreateOperation(Services), new SketchCreateRequest
+    {
+        On = "front",
+        Rectangles = new List<SketchRectangle> { new SketchRectangle { Id = "outline", Corner1 = P(0, 0), Corner2 = P(40, 20) } },
+        Circles = new List<SketchCircle> { new SketchCircle { Id = "hole", Center = P(20, 10), RadiusMm = 2.5 } },
+        Dimensions = new List<SketchDimensionItem> { new SketchDimensionItem { Name = "width", Entities = new List<string> { "outline.bottom" }, Value = 40 } },
+    });
+
+    SketchCreateResult Modify(SketchModifyRequest request) => Run(new SketchModifyOperation(Services), request);
+
+    static SketchGeometry Boss(string holeReference) => new SketchGeometry
+    {
+        Circles = new List<SketchCircle> { new SketchCircle { Id = "boss", Center = P(20, 10), RadiusMm = 6 } },
+        Relations = new List<SketchRelationItem> { new SketchRelationItem { Type = SketchRelationType.Concentric, Entities = new List<string> { "boss", holeReference } } },
+        Dimensions = new List<SketchDimensionItem> { new SketchDimensionItem { Name = "boss_d", Entities = new List<string> { "boss" }, Value = 12 } },
+    };
+
+    [Fact]
+    public void Adds_to_an_existing_sketch_relating_new_entities_to_old_ones()
+    {
+        var doc = Part();
+        var plate = Plate();
+        string hole = plate.Ids.Single(i => i.Id == "hole").References[0];
+        var result = Modify(new SketchModifyRequest { Sketch = "Sketch1", Add = Boss(hole) });
+
+        var sketch = doc.Sketches.Single();
+        Assert.Equal(2, sketch.Segments.Count(s => s.Kind == SketchSegmentKind.Circle));
+        Assert.Equal("boss", result.Ids.Single().Id);
+        Assert.Equal(new[] { "boss_d@Sketch1" }, result.Dimensions.Select(d => d.Name));
+        Assert.Equal(SketchRelationType.Concentric, sketch.Relations.Single().Type);
+        Assert.Equal(hole, Services.References.Describe(doc, sketch.Relations.Single().Entities[1]).Reference);
+        Assert.Empty(result.Change.Created);
+        var changed = result.Change.Changed.Single();
+        Assert.Equal("Sketch1", changed.Name);
+        Assert.Equal("5 segments, 1 dimensions", changed.Before);
+        Assert.Equal("6 segments, 2 dimensions", changed.After);
+        Assert.True(doc.Editors.All(e => e.Closed));
+    }
+
+    [Fact]
+    public void Removes_entities_named_by_reference_after_the_additions_are_checked()
+    {
+        var doc = Part();
+        var plate = Plate();
+        string hole = plate.Ids.Single(i => i.Id == "hole").References[0];
+        var result = Modify(new SketchModifyRequest { Sketch = plate.Sketch.Reference!, Remove = new List<string> { hole } });
+        Assert.DoesNotContain(doc.Sketches[0].Segments, s => s.Kind == SketchSegmentKind.Circle);
+        Assert.Equal("4 segments, 1 dimensions", result.Change.Changed.First().After);
+        Assert.Equal("removed", result.Change.Changed.Last().Property);
+    }
+
+    [Fact]
+    public void Only_the_sketchs_own_entities_can_be_removed()
+    {
+        var doc = Part();
+        Plate();
+        var other = Run(new SketchCreateOperation(Services), new SketchCreateRequest { On = "top", Circles = new List<SketchCircle> { new SketchCircle { Id = "c", Center = P(0, 0), RadiusMm = 1 } } });
+        var e = Fails(() => Modify(new SketchModifyRequest { Sketch = "Sketch1", Remove = new List<string> { other.Ids[0].References[0] } }));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal("/remove/0", e.Error.Details!["field"]);
+        Assert.Single(doc.Sketches[1].Segments);
+    }
+
+    [Fact]
+    public void Additions_that_over_define_the_sketch_are_taken_back_and_nothing_is_removed()
+    {
+        var doc = Part();
+        var plate = Plate();
+        string hole = plate.Ids.Single(i => i.Id == "hole").References[0];
+        doc.SketchOverDefines = true;
+        var e = Fails(() => Modify(new SketchModifyRequest { Sketch = "Sketch1", Add = Boss(hole), Remove = new List<string> { plate.Ids[0].References[0] } }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        var sketch = doc.Sketches.Single();
+        Assert.Equal(5, sketch.Segments.Count);
+        Assert.Empty(sketch.Relations);
+        Assert.Equal(new[] { "width@Sketch1" }, sketch.Dimensions.Select(d => d.FullName));
+        Assert.True(doc.Editors.All(ed => ed.Closed));
+    }
+
+    [Fact]
+    public void A_modify_with_nothing_to_do_or_on_something_that_is_not_a_sketch_is_refused()
+    {
+        Part();
+        Plate();
+        Assert.Equal("", Fails(() => Modify(new SketchModifyRequest { Sketch = "Sketch1" })).Error.Details!["field"]);
+        Assert.Equal("sketch", Fails(() => Modify(new SketchModifyRequest { Sketch = "front", Remove = new List<string>() })).Error.Details!["field"]);
+    }
+}

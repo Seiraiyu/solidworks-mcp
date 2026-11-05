@@ -519,3 +519,21 @@ public sealed class SketchRelationInfo
     [Description("What it relates: references, or a name where SOLIDWORKS gives no reference (origin for the sketch's origin).")]
     public List<string> Entities { get; set; } = new List<string>();
 }
+
+[Operation("sketch.modify", typeof(SketchCreateResult))]
+[Description("Changes an existing sketch: draws, relates and dimensions what add says (as sketch.create does; add's relations and dimensions may also name the sketch's own entities by reference), checks the sketch, and only then removes what remove names. Checked as sketch.create is; additions that fail are taken back. A removed entity cannot be drawn back with the same reference, so a failure after removing answers operation_failed with rollback_failed. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class SketchModifyRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The sketch: its name (Sketch3) or its reference exactly as a result gave it.")]
+    public string Sketch { get; set; } = "";
+
+    [Description("What to draw, relate and dimension, as in sketch.create; fields are reported under /add.")]
+    public SketchGeometry? Add { get; set; }
+
+    [Description("References of the sketch's own entities and points to delete, exactly as a result gave them; relations and dimensions on them go with them.")]
+    public List<string>? Remove { get; set; }
+}

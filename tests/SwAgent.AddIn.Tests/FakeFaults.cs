@@ -8,4 +8,7 @@ sealed partial class FakeDocument
 
     /// <summary>Every read of a sketch finds a line more than the read before (someone drawing while it is read).</summary>
     public bool SketchChangesAfterRead { get; set; }
+
+    /// <summary>Opening a sketch for editing fails as SOLIDWORKS refusing a call would (api_error).</summary>
+    public bool EditSketchFails { get; set; }
 }

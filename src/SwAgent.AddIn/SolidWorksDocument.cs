@@ -348,6 +348,8 @@ internal sealed class SolidWorksDocument : ISwDocument
 
     public ISketchEditor NewSketch(object planeOrFace) => SolidWorksSketchEditor.Open(Doc, planeOrFace);
 
+    public ISketchEditor EditSketch(object sketch) => SolidWorksSketchEditor.Edit(Doc, (IFeature)sketch);
+
     public SketchContents ReadSketch(object sketch) => SolidWorksSketchReader.Read((IFeature)sketch);
 
     public void DeleteFeature(object feature)

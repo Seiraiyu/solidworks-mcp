@@ -208,6 +208,14 @@ sealed partial class FakeDocument : ISwDocument
         return editor;
     }
 
+    public ISketchEditor EditSketch(object sketch)
+    {
+        if (EditSketchFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not open the sketch for editing");
+        var editor = new FakeSketchEditor(Sketches.Single(s => ReferenceEquals(s.Feature, sketch)));
+        Editors.Add(editor);
+        return editor;
+    }
+
     public SketchContents ReadSketch(object sketch) => Sketches.Single(s => ReferenceEquals(s.Feature, sketch)).Read();
 
     public void DeleteFeature(object feature)

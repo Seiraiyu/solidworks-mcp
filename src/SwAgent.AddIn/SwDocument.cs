@@ -99,6 +99,9 @@ public interface ISwDocument
     /// <summary>Opens a new sketch on a plane or planar face for drawing (an operation's own; <see cref="ISketchEditor.Close"/> ends it).</summary>
     ISketchEditor NewSketch(object planeOrFace);
 
+    /// <summary>Opens an existing sketch for drawing (an operation's own; <see cref="ISketchEditor.Close"/> ends it).</summary>
+    ISketchEditor EditSketch(object sketch);
+
     /// <summary>Everything in a sketch: its segments, points, relations and dimensions, solve state, and where its plane is.</summary>
     SketchContents ReadSketch(object sketch);
 

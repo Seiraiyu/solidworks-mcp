@@ -7,13 +7,18 @@ using SwAgent.Contracts.Serialization;
 
 namespace SwAgent.AddIn;
 
-/// <summary>What was drawn: each id's entities, in their named order (a rectangle's bottom, right, top, left; a polygon's side1 …), and each dimension's full name.</summary>
+/// <summary>
+/// What was drawn, filled in as it is drawn so a failure part-way can be taken back: each id's entities in their named
+/// order (a rectangle's bottom, right, top, left; a polygon's side1 …), each relation added, and each dimension's full name.
+/// </summary>
 public sealed class BuiltSketch
 {
     public Dictionary<string, IReadOnlyList<object>> Drawn { get; } = new Dictionary<string, IReadOnlyList<object>>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The ids in the order they were drawn.</summary>
     public List<string> Order { get; } = new List<string>();
+
+    public List<object> Relations { get; } = new List<object>();
 
     public List<string> Dimensions { get; } = new List<string>();
 }
@@ -22,15 +27,14 @@ public sealed class BuiltSketch
 /// Draws a checked sketch request into an open sketch (design 371, Sketches): every entity, then every relation, then
 /// every dimension, in the request's order. A relation or dimension SOLIDWORKS does not add is operation_failed naming
 /// its field, and the operation rolls the sketch back. References to the part's edges and vertices are resolved by the
-/// caller before anything is drawn.
+/// caller before anything is drawn. <paramref name="built"/> records each step as it is made.
 /// </summary>
 public static class SketchBuilder
 {
     static readonly string[] RectangleSides = { "bottom", "right", "top", "left" };
 
-    public static BuiltSketch Draw(ISketchEditor editor, SketchDraft draft, Func<DraftTarget, object> external)
+    public static void Draw(ISketchEditor editor, SketchDraft draft, Func<DraftTarget, object> external, BuiltSketch built)
     {
-        var built = new BuiltSketch();
         foreach (var e in draft.Entities)
         {
             built.Drawn[e.Id] = DrawOne(editor, e);
@@ -39,12 +43,14 @@ public static class SketchBuilder
         foreach (var r in draft.Relations)
         {
             var targets = r.Targets.Select(t => Target(editor, built, t, external)).ToList();
-            if (!editor.Relate(r.Type, targets))
+            var relation = editor.Relate(r.Type, targets);
+            if (relation == null)
             {
                 throw new SwAgentException(ErrorCode.OperationFailed,
                     $"{r.Field}: SOLIDWORKS did not add the {WireNames.ForEnum(r.Type)} relation between {string.Join(", ", r.Targets.Select(t => t.Text))}; check that they can be related that way",
                     new JsonObject { ["field"] = r.Field });
             }
+            built.Relations.Add(relation);
         }
         foreach (var d in draft.Dimensions)
         {
@@ -58,7 +64,6 @@ public static class SketchBuilder
             }
             built.Dimensions.Add(name);
         }
-        return built;
     }
 
     static IReadOnlyList<object> DrawOne(ISketchEditor editor, DraftEntity e)

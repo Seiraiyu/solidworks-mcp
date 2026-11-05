@@ -121,4 +121,70 @@ public class ErrorCodeTests : DocumentTestBase
         }
         Assert.Equal(code, Fails(() => Run(new SketchReadOperation(Services), new SketchReadRequest { Sketch = sketch })).Code);
     }
+
+    SketchCreateResult Modify(SketchModifyRequest request) => Run(new SketchModifyOperation(Services), request);
+
+    static SketchGeometry Ring() => new SketchGeometry
+    {
+        Circles = new List<SketchCircle> { new SketchCircle { Id = "ring", Center = P(0, 0), RadiusMm = 8 } },
+        Relations = new List<SketchRelationItem> { new SketchRelationItem { Type = SketchRelationType.Fix, Entities = new List<string> { "ring" } } },
+        Dimensions = new List<SketchDimensionItem> { new SketchDimensionItem { Entities = new List<string> { "ring" }, Value = 16 } },
+    };
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Sketch_modify_reaches_every_listed_code(ErrorCode code)
+    {
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Fails(() => Modify(new SketchModifyRequest { Sketch = "Sketch1", Add = Ring() })).Code);
+            return;
+        }
+        var doc = Part();
+        var made = Create(Circle());
+        var request = new SketchModifyRequest { Sketch = "Sketch1", Add = Ring() };
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Add = null;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                string line = made.Ids.Single(i => i.Id == "l").References[0];
+                request.Remove = new List<string> { line };
+                doc.Entities.Remove(doc.Entities.Single(e => Services.References.Describe(doc, e).Reference == line));
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch1";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.SketchRefuses = SketchRelationType.Fix;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.SketchOverDefines = true;
+                break;
+            case ErrorCode.ApiError:
+                doc.EditSketchFails = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Modify(request)).Code);
+        Assert.Equal(2, doc.Sketches[0].Segments.Count);
+    }
+
+    [Fact]
+    public void Sketch_modify_rebuilds_after_taking_additions_back()
+    {
+        var doc = Part();
+        Create(Circle());
+        doc.SketchOverDefines = true;
+        Fails(() => Modify(new SketchModifyRequest { Sketch = "Sketch1", Add = Ring() }));
+        Assert.Equal(2, doc.Sketches[0].Segments.Count);
+        Assert.Equal(new[] { false }, doc.Rebuilds);
+    }
 }

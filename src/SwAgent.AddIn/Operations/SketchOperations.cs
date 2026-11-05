@@ -35,12 +35,12 @@ public sealed class SketchCreateOperation : ModelChangeOperation<SketchCreateReq
             doc.DeleteFeature(editor.Sketch);
             doc.Rebuild(false);
         });
-        BuiltSketch built;
+        var built = new BuiltSketch();
         try
         {
             if (request.Name != null) editor.Rename(request.Name);
             made.Name = editor.Name;
-            built = SketchBuilder.Draw(editor, draft, t => external[t.Field]);
+            SketchBuilder.Draw(editor, draft, t => external[t.Field], built);
         }
         finally
         {
@@ -63,6 +63,113 @@ public sealed class SketchCreateOperation : ModelChangeOperation<SketchCreateReq
         Sketches.CheckDimensions(contents, draft.Dimensions, result.Dimensions);
         Sketches.CheckSolved(contents);
     }
+}
+
+public sealed class SketchModifyOperation : ModelChangeOperation<SketchModifyRequest, SketchCreateResult>
+{
+    public SketchModifyOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(SketchModifyRequest request) => request.Document;
+
+    protected override SketchCreateResult Change(ISwDocument doc, SketchModifyRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        var references = Services.References;
+        var (sketch, _) = references.Resolve(doc, request.Sketch, "sketch", ReferenceKind.Sketch);
+        if (request.Add == null && (request.Remove == null || request.Remove.Count == 0))
+            throw new SwAgentException(ErrorCode.InvalidArgument, "the request has nothing to do: give add, remove or both", new JsonObject { ["field"] = "" });
+        var draft = request.Add == null ? null : SketchDraft.Check(request.Add, "/add");
+        var before = doc.ReadSketch(sketch);
+        var removals = (request.Remove ?? new List<string>()).Select((text, i) =>
+        {
+            string field = $"/remove/{i}";
+            var (entity, _) = references.Resolve(doc, text, field, ReferenceKind.SketchEntity, ReferenceKind.SketchPoint);
+            var info = doc.Describe(entity);
+            if (!string.Equals(info.Feature, before.Name, StringComparison.Ordinal))
+                throw new SwAgentException(ErrorCode.InvalidArgument, $"{field}: that is in {info.Feature}, not {before.Name}", new JsonObject { ["field"] = field });
+            return (Entity: entity, Name: info.Name ?? "a sketch point");
+        }).ToList();
+        var external = draft == null ? new Dictionary<string, object>() : Sketches.ResolveExternal(references, doc, draft);
+
+        var summary = new ChangedItem { Name = before.Name, Property = "entities", Before = Count(before) };
+        var built = new BuiltSketch();
+        tx.Edited(summary, () => TakeBack(doc, sketch, built));
+        if (draft != null)
+        {
+            var editor = doc.EditSketch(sketch);
+            try
+            {
+                SketchBuilder.Draw(editor, draft, t => external[t.Field], built);
+            }
+            finally
+            {
+                editor.Close();
+            }
+            var added = doc.ReadSketch(sketch);
+            Sketches.CheckCounts(added, Sketches.Count(before), draft.Expected);
+            Sketches.CheckDimensions(added, draft.Dimensions, built.Dimensions.Select(n => new DimensionInfo { Name = n }).ToList());
+            Sketches.CheckSolved(added);
+        }
+        if (removals.Count > 0)
+        {
+            var editor = doc.EditSketch(sketch);
+            try
+            {
+                foreach (var r in removals)
+                {
+                    editor.Delete(r.Entity);
+                    tx.Edited(new ChangedItem { Name = $"{r.Name}@{before.Name}", Property = "removed", Before = "present", After = "removed" },
+                        () => throw new SwAgentException(ErrorCode.OperationFailed, $"{r.Name} was removed and cannot be drawn back with its reference"));
+                }
+            }
+            finally
+            {
+                editor.Close();
+            }
+        }
+        var result = new SketchCreateResult();
+        Sketches.Fill(references, doc, sketch, built, result);
+        summary.After = Count(doc.ReadSketch(sketch));
+        return result;
+    }
+
+    /// <summary>What was removed is gone, and the sketch is not over defined.</summary>
+    protected override void Check(ISwDocument doc, SketchModifyRequest request, SketchCreateResult result)
+    {
+        var sketch = doc.FeatureByName(result.Sketch.Name)
+            ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"the sketch {result.Sketch.Name} is not in the part after it was changed");
+        var after = doc.ReadSketch(sketch);
+        var left = result.Change.Changed.Where(c => c.Property == "removed").Select(c => c.Name.Substring(0, c.Name.LastIndexOf('@')))
+            .Where(name => after.Segments.Any(s => s.Name == name)).ToList();
+        if (left.Count > 0)
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"{string.Join(", ", left)} is still in {after.Name} after it was removed", new JsonObject { ["check"] = "removed" });
+        Sketches.CheckSolved(after);
+    }
+
+    /// <summary>Deletes what the additions made, newest first: dimensions, then relations, then entities; then rebuilds.</summary>
+    static void TakeBack(ISwDocument doc, object sketch, BuiltSketch built)
+    {
+        if (built.Order.Count == 0 && built.Relations.Count == 0 && built.Dimensions.Count == 0) return;
+        var editor = doc.EditSketch(sketch);
+        try
+        {
+            foreach (var name in Enumerable.Reverse(built.Dimensions)) editor.DeleteDimension(name);
+            foreach (var relation in Enumerable.Reverse(built.Relations)) editor.DeleteRelation(relation);
+            foreach (var id in Enumerable.Reverse(built.Order))
+            {
+                foreach (var entity in Enumerable.Reverse(built.Drawn[id])) editor.Delete(entity);
+            }
+        }
+        finally
+        {
+            editor.Close();
+        }
+        doc.Rebuild(false);
+    }
+
+    static string Count(SketchContents c) => $"{c.Segments.Count} segments, {c.Dimensions.Count} dimensions";
 }
 
 public sealed class SketchReadOperation : Operation<SketchReadRequest, SketchReadResult>

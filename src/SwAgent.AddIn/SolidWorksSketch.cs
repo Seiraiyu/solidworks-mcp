@@ -119,7 +119,8 @@ internal sealed class SolidWorksSketchEditor : ISketchEditor
         return point ?? throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS gave no {part} point for a sketch segment");
     }
 
-    public bool Relate(SketchRelationType type, IReadOnlyList<object> entities)
+    /// <summary>The relation SOLIDWORKS added, taken as the last in its list (it lists relations in the order they were made), or null when none was.</summary>
+    public object? Relate(SketchRelationType type, IReadOnlyList<object> entities)
     {
         var relations = Active.RelationManager;
         int before = relations.GetRelationsCount((int)swSketchRelationFilterType_e.swAll);
@@ -127,7 +128,23 @@ internal sealed class SolidWorksSketchEditor : ISketchEditor
         bool points = entities.All(e => e is ISketchPoint || e is IVertex || e is SketchOrigin);
         _doc.SketchAddConstraints(ConstraintName(type, points));
         _doc.ClearSelection2(true);
-        return relations.GetRelationsCount((int)swSketchRelationFilterType_e.swAll) > before;
+        if (relations.GetRelationsCount((int)swSketchRelationFilterType_e.swAll) <= before) return null;
+        return relations.GetRelations((int)swSketchRelationFilterType_e.swAll) is object[] all && all.Length > 0 ? all[all.Length - 1] : null;
+    }
+
+    public void DeleteRelation(object relation)
+    {
+        if (!Active.RelationManager.DeleteRelation((SketchRelation)relation))
+            throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not delete a sketch relation");
+    }
+
+    public void DeleteDimension(string fullName)
+    {
+        _doc.ClearSelection2(true);
+        bool selected = _doc.Extension.SelectByID2(fullName, "DIMENSION", 0, 0, 0, false, 0, null, 0);
+        bool deleted = selected && _doc.Extension.DeleteSelection2(0);
+        _doc.ClearSelection2(true);
+        if (!deleted) throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS did not delete the dimension {fullName}");
     }
 
     public string? Dimension(DimensionKind kind, IReadOnlyList<object> entities, double value, string? name)

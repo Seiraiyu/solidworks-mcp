@@ -43,11 +43,17 @@ public interface ISketchEditor
     /// <summary>The sketch point at a segment's start, end or center.</summary>
     object PointOf(object segment, string part);
 
-    /// <summary>Adds a relation between sketch entities, the origin (<see cref="SketchOrigin"/>) or the part's edges and vertices; false when SOLIDWORKS did not add it.</summary>
-    bool Relate(SketchRelationType type, IReadOnlyList<object> entities);
+    /// <summary>Adds a relation between sketch entities, the origin (<see cref="SketchOrigin"/>) or the part's edges and vertices: the relation, or null when SOLIDWORKS did not add it.</summary>
+    object? Relate(SketchRelationType type, IReadOnlyList<object> entities);
+
+    /// <summary>Deletes a relation <see cref="Relate"/> added.</summary>
+    void DeleteRelation(object relation);
 
     /// <summary>Adds a driving dimension of <paramref name="kind"/>, names it and sets it (mm, or degrees); its full name, or null when SOLIDWORKS added none.</summary>
     string? Dimension(DimensionKind kind, IReadOnlyList<object> entities, double value, string? name);
+
+    /// <summary>Deletes a dimension by its full name.</summary>
+    void DeleteDimension(string fullName);
 
     /// <summary>Deletes a sketch entity.</summary>
     void Delete(object entity);

@@ -25,7 +25,11 @@ sealed class FakeSketch
 
     public List<SketchSegmentRecord> Segments { get; } = new List<SketchSegmentRecord>();
     public List<SketchPointRecord> Points { get; } = new List<SketchPointRecord>();
-    public List<(SketchRelationType Type, IReadOnlyList<object> Entities)> Relations { get; } = new List<(SketchRelationType, IReadOnlyList<object>)>();
+    public List<(SketchRelationType Type, IReadOnlyList<object> Entities, object Token)> Relations { get; } = new List<(SketchRelationType, IReadOnlyList<object>, object)>();
+
+    /// <summary>How many lines and arcs were ever drawn, for SOLIDWORKS-like names (Line5, Arc2).</summary>
+    public int LinesDrawn { get; set; }
+    public int ArcsDrawn { get; set; }
     public List<FakeDimension> Dimensions { get; } = new List<FakeDimension>();
 
     /// <summary>What the solver says; under defined unless a test says otherwise.</summary>
@@ -74,8 +78,6 @@ sealed class FakeSketchEditor : ISketchEditor
 {
     readonly FakeSketch _sketch;
     readonly Dictionary<(object, string), FakeEntity> _points = new Dictionary<(object, string), FakeEntity>();
-    int _lines;
-    int _arcs;
 
     public FakeSketchEditor(FakeSketch sketch)
     {
@@ -105,7 +107,7 @@ sealed class FakeSketchEditor : ISketchEditor
     }
 
     public object Line(Point2 start, Point2 end, bool construction) =>
-        Segment(SketchSegmentKind.Line, "Line" + ++_lines, construction, r =>
+        Segment(SketchSegmentKind.Line, "Line" + ++_sketch.LinesDrawn, construction, r =>
         {
             r.Start = start;
             r.End = end;
@@ -113,7 +115,7 @@ sealed class FakeSketchEditor : ISketchEditor
         });
 
     public object Arc(Point2 center, Point2 start, Point2 end, bool counterclockwise) =>
-        Segment(SketchSegmentKind.Arc, "Arc" + ++_arcs, false, r =>
+        Segment(SketchSegmentKind.Arc, "Arc" + ++_sketch.ArcsDrawn, false, r =>
         {
             r.Center = center;
             r.Start = start;
@@ -122,7 +124,7 @@ sealed class FakeSketchEditor : ISketchEditor
         });
 
     public object Circle(Point2 center, double radiusMm) =>
-        Segment(SketchSegmentKind.Circle, "Arc" + ++_arcs, false, r =>
+        Segment(SketchSegmentKind.Circle, "Arc" + ++_sketch.ArcsDrawn, false, r =>
         {
             r.Center = center;
             r.RadiusMm = radiusMm;
@@ -166,7 +168,7 @@ sealed class FakeSketchEditor : ISketchEditor
     }
 
     public object Spline(IReadOnlyList<Point2> points) =>
-        Segment(SketchSegmentKind.Spline, "Spline" + ++_lines, false, r =>
+        Segment(SketchSegmentKind.Spline, "Spline" + ++_sketch.LinesDrawn, false, r =>
         {
             r.Start = points[0];
             r.End = points[points.Count - 1];
@@ -195,12 +197,17 @@ sealed class FakeSketchEditor : ISketchEditor
         return point;
     }
 
-    public bool Relate(SketchRelationType type, IReadOnlyList<object> entities)
+    public object? Relate(SketchRelationType type, IReadOnlyList<object> entities)
     {
-        if (_sketch.Doc.SketchRefuses == type) return false;
-        _sketch.Relations.Add((type, entities.ToList()));
-        return true;
+        if (_sketch.Doc.SketchRefuses == type) return null;
+        var token = new object();
+        _sketch.Relations.Add((type, entities.ToList(), token));
+        return token;
     }
+
+    public void DeleteRelation(object relation) => _sketch.Relations.RemoveAll(r => ReferenceEquals(r.Token, relation));
+
+    public void DeleteDimension(string fullName) => _sketch.Dimensions.RemoveAll(d => d.FullName == fullName);
 
     public string? Dimension(DimensionKind kind, IReadOnlyList<object> entities, double value, string? name)
     {
