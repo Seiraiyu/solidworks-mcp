@@ -80,6 +80,146 @@ public class DialogWatchTests
     }
 
     [Fact]
+    public void Respond_presses_by_text_ignoring_case_and_accelerators()
+    {
+        var (watch, windows, events, _) = Make();
+        windows.Show(Dialogs.Box(400, "Save", "&Save", "Do&n't Save", "Cancel"));
+        watch.Tick();
+        var result = watch.Respond(new DialogRespondRequest { Dialog = watch.Current!.Id, Button = "don't save" }, T0.AddSeconds(10));
+        Assert.Equal("Don't Save", result.Pressed);
+        Assert.Equal(2, result.ControlId);
+        Assert.Equal(DialogOutcome.NoRequest, result.Outcome);
+        Assert.Equal(new[] { "press Do&n't Save" }, windows.Actions);
+        Assert.Equal(new[] { "dialog.opened", "dialog.answered", "dialog.closed" }, Dialogs.Kinds(events));
+    }
+
+    [Fact]
+    public void Respond_presses_by_control_id_and_closes()
+    {
+        var (watch, windows, _, _) = Make();
+        windows.Show(Dialogs.Box(500, "Save", "&Save", "Do&n't Save", "Cancel"));
+        watch.Tick();
+        Assert.Equal("Cancel", watch.Respond(new DialogRespondRequest { Dialog = watch.Current!.Id, Button = "3" }, T0.AddSeconds(10)).Pressed);
+
+        windows.Show(Dialogs.Box(501, "Again", "OK"));
+        watch.Tick();
+        var closed = watch.Respond(new DialogRespondRequest { Dialog = watch.Current!.Id, Button = "Close" }, T0.AddSeconds(10));
+        Assert.Equal("close", closed.Pressed);
+        Assert.Null(closed.ControlId);
+        Assert.Equal(new[] { "press Cancel", "close" }, windows.Actions);
+    }
+
+    [Fact]
+    public void Respond_to_an_unknown_or_already_closed_dialog_is_invalid_argument()
+    {
+        var (watch, windows, _, _) = Make();
+        Assert.Equal(ErrorCode.InvalidArgument, Assert.Throws<SwAgentException>(() =>
+            watch.Respond(new DialogRespondRequest { Dialog = "d9-1", Button = "OK" }, T0.AddSeconds(10))).Code);
+
+        var box = Dialogs.Box(600, "Gone", "OK");
+        windows.Show(box);
+        watch.Tick();
+        string id = watch.Current!.Id;
+        windows.Hide(box); // closed, and the watch has not ticked since
+        Assert.Equal(ErrorCode.InvalidArgument, Assert.Throws<SwAgentException>(() =>
+            watch.Respond(new DialogRespondRequest { Dialog = id, Button = "OK" }, T0.AddSeconds(10))).Code);
+        Assert.Empty(windows.Actions);
+    }
+
+    [Fact]
+    public void Respond_with_an_unknown_button_lists_the_buttons()
+    {
+        var (watch, windows, _, _) = Make();
+        windows.Show(Dialogs.Box(700, "Save", "&Save", "Cancel"));
+        watch.Tick();
+        var e = Assert.Throws<SwAgentException>(() => watch.Respond(new DialogRespondRequest { Dialog = watch.Current!.Id, Button = "Maybe" }, T0.AddSeconds(10)));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Contains("Save (1), Cancel (2), or close", e.Message);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(60_001)]
+    public void Respond_bounds_wait_ms(int waitMs)
+    {
+        var (watch, windows, _, _) = Make();
+        windows.Show(Dialogs.Box(800, "Q", "OK"));
+        watch.Tick();
+        Assert.Equal(ErrorCode.InvalidArgument, Assert.Throws<SwAgentException>(() =>
+            watch.Respond(new DialogRespondRequest { Dialog = watch.Current!.Id, Button = "OK", WaitMs = waitMs }, T0.AddSeconds(100))).Code);
+    }
+
+    [Fact]
+    public void Respond_waits_for_the_request_and_returns_its_result()
+    {
+        var (watch, windows, _, ledger) = Make();
+        var entry = Running(ledger, 5, new CapturingReply());
+        windows.Show(Dialogs.Box(900, "Q", "OK"));
+        watch.Tick();
+        windows.AfterAnswer = _ => ThreadPool.QueueUserWorkItem(__ =>
+        {
+            Thread.Sleep(50);
+            entry.Outcome = RpcResponse.Success(5, new JsonObject { ["text"] = "done" });
+            ledger.Finish(entry);
+        });
+        var result = watch.Respond(new DialogRespondRequest { Dialog = watch.Current!.Id, Button = "OK" }, T0.AddSeconds(10));
+        Assert.Equal(DialogOutcome.Result, result.Outcome);
+        Assert.Equal("done", result.Result!["text"]);
+    }
+
+    [Fact]
+    public void Respond_returns_the_requests_error()
+    {
+        var (watch, windows, _, ledger) = Make();
+        var entry = Running(ledger, 5, new CapturingReply());
+        windows.Show(Dialogs.Box(901, "Q", "OK"));
+        watch.Tick();
+        windows.AfterAnswer = _ =>
+        {
+            entry.Outcome = RpcResponse.Failure(5, RpcErrorCodes.ServerError, new SwAgentError(ErrorCode.OperationFailed, "nope"));
+            ledger.Finish(entry);
+        };
+        var result = watch.Respond(new DialogRespondRequest { Dialog = watch.Current!.Id, Button = "OK" }, T0.AddSeconds(10));
+        Assert.Equal(DialogOutcome.Error, result.Outcome);
+        Assert.Equal(ErrorCode.OperationFailed, result.Error!.Code);
+    }
+
+    [Fact]
+    public void Respond_says_still_running_when_the_wait_ends_first()
+    {
+        var (watch, windows, _, ledger) = Make();
+        Running(ledger, 5, new CapturingReply());
+        windows.Show(Dialogs.Box(902, "Q", "OK"));
+        watch.Tick();
+        var result = watch.Respond(new DialogRespondRequest { Dialog = watch.Current!.Id, Button = "OK", WaitMs = 100 }, T0.AddSeconds(10));
+        Assert.Equal(DialogOutcome.StillRunning, result.Outcome);
+    }
+
+    [Fact]
+    public void Respond_returns_the_next_dialog_the_request_raises()
+    {
+        var (watch, windows, _, ledger) = Make();
+        Running(ledger, 5, new CapturingReply());
+        windows.Show(Dialogs.Box(903, "First", "OK"));
+        watch.Tick();
+        windows.AfterAnswer = _ => windows.Show(Dialogs.Box(904, "Second", "Yes", "No"));
+        var result = watch.Respond(new DialogRespondRequest { Dialog = watch.Current!.Id, Button = "OK" }, T0.AddSeconds(10));
+        Assert.Equal(DialogOutcome.DialogOpen, result.Outcome);
+        Assert.Equal("Second", result.NextDialog!.Title);
+    }
+
+    [Fact]
+    public void Respond_brings_the_table_up_to_date_before_it_answers()
+    {
+        var (watch, windows, events, _) = Make();
+        windows.Show(Dialogs.Box(908, "Options", "OK", "Cancel"));
+        watch.Tick();
+        watch.Respond(new DialogRespondRequest { Dialog = watch.Current!.Id, Button = "Cancel" }, T0.AddSeconds(10));
+        Assert.Null(watch.Current);
+        Assert.Equal(new[] { "dialog.opened", "dialog.answered", "dialog.closed" }, Dialogs.Kinds(events));
+    }
+
+    [Fact]
     public void A_dialog_on_the_allow_list_is_answered_by_itself_and_its_request_is_not_interrupted()
     {
         var allow = new DialogAllowList(new[] { new DialogRule("rebuild errors", "^Rebuild$", "happened", "Continue") });

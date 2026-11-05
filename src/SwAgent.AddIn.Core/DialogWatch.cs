@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -18,6 +19,12 @@ namespace SwAgent.AddIn.Core;
 /// </summary>
 public sealed class DialogWatch : IDisposable
 {
+    public const int DefaultWaitMs = 5000;
+    public const int MaxWaitMs = 60_000;
+
+    /// <summary>How long dialog.respond waits for the answered dialog's window to go before it answers.</summary>
+    public const int SettleMs = 2000;
+
     readonly IDialogWindows _windows;
     readonly RequestLedger _ledger;
     readonly EventHub _events;
@@ -103,6 +110,129 @@ public sealed class DialogWatch : IDisposable
                 var native = _windows.Read(hwnd);
                 if (native != null) Opened(native, now);
             }
+        }
+    }
+
+    /// <summary>
+    /// Pipe thread. Presses <paramref name="request"/>'s button (or closes the dialog) and, when the dialog belonged to a
+    /// request, waits for what followed, at most wait_ms and never past <paramref name="deadlineUtc"/>.
+    /// </summary>
+    public DialogRespondResult Respond(DialogRespondRequest request, DateTime deadlineUtc)
+    {
+        int waitMs = request.WaitMs ?? DefaultWaitMs;
+        if (waitMs < 0 || waitMs > MaxWaitMs)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument, $"wait_ms must be between 0 and {MaxWaitMs}, not {waitMs}",
+                new JsonObject { ["field"] = "wait_ms" });
+        }
+        Tracked? t;
+        lock (_gate) t = _open.Values.FirstOrDefault(x => x.Info.Id == request.Dialog);
+        if (t == null || !_windows.IsOpen(t.Native.Hwnd))
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"no open dialog '{request.Dialog}'; it may already have closed; read addin.state for the dialog open now",
+                new JsonObject { ["dialog"] = request.Dialog, ["open"] = Current?.Id });
+        }
+
+        string pressed;
+        int? controlId = null;
+        bool posted;
+        if (string.Equals(request.Button.Trim(), "close", StringComparison.OrdinalIgnoreCase))
+        {
+            pressed = "close";
+            posted = _windows.Close(t.Native);
+        }
+        else
+        {
+            var button = DialogButtons.Find(t.Native, request.Button) ?? throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"dialog \"{t.Info.Title}\" has no button '{request.Button}'; its buttons are: " +
+                string.Join(", ", t.Info.Buttons.Select(b => $"{b.Text} ({b.ControlId})")) + ", or close",
+                new JsonObject { ["dialog"] = t.Info.Id, ["button"] = request.Button });
+            pressed = DialogButtons.Clean(button.Text);
+            controlId = button.ControlId;
+            posted = _windows.Press(t.Native, button);
+        }
+        if (!posted)
+        {
+            throw new SwAgentException(ErrorCode.ApiError, $"could not post {pressed} to dialog \"{t.Info.Title}\"; it may just have closed",
+                new JsonObject { ["dialog"] = t.Info.Id });
+        }
+        _log.Info($"dialogs: {t.Info.Id} \"{t.Info.Title}\" answered {pressed} by the agent");
+        _events.Publish("dialog.answered", new DialogAnsweredEvent { Dialog = t.Info.Id, Title = t.Info.Title, Button = pressed, By = DialogAnsweredBy.Agent });
+
+        var result = new DialogRespondResult { Dialog = t.Info.Id, Pressed = pressed, ControlId = controlId, Outcome = DialogOutcome.NoRequest };
+        long remainingMs = (long)(deadlineUtc - _utcNow()).TotalMilliseconds - 200;
+        var clock = Stopwatch.StartNew();
+        var entry = t.Request;
+        if (entry == null) return Settled(result, t, clock, remainingMs);
+
+        long budgetMs = Math.Min(waitMs, remainingMs);
+        while (true)
+        {
+            if (entry.State == LedgerState.Finished)
+            {
+                Fill(result, entry);
+                return Settled(result, t, clock, remainingMs);
+            }
+            Tick();
+            var next = NextDialogFor(entry, t);
+            if (next != null)
+            {
+                result.Outcome = DialogOutcome.DialogOpen;
+                result.NextDialog = next;
+                return Settled(result, t, clock, remainingMs);
+            }
+            if (clock.ElapsedMilliseconds >= budgetMs)
+            {
+                result.Outcome = DialogOutcome.StillRunning;
+                return Settled(result, t, clock, remainingMs);
+            }
+            Thread.Sleep(20);
+        }
+    }
+
+    /// <summary>
+    /// Before any answer: waits (at most <see cref="SettleMs"/>, never past the deadline) for the answered dialog's window to
+    /// go, then brings the table up to date, so a request sent right after the answer starts instead of being refused.
+    /// </summary>
+    DialogRespondResult Settled(DialogRespondResult result, Tracked answered, Stopwatch clock, long remainingMs)
+    {
+        long until = Math.Min(remainingMs, clock.ElapsedMilliseconds + SettleMs);
+        while (_windows.IsOpen(answered.Native.Hwnd) && clock.ElapsedMilliseconds < until) Thread.Sleep(10);
+        Tick();
+        return result;
+    }
+
+    DialogInfo? NextDialogFor(LedgerEntry entry, Tracked answered)
+    {
+        lock (_gate)
+        {
+            return _open.Values
+                .Where(x => !ReferenceEquals(x, answered) && ReferenceEquals(x.Request, entry))
+                .OrderByDescending(x => x.Sequence)
+                .Select(x => x.Info)
+                .FirstOrDefault();
+        }
+    }
+
+    static void Fill(DialogRespondResult result, LedgerEntry entry)
+    {
+        var outcome = entry.Outcome;
+        if (outcome == null)
+        {
+            result.Outcome = DialogOutcome.Error;
+            result.Error = new SwAgentError(ErrorCode.OperationFailed,
+                $"request {entry.Request.Id} {entry.Request.Method} ended without an outcome (its client disconnected)");
+        }
+        else if (outcome.IsSuccess)
+        {
+            result.Outcome = DialogOutcome.Result;
+            result.Result = outcome.Result as JsonObject;
+        }
+        else
+        {
+            result.Outcome = DialogOutcome.Error;
+            result.Error = outcome.Error;
         }
     }
 
