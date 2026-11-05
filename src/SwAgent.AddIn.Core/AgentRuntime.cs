@@ -61,6 +61,9 @@ public sealed class AgentRuntime
     /// <summary>Set by the add-in; null when preferences are not managed (tests).</summary>
     public PreferenceGuard? Preferences { get; set; }
 
+    /// <summary>Set by the add-in: raises selection.changed for the user's selections. Null in tests that do not need it.</summary>
+    public SelectionReporter? Selection { get; set; }
+
     /// <summary>SOLIDWORKS' main frame window, read on the UI thread at load; zero when unknown (then no dialog watch).</summary>
     public IntPtr MainWindow { get; set; }
 

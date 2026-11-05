@@ -80,6 +80,33 @@ public interface ISwDocument
 
     /// <summary>The shortest distance from <paramref name="point"/> to a face, edge or vertex, in mm.</summary>
     double DistanceMm(object entity, Point3 point);
+
+    /// <summary>How many items are selected now.</summary>
+    int SelectionCount();
+
+    /// <summary>The first <paramref name="max"/> selected items, in order: SOLIDWORKS' select type (swSelectType_e) and the object, when it gives one.</summary>
+    System.Collections.Generic.IReadOnlyList<SelectedObject> Selection(int max);
+
+    /// <summary>Clears the selection.</summary>
+    void ClearSelection();
+
+    /// <summary>Selects <paramref name="entity"/>, adding to the selection when <paramref name="append"/>; false when SOLIDWORKS refuses.</summary>
+    bool Select(object entity, bool append);
+}
+
+/// <summary>One selected object as SOLIDWORKS reports it.</summary>
+public sealed class SelectedObject
+{
+    public SelectedObject(int type, object? entity)
+    {
+        Type = type;
+        Entity = entity;
+    }
+
+    /// <summary>swSelectType_e.</summary>
+    public int Type { get; }
+
+    public object? Entity { get; }
 }
 
 /// <summary>A feature as the tree lists it.</summary>

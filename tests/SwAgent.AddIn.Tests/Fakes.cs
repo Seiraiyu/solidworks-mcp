@@ -200,6 +200,41 @@ sealed class FakeDocument : ISwDocument
         return ((FakeEntity)entity).Info.DistanceMm ?? 1e9;
     }
 
+    /// <summary>What Selection reports.</summary>
+    public List<SelectedObject> Selected { get; } = new List<SelectedObject>();
+
+    public int SelectionCount() => Selected.Count;
+
+    /// <summary>How many items Selection was asked to read, call by call.</summary>
+    public List<int> SelectionReads { get; } = new List<int>();
+
+    public IReadOnlyList<SelectedObject> Selection(int max)
+    {
+        SelectionReads.Add(max);
+        return Selected.Take(max).ToList();
+    }
+
+    public void ClearSelection() => Selected.Clear();
+
+    public bool Select(object entity, bool append)
+    {
+        if (!append) Selected.Clear();
+        var kind = ((FakeEntity)entity).Kind;
+        int type = kind switch
+        {
+            ReferenceKind.Edge => 1,
+            ReferenceKind.Face => 2,
+            ReferenceKind.Vertex => 3,
+            ReferenceKind.Plane => 4,
+            ReferenceKind.Axis => 5,
+            ReferenceKind.Point => 6,
+            ReferenceKind.Sketch => 9,
+            _ => 22,
+        };
+        Selected.Add(new SelectedObject(type, entity));
+        return true;
+    }
+
     SaveOutcome Write(string path)
     {
         Saves.Add(path);

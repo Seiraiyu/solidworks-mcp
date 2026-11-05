@@ -204,6 +204,26 @@ internal sealed class SolidWorksDocument : ISwDocument
         return Math.Sqrt(dx * dx + dy * dy + dz * dz) * Mm;
     }
 
+    public int SelectionCount() => Doc.SelectionManager is ISelectionMgr manager ? manager.GetSelectedObjectCount2(-1) : 0;
+
+    public IReadOnlyList<SelectedObject> Selection(int max)
+    {
+        var list = new List<SelectedObject>();
+        if (!(Doc.SelectionManager is ISelectionMgr manager)) return list;
+        int count = Math.Min(manager.GetSelectedObjectCount2(-1), max);
+        for (int i = 1; i <= count; i++) list.Add(new SelectedObject(manager.GetSelectedObjectType3(i, -1), manager.GetSelectedObject6(i, -1)));
+        return list;
+    }
+
+    public void ClearSelection() => Doc.ClearSelection2(true);
+
+    public bool Select(object entity, bool append) => entity switch
+    {
+        IFeature feature => feature.Select2(append, 0),
+        IEntity e => e.Select4(append, null),
+        _ => false,
+    };
+
     public ReferenceKind? KindOf(object entity) => entity switch
     {
         IFeature f => FeatureKind(f.GetTypeName2()),

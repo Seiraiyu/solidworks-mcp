@@ -19,6 +19,24 @@ public static class SolidWorksCodes
     /// <summary>A feature's rebuild error code (IFeature.GetErrorCode2, What's Wrong) as its swFeatureError_e name.</summary>
     public static string FeatureError(int code) => Enum.GetName(typeof(swFeatureError_e), code) ?? $"unknown_{code}";
 
+    /// <summary>A selected object's swSelectType_e as the name selection results use.</summary>
+    public static string SelectType(int type) => type switch
+    {
+        (int)swSelectType_e.swSelEDGES => "edge",
+        (int)swSelectType_e.swSelFACES => "face",
+        (int)swSelectType_e.swSelVERTICES => "vertex",
+        (int)swSelectType_e.swSelDATUMPLANES => "plane",
+        (int)swSelectType_e.swSelDATUMAXES => "axis",
+        (int)swSelectType_e.swSelDATUMPOINTS => "point",
+        (int)swSelectType_e.swSelSKETCHES => "sketch",
+        (int)swSelectType_e.swSelSKETCHSEGS => "sketch_segment",
+        (int)swSelectType_e.swSelSKETCHPOINTS => "sketch_point",
+        (int)swSelectType_e.swSelDIMENSIONS => "dimension",
+        (int)swSelectType_e.swSelBODYFEATURES => "feature",
+        (int)swSelectType_e.swSelSOLIDBODIES => "solid_body",
+        _ => "other",
+    };
+
     /// <summary>The names of the single-bit members of <typeparamref name="T"/> set in <paramref name="flags"/>, and unknown_&lt;bit&gt; for any other bit.</summary>
     public static IReadOnlyList<string> Names<T>(int flags) where T : struct, Enum
     {
