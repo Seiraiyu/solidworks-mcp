@@ -32,7 +32,7 @@ public class CliTests
         public Client.ClientOptions Client { get; init; } = new Client.ClientOptions { Processes = new FakeProcesses(), Pipes = new FakePipes(_ => false) };
         public Microsoft.Win32.RegistryKey? Root { get; init; }
         // Tests that do not attach get one that fails the test, so a slip cannot reach the real SOLIDWORKS.
-        public ISolidWorksAttach SolidWorks { get; init; } = new FakeAttach((_, _) => throw new InvalidOperationException("this test must not attach to SOLIDWORKS"));
+        public Client.ISolidWorksAttach SolidWorks { get; init; } = new FakeAttach((_, _) => throw new InvalidOperationException("this test must not attach to SOLIDWORKS"));
 
         // The --pid of every serve the command line started (null for none); the MCP server never runs for real here.
         public System.Collections.Generic.List<int?> Served { get; } = new System.Collections.Generic.List<int?>();

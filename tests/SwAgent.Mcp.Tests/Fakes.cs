@@ -28,7 +28,7 @@ sealed class FakePipes : IPipeDirectory
     public bool Exists(string pipeName) => _exists(pipeName);
 }
 
-sealed class FakeAttach : SwAgent.Mcp.ISolidWorksAttach
+sealed class FakeAttach : ISolidWorksAttach
 {
     readonly Func<int, string, int> _load;
 
@@ -37,5 +37,20 @@ sealed class FakeAttach : SwAgent.Mcp.ISolidWorksAttach
         _load = load;
     }
 
-    public int LoadAddIn(int processId, string dllPath) => _load(processId, dllPath);
+    /// <summary>What Probe answers; ready unless a test says otherwise.</summary>
+    public SolidWorksReadiness Readiness { get; set; } = SolidWorksReadiness.Yes;
+
+    public bool Hung { get; set; }
+
+    public int Loads { get; private set; }
+
+    public SolidWorksReadiness Probe(int processId) => Readiness;
+
+    public bool IsHung(int processId) => Hung;
+
+    public int LoadAddIn(int processId, string dllPath)
+    {
+        Loads++;
+        return _load(processId, dllPath);
+    }
 }
