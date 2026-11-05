@@ -6,6 +6,10 @@
     <RootNamespace>SwAgent.Mcp</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="ModelContextProtocol" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\SwAgent.Client\SwAgent.Client.csproj" />
   </ItemGroup>
   <Import Project="..\..\build\AddInPayload.targets" />
