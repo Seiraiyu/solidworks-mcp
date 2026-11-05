@@ -39,6 +39,7 @@ public class RpcCodecTests
     [InlineData("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"\",\"deadline_ms\":5}", RpcErrorCodes.InvalidRequest, 3L)]
     [InlineData("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"m.x\"}", RpcErrorCodes.InvalidRequest, 3L)]
     [InlineData("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"m.x\",\"deadline_ms\":0}", RpcErrorCodes.InvalidRequest, 3L)]
+    [InlineData("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"m.x\",\"deadline_ms\":3600001}", RpcErrorCodes.InvalidRequest, 3L)]
     [InlineData("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"m.x\",\"deadline_ms\":9223372036854775807}", RpcErrorCodes.InvalidRequest, 3L)]
     [InlineData("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"m.x\",\"deadline_ms\":5,\"params\":[]}", RpcErrorCodes.InvalidRequest, 3L)]
     [InlineData("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"m.x\",\"deadline_ms\":5,\"extra\":1}", RpcErrorCodes.InvalidRequest, 3L)]
@@ -76,5 +77,11 @@ public class RpcCodecTests
         Assert.Equal(RpcErrorCodes.InvalidParams, failed.RpcCode);
         Assert.Equal(ErrorCode.InvalidArgument, failed.Error!.Code);
         Assert.Equal("bad", failed.Error.Message);
+    }
+
+    [Fact]
+    public void A_deadline_of_one_hour_is_accepted()
+    {
+        Assert.Equal(3_600_000L, RpcCodec.ParseRequest("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"m.x\",\"deadline_ms\":3600000}").DeadlineMs);
     }
 }

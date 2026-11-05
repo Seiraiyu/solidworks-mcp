@@ -16,9 +16,9 @@ public sealed class ClientOptions
 
     public TimeSpan ConnectTimeout { get; set; } = TimeSpan.FromSeconds(5);
 
-    public TimeSpan HelloDeadline { get; set; } = TimeSpan.FromSeconds(10);
+    public TimeSpan HelloDeadline { get; set; } = OperationFamilies.DefaultDeadline("session");
 
-    /// <summary>The deadline of a call that names none.</summary>
+    /// <summary>The deadline of a call that names none and whose method no contract declares; declared methods use their family's default.</summary>
     public TimeSpan DefaultDeadline { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>How long past a request's deadline the client still waits, so the add-in's own timeout answer can arrive.</summary>
@@ -119,9 +119,9 @@ public sealed class SwAgentClient : IDisposable
         }
     }
 
-    /// <summary>Runs one operation by name with JSON parameters and returns the result as a JSON tree.</summary>
+    /// <summary>Runs one operation by name with JSON parameters and returns the result as a JSON tree. With no deadline, the family's default.</summary>
     public Task<object?> CallAsync(string method, JsonObject parameters, TimeSpan? deadline = null, CancellationToken cancellationToken = default) =>
-        _connection.CallAsync(method, parameters, deadline ?? _options.DefaultDeadline, cancellationToken);
+        _connection.CallAsync(method, parameters, deadline ?? OperationFamilies.DefaultFor(method, _options.DefaultDeadline), cancellationToken);
 
     public void Dispose() => _connection.Dispose();
 

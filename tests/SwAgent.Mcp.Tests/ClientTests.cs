@@ -152,4 +152,25 @@ public class ClientTests
         var e = await Assert.ThrowsAsync<SwAgentException>(() => client.CallAsync("session.status", new JsonObject(), TimeSpan.FromDays(30)));
         Assert.Equal(ErrorCode.InvalidArgument, e.Code);
     }
+
+    [Fact]
+    public async Task A_call_with_no_deadline_uses_its_familys_default()
+    {
+        using var addin = new FakeAddin();
+        using var client = await SwAgentClient.ConnectAsync(addin.Options());
+        Assert.Equal(10_000L, addin.Next().DeadlineMs); // session.hello: the session family
+        await client.CallAsync("session.status", new JsonObject());
+        Assert.Equal(10_000L, addin.Next().DeadlineMs);
+    }
+
+    [Fact]
+    public async Task A_deadline_over_one_hour_is_refused_before_it_is_sent()
+    {
+        using var addin = new FakeAddin();
+        using var client = await SwAgentClient.ConnectAsync(addin.Options());
+        addin.Next();
+        var e = await Assert.ThrowsAsync<SwAgentException>(() => client.CallAsync("session.status", new JsonObject(), TimeSpan.FromHours(2)));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.False(addin.Received.TryTake(out _, 300));
+    }
 }

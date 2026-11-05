@@ -99,11 +99,7 @@ public sealed class AddinConnection : IDisposable
     public async Task<object?> CallAsync(string method, JsonObject parameters, TimeSpan deadline, CancellationToken cancellationToken = default)
     {
         long deadlineMs = (long)Math.Ceiling(deadline.TotalMilliseconds);
-        if (deadlineMs < 1 || deadlineMs > int.MaxValue)
-        {
-            throw new SwAgentException(ErrorCode.InvalidArgument, $"the deadline must be between 1 and {int.MaxValue} ms, not {deadlineMs}",
-                new JsonObject { ["deadline_ms"] = deadlineMs });
-        }
+        OperationFamilies.ValidateOverride(deadlineMs);
         ThrowIfClosed();
         long id = Interlocked.Increment(ref _nextId);
         var reply = new TaskCompletionSource<RpcResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
