@@ -37,6 +37,16 @@ public static class SolidWorksCodes
         _ => swConstraintType_e.swConstraintType_FIXED,
     });
 
+    /// <summary>
+    /// A dimension's full name as agents read and pass it: name@owner. SOLIDWORKS' IDimension.FullName adds the
+    /// document (width@plate@sketches.Part, 3.B live run); names hold no '@' of their own, so that is the third part.
+    /// </summary>
+    public static string DimensionName(string fullName)
+    {
+        var parts = fullName.Split('@');
+        return parts.Length > 2 ? parts[0] + "@" + parts[1] : fullName;
+    }
+
     /// <summary>A relation's swConstraintType_e as an agent reads it: the sketch.create name where there is one, else SOLIDWORKS' own in lower case.</summary>
     public static string RelationName(int constraint)
     {

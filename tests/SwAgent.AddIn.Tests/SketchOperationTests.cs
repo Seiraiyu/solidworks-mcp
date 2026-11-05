@@ -177,6 +177,14 @@ public class SketchCreateTests : DocumentTestBase
         Assert.Same(corner, doc.Sketches[0].Relations[2].Entities[1]);
     }
 
+    /// <summary>SOLIDWORKS' IDimension.FullName ends with the document (width@plate@sketches.Part, 3.B live run); agents name a dimension without it.</summary>
+    [Theory]
+    [InlineData("width@plate@sketches.Part", "width@plate")]
+    [InlineData("D1@Boss-Extrude1@dimensions.Part", "D1@Boss-Extrude1")]
+    [InlineData("D1@Sketch1", "D1@Sketch1")]
+    public void A_dimension_is_named_without_its_document(string fullName, string name) =>
+        Assert.Equal(name, SolidWorksCodes.DimensionName(fullName));
+
     [Fact]
     public void A_relation_refused_with_a_reason_names_its_field_and_the_reason()
     {

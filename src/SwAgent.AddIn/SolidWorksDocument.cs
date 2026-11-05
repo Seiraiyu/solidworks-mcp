@@ -422,7 +422,7 @@ internal sealed class SolidWorksDocument : ISwDocument
     static EntityInfo DescribeDimension(IDisplayDimension d) => new EntityInfo
     {
         Kind = ReferenceKind.Dimension,
-        Name = (d.GetDimension2(0) as IDimension)?.FullName,
+        Name = d.GetDimension2(0) is IDimension dimension ? SolidWorksCodes.DimensionName(dimension.FullName) : null,
         Geometry = GeometryType.Other,
     };
 

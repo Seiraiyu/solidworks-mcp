@@ -175,10 +175,20 @@ internal sealed class SolidWorksSketchEditor : ISketchEditor
             throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not delete a sketch relation");
     }
 
+    /// <summary>Deletes the sketch's dimension named <paramref name="fullName"/> (name@owner), selected by SOLIDWORKS' own full name, which adds the document.</summary>
     public void DeleteDimension(string fullName)
     {
+        string own = fullName;
+        for (var d = Feature.GetFirstDisplayDimension() as IDisplayDimension; d != null; d = Feature.GetNextDisplayDimension(d) as IDisplayDimension)
+        {
+            if (d.GetDimension2(0) is IDimension dimension && string.Equals(SolidWorksCodes.DimensionName(dimension.FullName), fullName, StringComparison.OrdinalIgnoreCase))
+            {
+                own = dimension.FullName;
+                break;
+            }
+        }
         _doc.ClearSelection2(true);
-        bool selected = _doc.Extension.SelectByID2(fullName, "DIMENSION", 0, 0, 0, false, 0, null, 0);
+        bool selected = _doc.Extension.SelectByID2(own, "DIMENSION", 0, 0, 0, false, 0, null, 0);
         bool deleted = selected && _doc.Extension.DeleteSelection2(0);
         _doc.ClearSelection2(true);
         if (!deleted) throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS did not delete the dimension {fullName}");
@@ -201,7 +211,7 @@ internal sealed class SolidWorksSketchEditor : ISketchEditor
         if (name != null) dimension.Name = name;
         double system = kind == DimensionKind.Angle ? value * Math.PI / 180 : value / M;
         dimension.SetSystemValue3(system, (int)swSetValueInConfiguration_e.swSetValue_InThisConfiguration, null);
-        return dimension.FullName;
+        return SolidWorksCodes.DimensionName(dimension.FullName);
     }
 
     public void Delete(object entity)
@@ -370,7 +380,7 @@ internal static class SolidWorksSketchReader
             if (!(d.GetDimension2(0) is IDimension dimension)) continue;
             bool angle = d.Type2 == (int)swDimensionType_e.swAngularDimension;
             double system = ((double[])dimension.GetSystemValue3((int)swInConfigurationOpts_e.swThisConfiguration, null))[0];
-            yield return new DimensionRecord(d, dimension.FullName, angle ? system * 180 / Math.PI : system * M, angle,
+            yield return new DimensionRecord(d, SolidWorksCodes.DimensionName(dimension.FullName), angle ? system * 180 / Math.PI : system * M, angle,
                 dimension.DrivenState != (int)swDimensionDrivenState_e.swDimensionDriven, feature.Name);
         }
     }
