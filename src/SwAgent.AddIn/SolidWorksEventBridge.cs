@@ -10,6 +10,9 @@ namespace SwAgent.AddIn;
 /// <summary>
 /// Turns SOLIDWORKS' application and document events into the add-in's events. Subscribed and unsubscribed on the
 /// UI thread. Handlers only read the document that raised them, never throw into SOLIDWORKS, and always return 0.
+/// Also keeps the add-in's tables in step with what the user does by hand: a part saved under a new name is recorded
+/// in the rename map (so its references still resolve), a closed document stops being the agent's, and a part's
+/// selection is passed to the selection reporter.
 /// </summary>
 internal sealed class SolidWorksEventBridge : IDisposable
 {
@@ -17,14 +20,18 @@ internal sealed class SolidWorksEventBridge : IDisposable
     readonly SldWorks _app;
     readonly DocumentTracker _docs;
     readonly ILog _log;
+    readonly AgentRuntime _runtime;
+    readonly ReferenceService _references;
     readonly Dictionary<IModelDoc2, DocumentHooks> _hooks = new Dictionary<IModelDoc2, DocumentHooks>();
 
-    public SolidWorksEventBridge(ISldWorks sw, DocumentTracker docs, ILog log)
+    public SolidWorksEventBridge(ISldWorks sw, DocumentTracker docs, ILog log, AgentRuntime runtime, ReferenceService references)
     {
         _sw = sw;
         _app = (SldWorks)sw;
         _docs = docs;
         _log = log;
+        _runtime = runtime;
+        _references = references;
     }
 
     public void Start()
@@ -91,11 +98,36 @@ internal sealed class SolidWorksEventBridge : IDisposable
     {
         if (_hooks.ContainsKey(doc)) return;
         var hooks = new DocumentHooks(this, doc);
+        // Open under this key now: a reference to the key names this document, not one it was once saved as.
+        _runtime.DocumentOpened(hooks.Key, owned: false);
         hooks.Attach();
         _hooks[doc] = hooks;
     }
 
-    int OnSaved(IModelDoc2 doc) => Guard("saved", () => _docs.Saved(Event(doc)));
+    int OnSaved(IModelDoc2 doc) => Guard("saved", () =>
+    {
+        var e = Event(doc);
+        if (_hooks.TryGetValue(doc, out var hooks))
+        {
+            string now = DocumentKeys.Of(e.Path, e.Title);
+            if (!DocumentKeys.Same(hooks.Key, now))
+            {
+                _runtime.DocumentRenamed(hooks.Key, now);
+                _log.Info($"events: {hooks.Key} was saved as {now}; its references follow it");
+                hooks.Key = now;
+            }
+        }
+        _docs.Saved(e);
+    });
+
+    int OnSelection(IModelDoc2 doc) => Guard("selection", () =>
+    {
+        // Only noted here: SOLIDWORKS notifies on every item of a box select, and the reporter reads the selection once,
+        // after it has been still for a moment.
+        var reporter = _runtime.Selection;
+        if (reporter == null || reporter.Suppressed) return;
+        reporter.Changed(() => Operations.SelectionReading.Event(new SolidWorksDocument(_sw, doc), _references));
+    });
 
     int OnModified() => Guard("modified", _docs.Refresh);
 
@@ -117,6 +149,7 @@ internal sealed class SolidWorksEventBridge : IDisposable
             hooks.Detach();
             _hooks.Remove(doc);
         }
+        _runtime.Owned.Remove(DocumentKeys.Of(e.Path, e.Title));
         _docs.Closed(e);
     });
 
@@ -148,6 +181,8 @@ internal sealed class SolidWorksEventBridge : IDisposable
         readonly DPartDocEvents_ModifyNotifyEventHandler? _partModified;
         readonly DPartDocEvents_RegenPostNotifyEventHandler? _partRebuilt;
         readonly DPartDocEvents_DestroyNotify2EventHandler? _partDestroyed;
+        readonly DPartDocEvents_NewSelectionNotifyEventHandler? _partSelected;
+        readonly DPartDocEvents_ClearSelectionsNotifyEventHandler? _partCleared;
         readonly DAssemblyDocEvents_FileSavePostNotifyEventHandler? _asmSaved;
         readonly DAssemblyDocEvents_ModifyNotifyEventHandler? _asmModified;
         readonly DAssemblyDocEvents_RegenPostNotifyEventHandler? _asmRebuilt;
@@ -161,6 +196,10 @@ internal sealed class SolidWorksEventBridge : IDisposable
         {
             _bridge = bridge;
             _doc = doc;
+            var info = SolidWorksApplication.Describe(doc);
+            Key = DocumentKeys.Of(info.Path, info.Title);
+            _partSelected = () => bridge.OnSelection(doc);
+            _partCleared = () => bridge.OnSelection(doc);
             _partSaved = (t, f) => bridge.OnSaved(doc);
             _partModified = bridge.OnModified;
             _partRebuilt = () => bridge.OnRebuilt(doc);
@@ -175,6 +214,9 @@ internal sealed class SolidWorksEventBridge : IDisposable
             _drwDestroyed = t => bridge.OnDestroyed(doc, t);
         }
 
+        /// <summary>The document's key when last seen: its path, or its title while unsaved.</summary>
+        public string Key { get; set; }
+
         public void Attach()
         {
             switch (_doc)
@@ -184,6 +226,8 @@ internal sealed class SolidWorksEventBridge : IDisposable
                     part.ModifyNotify += _partModified;
                     part.RegenPostNotify += _partRebuilt;
                     part.DestroyNotify2 += _partDestroyed;
+                    part.NewSelectionNotify += _partSelected;
+                    part.ClearSelectionsNotify += _partCleared;
                     break;
                 case AssemblyDoc asm:
                     asm.FileSavePostNotify += _asmSaved;
@@ -211,6 +255,8 @@ internal sealed class SolidWorksEventBridge : IDisposable
                         part.ModifyNotify -= _partModified;
                         part.RegenPostNotify -= _partRebuilt;
                         part.DestroyNotify2 -= _partDestroyed;
+                        part.NewSelectionNotify -= _partSelected;
+                        part.ClearSelectionsNotify -= _partCleared;
                         break;
                     case AssemblyDoc asm:
                         asm.FileSavePostNotify -= _asmSaved;
