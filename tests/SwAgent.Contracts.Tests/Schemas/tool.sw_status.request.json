@@ -1,0 +1,6 @@
+{
+  "type": "object",
+  "description": "Says what SOLIDWORKS is doing: whether it is running, what the add-in is running and has queued, any open dialog, the open documents and, when SOLIDWORKS is idle, the active document. Always answers, even while SOLIDWORKS is busy, stopped in a dialog, starting or absent.",
+  "properties": {},
+  "additionalProperties": false
+}

@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "description": "Events the server has received from SOLIDWORKS, oldest first, after a cursor: documents opened, saved, closed and changed, dialogs, and the outcomes of operations that were already answered timeout or dialog_open.",
+  "properties": {
+    "after_seq": {
+      "type": "integer",
+      "description": "Return events after this sequence number (the last_seq of an earlier answer); every kept event when absent."
+    },
+    "kinds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Only these kinds, for example document.saved; every kind when absent."
+    },
+    "limit": {
+      "type": "integer",
+      "description": "At most this many events, 1 to 1000; 100 when absent."
+    }
+  },
+  "additionalProperties": false
+}
