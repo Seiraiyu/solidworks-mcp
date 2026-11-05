@@ -1,9 +1,11 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/SwAgent.AddIn.Core/SwAgent.AddIn.Core.csproj" />
     <Project Path="src/SwAgent.AddIn/SwAgent.AddIn.csproj" />
     <Project Path="src/SwAgent.Contracts/SwAgent.Contracts.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/SwAgent.AddIn.Core.Tests/SwAgent.AddIn.Core.Tests.csproj" />
     <Project Path="tests/SwAgent.Contracts.Tests/SwAgent.Contracts.Tests.csproj" />
   </Folder>
 </Solution>
