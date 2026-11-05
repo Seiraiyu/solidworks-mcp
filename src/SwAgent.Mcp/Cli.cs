@@ -7,6 +7,7 @@ using Microsoft.Win32;
 using SwAgent.Client;
 using SwAgent.Contracts;
 using SwAgent.Contracts.Serialization;
+using SwAgent.Mcp.Registration;
 
 namespace SwAgent.Mcp;
 
@@ -62,6 +63,8 @@ public static class Cli
                     return ExitCodes.Success;
                 case "call":
                     return await CallAsync(args.Skip(1).ToArray(), env).ConfigureAwait(false);
+                case "addin":
+                    return Addin(args.Skip(1).ToArray(), env);
                 default:
                     throw new UsageException($"unknown command '{args[0]}'");
             }
@@ -113,6 +116,81 @@ public static class Cli
         Write(env, result);
         return ExitCodes.Success;
     }
+
+    static int Addin(string[] args, CliEnvironment env)
+    {
+        if (args.Length == 0) throw new UsageException("addin needs register, unregister or status");
+        var registrar = new AddinRegistrar(env.RegistryRoot);
+        var rest = args.Skip(1).ToArray();
+        switch (args[0])
+        {
+            case "register":
+            {
+                var a = Args.Parse(rest, "--path");
+                if (a.Positional.Count > 0) throw new UsageException("addin register takes no arguments besides --path");
+                string path = a.Options.TryGetValue("--path", out var p)
+                    ? p
+                    : Path.Combine(env.BaseDirectory, "addin", AddInIdentity.AssemblyFileName);
+                var assembly = registrar.Register(path);
+                var loaded = RunningSolidWorks(env).Where(s => s.AddinLoaded).Select(s => s.ProcessId).ToList();
+                Write(env, new JsonObject
+                {
+                    ["registered"] = true,
+                    ["path"] = assembly.Path,
+                    ["assembly"] = assembly.FullName,
+                    ["clsid"] = AddInIdentity.ClsidKey,
+                    ["next"] = loaded.Count > 0
+                        ? $"SOLIDWORKS (process {string.Join(", ", loaded)}) has the add-in loaded and its DLL locked; restart SOLIDWORKS to load this build"
+                        : "start SOLIDWORKS; the add-in loads at startup",
+                });
+                return ExitCodes.Success;
+            }
+            case "unregister":
+            {
+                var a = Args.Parse(rest);
+                if (a.Positional.Count > 0) throw new UsageException("addin unregister takes no arguments");
+                var removed = registrar.Unregister();
+                bool loaded = RunningSolidWorks(env).Any(s => s.AddinLoaded);
+                Write(env, new JsonObject
+                {
+                    ["unregistered"] = true,
+                    ["removed_keys"] = removed.Select(k => (object?)k).ToList(),
+                    ["next"] = loaded ? "restart SOLIDWORKS to unload the add-in" : "nothing; SOLIDWORKS will not load the add-in",
+                });
+                return ExitCodes.Success;
+            }
+            case "status":
+            {
+                var a = Args.Parse(rest);
+                if (a.Positional.Count > 0) throw new UsageException("addin status takes no arguments");
+                var status = registrar.Status();
+                Write(env, new JsonObject
+                {
+                    ["registered"] = status.Registered,
+                    ["path"] = status.Path,
+                    ["file_exists"] = status.FileExists,
+                    ["keys"] = new JsonObject
+                    {
+                        ["clsid"] = status.ClsidKey,
+                        ["prog_id"] = status.ProgIdKey,
+                        ["addins"] = status.AddInsKey,
+                        ["startup"] = status.StartupKey,
+                    },
+                    ["solidworks"] = RunningSolidWorks(env)
+                        .Select(s => (object?)new JsonObject { ["process_id"] = (long)s.ProcessId, ["addin_loaded"] = s.AddinLoaded })
+                        .ToList(),
+                });
+                return status.Registered ? ExitCodes.Success : ExitCodes.NotRegistered;
+            }
+            default:
+                throw new UsageException($"unknown addin command '{args[0]}'");
+        }
+    }
+
+    static List<(int ProcessId, bool AddinLoaded)> RunningSolidWorks(CliEnvironment env) =>
+        env.Client.Processes.SolidWorksProcessIds()
+            .Select(pid => (pid, env.Client.Pipes.Exists(env.Client.PipeNameFor(pid))))
+            .ToList();
 
     static void Write(CliEnvironment env, object? json) => env.Out.WriteLine(Json.Write(json, indented: true));
 

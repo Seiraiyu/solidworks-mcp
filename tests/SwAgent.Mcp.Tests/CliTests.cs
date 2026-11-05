@@ -103,4 +103,50 @@ public class CliTests
         var run = await RunAsync(new CliEnvironmentBuilder(), args);
         Assert.Equal(ExitCodes.Usage, run.Exit);
     }
+
+    [Fact]
+    public async Task Addin_register_status_unregister_round_trip()
+    {
+        using var scratch = new ScratchRegistry();
+        var env = new CliEnvironmentBuilder { Root = scratch.Root };
+
+        var status = await RunAsync(env, "addin", "status");
+        Assert.Equal(ExitCodes.NotRegistered, status.Exit);
+        Assert.Equal(false, status.Json["registered"]);
+
+        var register = await RunAsync(env, "addin", "register");
+        Assert.Equal(ExitCodes.Success, register.Exit);
+        Assert.Equal(Path.GetFullPath(Payload.AddinPath), register.Json["path"]);
+
+        status = await RunAsync(env, "addin", "status");
+        Assert.Equal(ExitCodes.Success, status.Exit);
+        Assert.Equal(true, status.Json["registered"]);
+
+        var unregister = await RunAsync(env, "addin", "unregister");
+        Assert.Equal(ExitCodes.Success, unregister.Exit);
+        Assert.Equal(4, ((System.Collections.IList)unregister.Json["removed_keys"]!).Count);
+    }
+
+    [Fact]
+    public async Task Addin_register_refuses_a_path_that_is_not_the_addin()
+    {
+        using var scratch = new ScratchRegistry();
+        var run = await RunAsync(new CliEnvironmentBuilder { Root = scratch.Root }, "addin", "register", "--path", typeof(Cli).Assembly.Location);
+        Assert.Equal(ExitCodes.For(ErrorCode.InvalidArgument), run.Exit);
+        Assert.Equal("invalid_argument", run.Json["code"]);
+    }
+
+    [Fact]
+    public async Task Addin_register_says_to_restart_when_SOLIDWORKS_has_it_loaded()
+    {
+        using var scratch = new ScratchRegistry();
+        var env = new CliEnvironmentBuilder
+        {
+            Root = scratch.Root,
+            Client = new Client.ClientOptions { Processes = new FakeProcesses(77), Pipes = new FakePipes(_ => true) },
+        };
+        var run = await RunAsync(env, "addin", "register");
+        Assert.Equal(ExitCodes.Success, run.Exit);
+        Assert.Contains("restart SOLIDWORKS", (string)run.Json["next"]!);
+    }
 }
