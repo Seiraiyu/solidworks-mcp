@@ -1,0 +1,621 @@
+{
+  "type": "object",
+  "description": "Draws a whole sketch in one call on a plane or a planar face: its lines, centerlines, arcs, circles, rectangles, polygons, slots, splines and points, then its relations, then its named driving dimensions; then closes it and checks it. Coordinates are mm in the sketch's own plane; the result gives the sketch's origin and axes in the part. SOLIDWORKS is never left editing the sketch. Checked: the sketch holds what was asked, every dimension reads back at its value, and it is not over defined; otherwise nothing is left of it (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "on": {
+      "type": "string",
+      "description": "What to sketch on: front, top or right (the template's own planes), a plane's name or reference, or a planar face's reference exactly as a result gave it."
+    },
+    "name": {
+      "type": "string",
+      "description": "The sketch's name; SOLIDWORKS names it (Sketch1, Sketch2 …) when absent. It must not already be a feature's name."
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A line from start to end.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Your own short name for it, unique in the request: a letter, then letters, digits or _. Relations and dimensions name it, with .start or .end for its ends."
+          },
+          "start": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "Where it starts, mm in the sketch."
+          },
+          "end": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "Where it ends, mm in the sketch."
+          },
+          "construction": {
+            "type": "boolean",
+            "description": "A construction line (it shapes the sketch but makes no geometry). Default false."
+          }
+        },
+        "required": [
+          "id",
+          "start",
+          "end"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Lines."
+    },
+    "center_lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A centerline: a construction line, for example the axis of a revolve or of a symmetric relation.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Your own short name for it, unique in the request; .start and .end name its ends."
+          },
+          "start": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "Where it starts, mm in the sketch."
+          },
+          "end": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "Where it ends, mm in the sketch."
+          }
+        },
+        "required": [
+          "id",
+          "start",
+          "end"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Centerlines (construction)."
+    },
+    "arcs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A circular arc about a centre, from start to end; start and end must be the same distance from the centre.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Your own short name for it, unique in the request; .center, .start and .end name its points."
+          },
+          "center": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "Its centre, mm in the sketch."
+          },
+          "start": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "Where it starts, mm in the sketch."
+          },
+          "end": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "Where it ends, mm in the sketch."
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "counterclockwise",
+              "clockwise"
+            ],
+            "description": "Which way it runs from start to end, seen from the sketch's front. Default counterclockwise."
+          }
+        },
+        "required": [
+          "id",
+          "center",
+          "start",
+          "end"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Arcs."
+    },
+    "circles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A circle.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Your own short name for it, unique in the request; .center names its centre."
+          },
+          "center": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "Its centre, mm in the sketch."
+          },
+          "radius_mm": {
+            "type": "number",
+            "description": "Its radius, mm; more than 0."
+          }
+        },
+        "required": [
+          "id",
+          "center",
+          "radius_mm"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Circles."
+    },
+    "rectangles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A rectangle with sides along the sketch's x and y axes: four lines, named .bottom, .right, .top and .left.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Your own short name for it, unique in the request; its sides are .bottom, .right, .top and .left."
+          },
+          "corner1": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "One corner, mm in the sketch; its centre when centered."
+          },
+          "corner2": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "The opposite corner, mm in the sketch."
+          },
+          "centered": {
+            "type": "boolean",
+            "description": "Corner1 is the rectangle's centre. Default false."
+          }
+        },
+        "required": [
+          "id",
+          "corner1",
+          "corner2"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Rectangles."
+    },
+    "polygons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A regular polygon: lines named .side1, .side2 … in order from the vertex, counterclockwise.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Your own short name for it, unique in the request; its sides are .side1, .side2 …."
+          },
+          "center": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "Its centre, mm in the sketch."
+          },
+          "vertex": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "One of its vertices, mm in the sketch."
+          },
+          "sides": {
+            "type": "integer",
+            "description": "How many sides, 3 to 64."
+          }
+        },
+        "required": [
+          "id",
+          "center",
+          "vertex",
+          "sides"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Regular polygons."
+    },
+    "slots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A straight slot: two straight sides and two half-circle ends, around the line from start to end.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Your own short name for it, unique in the request."
+          },
+          "start": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "The centre of one end, mm in the sketch."
+          },
+          "end": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "The centre of the other end, mm in the sketch."
+          },
+          "width_mm": {
+            "type": "number",
+            "description": "Its width (the ends' diameter), mm; more than 0."
+          }
+        },
+        "required": [
+          "id",
+          "start",
+          "end",
+          "width_mm"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Straight slots."
+    },
+    "splines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A spline through points, in order.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Your own short name for it, unique in the request."
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "A point in a sketch's own plane, in millimetres: x along the sketch's x axis, y along its y axis.",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "description": "X in the sketch, mm."
+                },
+                "y": {
+                  "type": "number",
+                  "description": "Y in the sketch, mm."
+                }
+              },
+              "required": [
+                "x",
+                "y"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The points it passes through, mm in the sketch: at least 2, no two in a row the same."
+          }
+        },
+        "required": [
+          "id",
+          "points"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Splines."
+    },
+    "points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A sketch point.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Your own short name for it, unique in the request."
+          },
+          "at": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X in the sketch, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y in the sketch, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "Where it is, mm in the sketch."
+          }
+        },
+        "required": [
+          "id",
+          "at"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Sketch points."
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A relation between sketch entities, or between them and the part's edges and vertices.",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "horizontal",
+              "vertical",
+              "coincident",
+              "tangent",
+              "parallel",
+              "perpendicular",
+              "equal",
+              "concentric",
+              "midpoint",
+              "collinear",
+              "symmetric",
+              "fix"
+            ],
+            "description": "horizontal or vertical (one line, or two points), coincident, tangent, concentric, perpendicular (two), parallel, equal, collinear (two or more), midpoint (a point, then a line), symmetric (two entities, then a centerline), fix (one or more)."
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What it relates: your ids (with .start, .end, .center or a side such as .bottom for a point or a side), origin for the sketch's origin, or references to the part's edges and vertices exactly as a result gave them."
+          }
+        },
+        "required": [
+          "type",
+          "entities"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Relations, added after everything is drawn."
+    },
+    "dimensions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A driving dimension.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Its name, so it reads name@Sketch3: a letter, then letters, digits or _. SOLIDWORKS names it (D1, D2 …) when absent."
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "What it measures, named as in relations: one line (its length), one circle or arc (diameter or radius), or two entities (the distance or angle between them)."
+          },
+          "value": {
+            "type": "number",
+            "description": "Its value: mm, or degrees for an angle; more than 0 (an angle less than 360)."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "linear",
+              "horizontal",
+              "vertical",
+              "radius",
+              "diameter",
+              "angle"
+            ],
+            "description": "linear, horizontal, vertical, radius, diameter or angle. Default: diameter for a circle, radius for an arc, linear otherwise."
+          }
+        },
+        "required": [
+          "entities",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Driving dimensions, added after the relations."
+    }
+  },
+  "required": [
+    "on"
+  ],
+  "additionalProperties": false
+}

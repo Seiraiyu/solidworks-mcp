@@ -30,7 +30,7 @@ sealed class FakeEntity
 }
 
 /// <summary>A document for operation tests: a title, path and type, and entities the reference code can name.</summary>
-sealed class FakeDocument : ISwDocument
+sealed partial class FakeDocument : ISwDocument
 {
     public FakeDocument(string title, string? path = null, DocumentType type = DocumentType.Part)
     {
@@ -162,6 +162,60 @@ sealed class FakeDocument : ISwDocument
     {
         Entities.Remove(feature);
         Tree.RemoveAll(f => ReferenceEquals(f.Feature, feature));
+    }
+
+    /// <summary>Renames a feature added with <see cref="AddFeature"/>.</summary>
+    public void RenameFeature(FakeEntity feature, string name)
+    {
+        feature.Info.Name = name;
+        int i = Tree.FindIndex(f => ReferenceEquals(f.Feature, feature));
+        var old = Tree[i];
+        Tree[i] = new FeatureRecord(feature, name, old.Type, old.Parent, old.Suppressed, old.ErrorCode, old.Warning);
+    }
+
+    /// <summary>Every sketch NewSketch opened, and the editor for each.</summary>
+    public List<FakeSketch> Sketches { get; } = new List<FakeSketch>();
+    public List<FakeSketchEditor> Editors { get; } = new List<FakeSketchEditor>();
+
+    /// <summary>A relation of this type is not added (SOLIDWORKS refusing it).</summary>
+    public SketchRelationType? SketchRefuses { get; set; }
+
+    /// <summary>No dimension is added.</summary>
+    public bool SketchRefusesDimensions { get; set; }
+
+    /// <summary>Dimensions are added as driven.</summary>
+    public bool SketchDimensionsDriven { get; set; }
+
+    /// <summary>Dimensions read back this much off what they were set to.</summary>
+    public double SketchDimensionError { get; set; }
+
+    /// <summary>Adding a dimension over-defines the sketch.</summary>
+    public bool SketchOverDefines { get; set; }
+
+    /// <summary>Circles are drawn but not in the sketch read back.</summary>
+    public bool SketchLosesCircles { get; set; }
+
+    /// <summary>DeleteFeature fails (a rollback that fails).</summary>
+    public bool DeleteFails { get; set; }
+
+    public ISketchEditor NewSketch(object planeOrFace)
+    {
+        var feature = AddFeature("Sketch" + (Sketches.Count + 1), "ProfileFeature", ReferenceKind.Sketch);
+        var sketch = new FakeSketch(this, feature, planeOrFace);
+        Sketches.Add(sketch);
+        var editor = new FakeSketchEditor(sketch);
+        Editors.Add(editor);
+        return editor;
+    }
+
+    public SketchContents ReadSketch(object sketch) => Sketches.Single(s => ReferenceEquals(s.Feature, sketch)).Read();
+
+    public void DeleteFeature(object feature)
+    {
+        if (DeleteFails) throw new InvalidOperationException("SOLIDWORKS did not delete it");
+        var e = (FakeEntity)feature;
+        RemoveFeature(e);
+        Sketches.RemoveAll(s => ReferenceEquals(s.Feature, e));
     }
 
     /// <summary>The sketch the user has open for editing, or null.</summary>

@@ -46,6 +46,16 @@ public enum SolveState
     Unknown,
 }
 
+public enum SketchSegmentKind
+{
+    Line,
+    Arc,
+    Circle,
+    Ellipse,
+    Spline,
+    Other,
+}
+
 [Description("A line from start to end.")]
 public sealed class SketchLine
 {
@@ -263,4 +273,154 @@ public sealed class SketchGeometry
 
     [Description("Driving dimensions, added after the relations.")]
     public List<SketchDimensionItem>? Dimensions { get; set; }
+}
+
+[Operation("sketch.create", typeof(SketchCreateResult))]
+[Description("Draws a whole sketch in one call on a plane or a planar face: its lines, centerlines, arcs, circles, rectangles, polygons, slots, splines and points, then its relations, then its named driving dimensions; then closes it and checks it. Coordinates are mm in the sketch's own plane; the result gives the sketch's origin and axes in the part. SOLIDWORKS is never left editing the sketch. Checked: the sketch holds what was asked, every dimension reads back at its value, and it is not over defined; otherwise nothing is left of it (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class SketchCreateRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("What to sketch on: front, top or right (the template's own planes), a plane's name or reference, or a planar face's reference exactly as a result gave it.")]
+    public string On { get; set; } = "";
+
+    [Description("The sketch's name; SOLIDWORKS names it (Sketch1, Sketch2 …) when absent. It must not already be a feature's name.")]
+    public string? Name { get; set; }
+
+    [Description("Lines.")]
+    public List<SketchLine>? Lines { get; set; }
+
+    [Description("Centerlines (construction).")]
+    public List<SketchCenterLine>? CenterLines { get; set; }
+
+    [Description("Arcs.")]
+    public List<SketchArc>? Arcs { get; set; }
+
+    [Description("Circles.")]
+    public List<SketchCircle>? Circles { get; set; }
+
+    [Description("Rectangles.")]
+    public List<SketchRectangle>? Rectangles { get; set; }
+
+    [Description("Regular polygons.")]
+    public List<SketchPolygon>? Polygons { get; set; }
+
+    [Description("Straight slots.")]
+    public List<SketchSlot>? Slots { get; set; }
+
+    [Description("Splines.")]
+    public List<SketchSpline>? Splines { get; set; }
+
+    [Description("Sketch points.")]
+    public List<SketchPointItem>? Points { get; set; }
+
+    [Description("Relations, added after everything is drawn.")]
+    public List<SketchRelationItem>? Relations { get; set; }
+
+    [Description("Driving dimensions, added after the relations.")]
+    public List<SketchDimensionItem>? Dimensions { get; set; }
+
+    /// <summary>The request's entity, relation and dimension lists, as the sketch check reads them.</summary>
+    public SketchGeometry Geometry() => new SketchGeometry
+    {
+        Lines = Lines,
+        CenterLines = CenterLines,
+        Arcs = Arcs,
+        Circles = Circles,
+        Rectangles = Rectangles,
+        Polygons = Polygons,
+        Slots = Slots,
+        Splines = Splines,
+        Points = Points,
+        Relations = Relations,
+        Dimensions = Dimensions,
+    };
+}
+
+[Description("A sketch made or changed, with references to what was drawn.")]
+public sealed class SketchCreateResult : IModelChangeResult
+{
+    [Required]
+    [Description("The evidence: what was made, and the part after it.")]
+    public ModelChange Change { get; set; } = new ModelChange();
+
+    [Required]
+    [Description("The sketch.")]
+    public SketchSummary Sketch { get; set; } = new SketchSummary();
+
+    [Required]
+    [Description("Each id in the request, with the references of what it drew.")]
+    public List<SketchIdReferences> Ids { get; set; } = new List<SketchIdReferences>();
+
+    [Required]
+    [Description("The dimensions the request added, in its order.")]
+    public List<DimensionInfo> Dimensions { get; set; } = new List<DimensionInfo>();
+}
+
+[Description("A sketch: its name, reference, how far it is defined, and where its plane is in the part.")]
+public sealed class SketchSummary
+{
+    [Required]
+    [Description("Its name, for example Sketch3.")]
+    public string Name { get; set; } = "";
+
+    [Description("Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+    public string? Reference { get; set; }
+
+    [Description("fully_defined, under_defined (allowed), over_defined, no_solution or unknown.")]
+    public SolveState Solve { get; set; }
+
+    [Required]
+    [Description("The sketch's origin in the part, mm.")]
+    public Point3 Origin { get; set; } = new Point3();
+
+    [Required]
+    [Description("The sketch's x axis in the part.")]
+    public Vector3 XAxis { get; set; } = new Vector3();
+
+    [Required]
+    [Description("The sketch's y axis in the part.")]
+    public Vector3 YAxis { get; set; } = new Vector3();
+
+    [Required]
+    [Description("The sketch plane's normal in the part (x axis × y axis).")]
+    public Vector3 Normal { get; set; } = new Vector3();
+}
+
+[Description("An id from the request and the references of what it drew.")]
+public sealed class SketchIdReferences
+{
+    [Required]
+    [Description("The id.")]
+    public string Id { get; set; } = "";
+
+    [Required]
+    [Description("One reference for a line, centerline, arc, circle, spline or point; four for a rectangle (bottom, right, top, left); one per side for a polygon, side1 first; four for a slot. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+    public List<string> References { get; set; } = new List<string>();
+}
+
+[Description("A dimension.")]
+public sealed class DimensionInfo
+{
+    [Required]
+    [Description("Its full name, for example width@Sketch3 or D1@Boss-Extrude1; dimension.set takes it.")]
+    public string Name { get; set; } = "";
+
+    [Description("Its value: mm, or degrees when unit is deg.")]
+    public double Value { get; set; }
+
+    [Required]
+    [Description("mm or deg.")]
+    public string Unit { get; set; } = "mm";
+
+    [Description("True when it drives the geometry; false when it only reports it (driven).")]
+    public bool Driving { get; set; }
+
+    [Description("The feature or sketch it belongs to.")]
+    public string? Feature { get; set; }
+
+    [Description("Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+    public string? Reference { get; set; }
 }

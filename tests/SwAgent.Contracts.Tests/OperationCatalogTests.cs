@@ -18,9 +18,9 @@ public sealed class EmptyResult { }
 public class OperationCatalogTests
 {
     [Fact]
-    public void Catalog_holds_the_phase_3A_operations()
+    public void Catalog_holds_the_phase_3B_operations()
     {
-        Assert.Equal(new[] { "addin.events", "addin.state", "diag.dialog", "diag.scratch_block", "diag.scratch_part", "diag.select", "diag.sleep", "dialog.respond", "document.close", "document.new", "document.open", "document.rebuild", "document.save", "document.save_as", "model.bounding_box", "model.find", "model.mass", "model.rebuild_status", "model.tree", "selection.get", "session.hello", "session.status" },
+        Assert.Equal(new[] { "addin.events", "addin.state", "diag.dialog", "diag.scratch_block", "diag.scratch_part", "diag.select", "diag.sleep", "dialog.respond", "document.close", "document.new", "document.open", "document.rebuild", "document.save", "document.save_as", "model.bounding_box", "model.find", "model.mass", "model.rebuild_status", "model.tree", "selection.get", "session.hello", "session.status", "sketch.create" },
             OperationCatalog.All.Select(o => o.Name).ToArray());
         var status = OperationCatalog.Find("session.status")!;
         Assert.Equal("session", status.Family);
@@ -44,6 +44,7 @@ public class OperationCatalogTests
         Assert.Equal("Pipe/tool", Shape("dialog.respond"));
         Assert.Equal("Ui/internal", Shape("diag.dialog"));
         Assert.Equal("Ui/internal", Shape("diag.scratch_part"));
+        Assert.Equal("Ui/tool", Shape("sketch.create"));
         Assert.Equal("Ui/internal", Shape("session.hello"));
         Assert.Equal("Ui/internal", Shape("session.status"));
         Assert.Equal("Ui/tool", Shape("document.new"));

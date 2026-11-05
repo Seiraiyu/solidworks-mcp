@@ -5,7 +5,11 @@ using SwAgent.AddIn.Core;
 
 namespace SwAgent.AddIn;
 
-/// <summary>The preferences automation needs (roadmap: no dimension box on creation, no save reminder, no close-sketch prompt).</summary>
+/// <summary>
+/// The preferences automation needs (roadmap: no dimension box on creation, no save reminder, no close-sketch prompt;
+/// plan 3.B: no prompt when a dimension would over-define a sketch, and such a dimension stays driving, so sketch.create
+/// finds the sketch over defined and rolls it back instead of waiting on a dialog).
+/// </summary>
 public static class AutomationPreferences
 {
     public static readonly IReadOnlyList<AutomationPreference> All = new[]
@@ -13,6 +17,8 @@ public static class AutomationPreferences
         new AutomationPreference("input_dim_val_on_create", (int)swUserPreferenceToggle_e.swInputDimValOnCreate, false),
         new AutomationPreference("save_reminder_enable", (int)swUserPreferenceToggle_e.swSaveReminderEnable, false),
         new AutomationPreference("sketch_prompt_to_close_sketch", (int)swUserPreferenceToggle_e.swSketchPromptToCloseSketch, false),
+        new AutomationPreference("sketch_overdefining_dims_prompt", (int)swUserPreferenceToggle_e.swSketchOverdefiningDimsPromptToSetState, false),
+        new AutomationPreference("sketch_overdefining_dims_set_driven", (int)swUserPreferenceToggle_e.swSketchOverdefiningDimsSetDrivenByDefault, false),
     };
 }
 

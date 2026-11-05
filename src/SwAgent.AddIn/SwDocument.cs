@@ -95,6 +95,15 @@ public interface ISwDocument
 
     /// <summary>Selects <paramref name="entity"/>, adding to the selection when <paramref name="append"/>; false when SOLIDWORKS refuses.</summary>
     bool Select(object entity, bool append);
+
+    /// <summary>Opens a new sketch on a plane or planar face for drawing (an operation's own; <see cref="ISketchEditor.Close"/> ends it).</summary>
+    ISketchEditor NewSketch(object planeOrFace);
+
+    /// <summary>Everything in a sketch: its segments, points, relations and dimensions, solve state, and where its plane is.</summary>
+    SketchContents ReadSketch(object sketch);
+
+    /// <summary>Deletes a feature (a sketch an operation made), and what it absorbed; throws when SOLIDWORKS does not.</summary>
+    void DeleteFeature(object feature);
 }
 
 /// <summary>One selected object as SOLIDWORKS reports it.</summary>

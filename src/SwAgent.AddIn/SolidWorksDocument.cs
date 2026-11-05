@@ -233,6 +233,9 @@ internal sealed class SolidWorksDocument : ISwDocument
         IFace2 _ => ReferenceKind.Face,
         IEdge _ => ReferenceKind.Edge,
         IVertex _ => ReferenceKind.Vertex,
+        ISketchSegment _ => ReferenceKind.SketchEntity,
+        ISketchPoint _ => ReferenceKind.SketchPoint,
+        IDisplayDimension _ => ReferenceKind.Dimension,
         _ => null,
     };
 
@@ -254,6 +257,9 @@ internal sealed class SolidWorksDocument : ISwDocument
         IFace2 face => DescribeFace(face),
         IEdge edge => DescribeEdge(edge),
         IVertex vertex => DescribeVertex(vertex),
+        ISketchSegment segment => DescribeSketchSegment(segment),
+        ISketchPoint point => DescribeSketchPoint(point),
+        IDisplayDimension dimension => DescribeDimension(dimension),
         _ => throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS returned a {entity.GetType().Name}, which the add-in cannot describe"),
     };
 
@@ -339,6 +345,68 @@ internal sealed class SolidWorksDocument : ISwDocument
         }
         return info;
     }
+
+    public ISketchEditor NewSketch(object planeOrFace) => SolidWorksSketchEditor.Open(Doc, planeOrFace);
+
+    public SketchContents ReadSketch(object sketch) => SolidWorksSketchReader.Read((IFeature)sketch);
+
+    public void DeleteFeature(object feature)
+    {
+        Doc.ClearSelection2(true);
+        if (!((IFeature)feature).Select2(false, 0)) throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS did not select {((IFeature)feature).Name} to delete it");
+        bool deleted = Doc.Extension.DeleteSelection2((int)swDeleteSelectionOptions_e.swDelete_Absorbed);
+        Doc.ClearSelection2(true);
+        if (!deleted) throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS did not delete {((IFeature)feature).Name}");
+    }
+
+    static string? SketchName(object? sketch) => (sketch as IFeature)?.Name;
+
+    static EntityInfo DescribeSketchSegment(ISketchSegment s)
+    {
+        var info = new EntityInfo
+        {
+            Kind = ReferenceKind.SketchEntity,
+            Name = s.GetName(),
+            Feature = SketchName(s.GetSketch()),
+            LengthMm = s.GetLength() * Mm,
+            Geometry = GeometryType.Other,
+        };
+        switch (s.GetType())
+        {
+            case (int)swSketchSegments_e.swSketchLINE:
+                info.Geometry = GeometryType.Line;
+                break;
+            case (int)swSketchSegments_e.swSketchARC:
+                info.Geometry = GeometryType.Circle;
+                if (s is ISketchArc arc) info.RadiusMm = arc.GetRadius() * Mm;
+                break;
+            case (int)swSketchSegments_e.swSketchELLIPSE:
+                info.Geometry = GeometryType.Ellipse;
+                break;
+            case (int)swSketchSegments_e.swSketchSPLINE:
+                info.Geometry = GeometryType.Spline;
+                break;
+        }
+        return info;
+    }
+
+    static EntityInfo DescribeSketchPoint(ISketchPoint p)
+    {
+        var info = new EntityInfo { Kind = ReferenceKind.SketchPoint, Feature = SketchName(p.GetSketch()), Geometry = GeometryType.Point };
+        if (p.GetSketch() is ISketch sketch)
+        {
+            var t = (double[])((MathTransform)sketch.ModelToSketchTransform.Inverse()).ArrayData;
+            info.Origin = new Point3((p.X * t[0] + p.Y * t[3] + t[9]) * Mm, (p.X * t[1] + p.Y * t[4] + t[10]) * Mm, (p.X * t[2] + p.Y * t[5] + t[11]) * Mm);
+        }
+        return info;
+    }
+
+    static EntityInfo DescribeDimension(IDisplayDimension d) => new EntityInfo
+    {
+        Kind = ReferenceKind.Dimension,
+        Name = (d.GetDimension2(0) as IDimension)?.FullName,
+        Geometry = GeometryType.Other,
+    };
 
     static EntityInfo DescribeFace(IFace2 face)
     {

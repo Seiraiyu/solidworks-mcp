@@ -259,7 +259,7 @@ public class SessionOperationTests
         var request = new SessionHelloRequest { ProtocolVersion = Protocol.Version };
         var result = op.Run(request, new TestContext());
         op.Verify(request, result, new TestContext());
-        Assert.Equal(3, guard.NotTaken.Count);
+        Assert.Equal(AutomationPreferences.All.Count, guard.NotTaken.Count);
         guard.Restore("test");
     }
 }
