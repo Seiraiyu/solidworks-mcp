@@ -202,4 +202,48 @@ public class AgentHostTests
         }
         ui.Invoke(host.Dispose);
     }
+
+    [Fact]
+    public async Task A_dialog_raised_by_a_request_is_reported_and_answered_through_the_pipe()
+    {
+        using var ui = new UiThread();
+        string name = PipeNames.Unique();
+        var owner = OwnerWindow.Create(ui);
+        var runtime = new AgentRuntime("t", 1, new MemoryLog(), diagnosticsEnabled: true) { MainWindow = owner };
+        var registry = OperationRegistry.Create(
+            OperationCatalog.FromTypes(new[] { typeof(DiagDialogRequest), typeof(DialogRespondRequest), typeof(AddinStateRequest) }),
+            new IOperation[] { new DiagDialogOperation(runtime), new DialogRespondOperation(runtime), new AddinStateOperation(runtime) });
+        var host = ui.Invoke(() => AgentHost.Start(name, registry, runtime));
+        using (var client = new RawClient(name))
+        {
+            await client.SendAsync(RpcCodec.FormatRequest(new RpcRequest(1, "diag.dialog",
+                new JsonObject { ["title"] = "swmcp host test", ["text"] = "Press OK.", ["buttons"] = "ok_cancel" }, 20000)));
+            var open = await NextResponse(client, 1);
+            Assert.Equal(ErrorCode.DialogOpen, open.Error!.Code);
+            string dialog = (string)((JsonObject)open.Error.Details!["dialog"]!)["id"]!;
+
+            await client.SendAsync(RpcCodec.FormatRequest(new RpcRequest(2, "addin.state", new JsonObject(), 5000)));
+            var state = (JsonObject)(await NextResponse(client, 2)).Result!;
+            Assert.Equal(dialog, ((JsonObject)state["dialog"]!)["id"]);
+            Assert.Equal(true, state["dialog_watch_alive"]);
+
+            await client.SendAsync(RpcCodec.FormatRequest(new RpcRequest(3, "dialog.respond", new JsonObject { ["dialog"] = dialog, ["button"] = "OK" }, 10000)));
+            var respond = (JsonObject)(await NextResponse(client, 3)).Result!;
+            Assert.Equal("result", respond["outcome"]);
+            Assert.Equal("ok", ((JsonObject)respond["result"]!)["pressed"]);
+        }
+        ui.Invoke(host.Dispose);
+    }
+
+    /// <summary>The response to request <paramref name="id"/>, skipping event notifications.</summary>
+    static async Task<RpcResponse> NextResponse(RawClient client, long id)
+    {
+        while (true)
+        {
+            string line = (await client.ReadLineAsync())!;
+            if (!((JsonObject)Json.Parse(line)!).ContainsKey("id")) continue;
+            var response = RpcCodec.ParseResponse(line);
+            if (response.Id == id) return response;
+        }
+    }
 }

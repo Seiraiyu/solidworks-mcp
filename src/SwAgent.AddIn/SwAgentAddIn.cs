@@ -43,6 +43,7 @@ public sealed class SwAgentAddIn : ISwAddin
             _log.Info($"loading add-in {Version} into SOLIDWORKS {app.RevisionNumber} (process {pid}, CLR {System.Environment.Version}, cookie {Cookie})");
             var runtime = new AgentRuntime(Version, pid, _log, diagnosticsEnabled: DiagnosticsSetting.Enabled(Microsoft.Win32.Registry.CurrentUser));
             _runtime = runtime;
+            runtime.MainWindow = FrameWindow(_sw, _log);
             _preferences = new PreferenceGuard(new SolidWorksPreferenceStore(_sw), AutomationPreferences.All, PreferenceGuard.DefaultJournalPath, _log);
             try
             {
@@ -103,6 +104,21 @@ public sealed class SwAgentAddIn : ISwAddin
             type => type.GetConstructor(new[] { typeof(AgentRuntime) }) != null
                 ? (IOperation)Activator.CreateInstance(type, services.Runtime)
                 : (IOperation)Activator.CreateInstance(type, services));
+
+    /// <summary>SOLIDWORKS' main frame window, for the dialog watch; zero (watch off) when it cannot be read.</summary>
+    static IntPtr FrameWindow(ISldWorks sw, ILog log)
+    {
+        try
+        {
+            if (sw.Frame() is IFrame frame) return new IntPtr(frame.GetHWndx64());
+            log.Warn("dialogs: SOLIDWORKS returned no frame");
+        }
+        catch (Exception e)
+        {
+            log.Error("dialogs: reading SOLIDWORKS' main window failed", e);
+        }
+        return IntPtr.Zero;
+    }
 
     void Teardown()
     {

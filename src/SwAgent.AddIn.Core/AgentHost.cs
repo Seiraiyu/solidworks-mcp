@@ -16,14 +16,16 @@ public sealed class AgentHost : IDisposable
 {
     readonly PipeServer _pipe;
     readonly Watchdog _watchdog;
+    readonly DialogWatch? _dialogs;
     readonly ILog _log;
     bool _disposed;
 
-    AgentHost(Dispatcher dispatcher, PipeServer pipe, Watchdog watchdog, AgentRuntime runtime)
+    AgentHost(Dispatcher dispatcher, PipeServer pipe, Watchdog watchdog, DialogWatch? dialogs, AgentRuntime runtime)
     {
         Dispatcher = dispatcher;
         _pipe = pipe;
         _watchdog = watchdog;
+        _dialogs = dialogs;
         Runtime = runtime;
         _log = runtime.Log;
     }
@@ -42,12 +44,25 @@ public sealed class AgentHost : IDisposable
         Start(pipeName, registry, new AgentRuntime("unknown", Process.GetCurrentProcess().Id, log, utcNow));
 
     /// <summary>Call on the UI thread. Throws (having released everything it made) if the pipe cannot be served.</summary>
-    public static AgentHost Start(string pipeName, OperationRegistry registry, AgentRuntime runtime)
+    public static AgentHost Start(string pipeName, OperationRegistry registry, AgentRuntime runtime, DialogAllowList? allowList = null)
     {
         var log = runtime.Log;
         var executor = new RequestExecutor(registry, log, runtime.UtcNow);
         var dispatcher = new Dispatcher(executor, log, runtime.UtcNow, runtime.Ledger, runtime.Events);
         var watchdog = new Watchdog(runtime.Ledger, log, runtime.UtcNow, dispatcher.Probe);
+        DialogWatch? dialogs = null;
+        if (runtime.MainWindow != IntPtr.Zero)
+        {
+            var watch = new DialogWatch(new Win32DialogWindows(runtime.MainWindow, Win32DialogWindows.CurrentThreadId()),
+                runtime.Ledger, runtime.Events, log, runtime.UtcNow, allowList);
+            dispatcher.OpenDialog = () => watch.Current;
+            runtime.Dialogs = watch;
+            dialogs = watch;
+        }
+        else
+        {
+            log.Warn("dialogs: SOLIDWORKS' main window is unknown, so the dialog watch is off and dialogs will not be reported");
+        }
         AgentHost? host = null;
         var pipe = new PipeServer(pipeName,
             (line, reply) => OnLine(line, reply, registry, executor, dispatcher, runtime),
@@ -73,7 +88,8 @@ public sealed class AgentHost : IDisposable
         runtime.WatchdogAlive = () => watchdog.IsAlive;
         dispatcher.AfterEachRequest = () => runtime.Documents?.Refresh();
         watchdog.Start();
-        host = new AgentHost(dispatcher, pipe, watchdog, runtime);
+        dialogs?.Start();
+        host = new AgentHost(dispatcher, pipe, watchdog, dialogs, runtime);
         log.Info($"agent host started on {pipeName}; operations: {string.Join(", ", registry.Names.OrderBy(n => n, StringComparer.Ordinal))}");
         return host;
     }
@@ -83,6 +99,7 @@ public sealed class AgentHost : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _dialogs?.Dispose();
         _watchdog.Dispose();
         Dispatcher.Dispose();
         _pipe.Dispose();
