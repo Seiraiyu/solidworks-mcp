@@ -31,6 +31,7 @@ public sealed class AddinConnection : IDisposable
     readonly string _pipeName;
     long _nextId;
     SwAgentError? _closed;
+    readonly TaskCompletionSource<SwAgentError> _closedTask = new TaskCompletionSource<SwAgentError>(TaskCreationOptions.RunContinuationsAsynchronously);
     Task _readLoop = Task.CompletedTask;
 
     AddinConnection(NamedPipeClientStream pipe, string pipeName, ClientOptions options)
@@ -44,6 +45,9 @@ public sealed class AddinConnection : IDisposable
     }
 
     public bool IsOpen => Volatile.Read(ref _closed) == null;
+
+    /// <summary>Completes, with the reason, the moment the connection closes for any cause.</summary>
+    public Task<SwAgentError> Closed => _closedTask.Task;
 
     /// <summary>Connects to <c>\\.\pipe\&lt;pipeName&gt;</c> and checks that process <paramref name="expectedServerProcessId"/> serves it.</summary>
     public static async Task<AddinConnection> OpenAsync(string pipeName, int expectedServerProcessId, ClientOptions options, CancellationToken cancellationToken = default)
@@ -249,6 +253,8 @@ public sealed class AddinConnection : IDisposable
         {
             // Already broken.
         }
+        // Closed first: a caller whose reply fails next can already see why the connection ended.
+        _closedTask.TrySetResult(reason);
         foreach (var id in _pending.Keys)
         {
             if (_pending.TryRemove(id, out var reply)) reply.TrySetException(new SwAgentException(reason));

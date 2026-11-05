@@ -65,6 +65,9 @@ public sealed class SwAgentClient : IDisposable
 
     public bool IsConnected => _connection.IsOpen;
 
+    /// <summary>Completes, with the reason, the moment the connection closes for any cause.</summary>
+    public Task<SwAgentError> Closed => _connection.Closed;
+
     public static async Task<SwAgentClient> ConnectAsync(ClientOptions? options = null, CancellationToken cancellationToken = default)
     {
         options ??= new ClientOptions();
