@@ -8,6 +8,7 @@ using SwAgent.Client;
 using SwAgent.Contracts;
 using SwAgent.Contracts.Serialization;
 using SwAgent.Mcp.Registration;
+using SwAgent.Mcp.Server;
 
 namespace SwAgent.Mcp;
 
@@ -31,6 +32,9 @@ public sealed class CliEnvironment
 
     /// <summary>How long <c>addin load</c> waits for the add-in's pipe after LoadAddIn returns.</summary>
     public TimeSpan AddinLoadWait { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>Runs the MCP server on stdio until the client disconnects; a fake in tests.</summary>
+    public Func<ClientOptions, Task<int>> Serve { get; init; } = client => McpHost.RunAsync(client);
 }
 
 public sealed class UsageException : Exception
@@ -45,6 +49,7 @@ public static class Cli
 {
     public const string UsageText =
         "usage:\n" +
+        "  swmcp [serve] [--pid N]          MCP server on stdio (the default)\n" +
         "  swmcp call <method> [json-params] [--pid N] [--deadline-ms N]\n" +
         "  swmcp addin register [--path <SwAgent.AddIn.dll>]\n" +
         "  swmcp addin load [--pid N]\n" +
@@ -56,7 +61,7 @@ public static class Cli
     {
         try
         {
-            if (args.Length == 0) throw new UsageException("no command given");
+            if (args.Length == 0) return await ServeAsync(args, env).ConfigureAwait(false);
             switch (args[0])
             {
                 case "help":
@@ -68,6 +73,8 @@ public static class Cli
                 case "--version":
                     env.Out.WriteLine(SwAgentClient.Version);
                     return ExitCodes.Success;
+                case "serve":
+                    return await ServeAsync(args.Skip(1).ToArray(), env).ConfigureAwait(false);
                 case "call":
                     return await CallAsync(args.Skip(1).ToArray(), env).ConfigureAwait(false);
                 case "addin":
@@ -92,6 +99,15 @@ public static class Cli
             env.Error.WriteLine("swmcp: unexpected failure: " + e);
             return ExitCodes.Internal;
         }
+    }
+
+    static async Task<int> ServeAsync(string[] args, CliEnvironment env)
+    {
+        var a = Args.Parse(args, "--pid");
+        if (a.Positional.Count > 0) throw new UsageException("serve takes no arguments besides --pid");
+        int? pid = a.Int("--pid");
+        if (pid != null) env.Client.ProcessId = pid;
+        return await env.Serve(env.Client).ConfigureAwait(false);
     }
 
     static async Task<int> CallAsync(string[] args, CliEnvironment env)
