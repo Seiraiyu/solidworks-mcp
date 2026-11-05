@@ -34,6 +34,9 @@ public class CliTests
         // Tests that do not attach get one that fails the test, so a slip cannot reach the real SOLIDWORKS.
         public ISolidWorksAttach SolidWorks { get; init; } = new FakeAttach((_, _) => throw new InvalidOperationException("this test must not attach to SOLIDWORKS"));
 
+        // The --pid of every serve the command line started (null for none); the MCP server never runs for real here.
+        public System.Collections.Generic.List<int?> Served { get; } = new System.Collections.Generic.List<int?>();
+
         public CliEnvironment Build(TextWriter stdout, TextWriter stderr) => new CliEnvironment
         {
             Out = stdout,
@@ -44,6 +47,7 @@ public class CliTests
             BaseDirectory = AppContext.BaseDirectory,
             SolidWorks = SolidWorks,
             AddinLoadWait = TimeSpan.FromMilliseconds(300),
+            Serve = client => { Served.Add(client.ProcessId); return Task.FromResult(ExitCodes.Success); },
         };
     }
 
@@ -56,11 +60,30 @@ public class CliTests
     }
 
     [Fact]
-    public async Task No_command_is_a_usage_error()
+    public async Task No_command_serves()
     {
-        var run = await RunAsync(new CliEnvironmentBuilder());
-        Assert.Equal(ExitCodes.Usage, run.Exit);
-        Assert.Contains("usage:", run.Error);
+        var env = new CliEnvironmentBuilder();
+        var run = await RunAsync(env);
+        Assert.Equal(ExitCodes.Success, run.Exit);
+        Assert.Null(Assert.Single(env.Served));
+        Assert.Empty(run.Out);
+    }
+
+    [Fact]
+    public async Task Serve_takes_a_pid()
+    {
+        var env = new CliEnvironmentBuilder();
+        var run = await RunAsync(env, "serve", "--pid", "4242");
+        Assert.Equal(ExitCodes.Success, run.Exit);
+        Assert.Equal(4242, Assert.Single(env.Served));
+    }
+
+    [Fact]
+    public async Task Help_prints_the_usage()
+    {
+        var run = await RunAsync(new CliEnvironmentBuilder(), "--help");
+        Assert.Equal(ExitCodes.Success, run.Exit);
+        Assert.Contains("swmcp [serve]", run.Out);
     }
 
     [Fact]
@@ -104,6 +127,8 @@ public class CliTests
     [InlineData("addin", "load", "--pid", "x")]
     [InlineData("addin", "load", "extra")]
     [InlineData("nonsense")]
+    [InlineData("serve", "extra")]
+    [InlineData("serve", "--pid", "0")]
     public async Task Bad_command_lines_are_usage_errors(params string[] args)
     {
         var run = await RunAsync(new CliEnvironmentBuilder(), args);
