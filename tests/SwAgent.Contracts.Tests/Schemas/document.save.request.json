@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "description": "Saves a document where it already is. A document never saved needs document.save_as. Checked on disk: the file was written by this call.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The document: its title or full path. The active document when absent."
+    }
+  },
+  "additionalProperties": false
+}

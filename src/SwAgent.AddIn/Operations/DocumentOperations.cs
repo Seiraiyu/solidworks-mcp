@@ -132,3 +132,123 @@ public sealed class DocumentOpenOperation : Operation<DocumentOpenRequest, Docum
             throw new SwAgentException(ErrorCode.VerificationFailed, $"{path} was asked to open read-only but is writable");
     }
 }
+
+/// <summary>What document.save and document.save_as share: the save itself, then proof on disk that it happened.</summary>
+static class Saving
+{
+    /// <summary>File times are not exact; a write within this much before the call began still counts as this call's.</summary>
+    static readonly TimeSpan Slack = TimeSpan.FromSeconds(2);
+
+    public static DocumentSaveResult Save(ISwDocument doc, string path, Func<SaveOutcome> save, IOperationContext context)
+    {
+        if (doc.ReadOnly)
+        {
+            throw new SwAgentException(ErrorCode.OperationFailed,
+                $"{doc.Info().Title} is open read-only and cannot be saved; close it and open it again without read_only",
+                new JsonObject { ["errors"] = new System.Collections.Generic.List<object?> { "swReadOnlySaveError" } });
+        }
+        var started = DateTime.UtcNow;
+        var outcome = save();
+        var warnings = SolidWorksCodes.SaveWarnings(outcome.Warnings).ToList();
+        if (!outcome.Saved)
+        {
+            var errors = SolidWorksCodes.SaveErrors(outcome.Errors);
+            throw new SwAgentException(ErrorCode.OperationFailed,
+                $"SOLIDWORKS did not save {path}: {string.Join(", ", errors.DefaultIfEmpty("no error reported"))}",
+                new JsonObject
+                {
+                    ["path"] = path,
+                    ["errors"] = errors.Select(n => (object?)n).ToList(),
+                    ["warnings"] = warnings.Select(n => (object?)n).ToList(),
+                });
+        }
+        var file = new FileInfo(path);
+        if (!file.Exists || file.LastWriteTimeUtc < started - Slack)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"SOLIDWORKS reported {path} saved, but {(file.Exists ? $"the file was last written at {file.LastWriteTimeUtc:o}, before this call" : "the file is not there")}",
+                new JsonObject { ["path"] = path });
+        }
+        context.Log.Info($"saved {path} ({file.Length} bytes)");
+        return new DocumentSaveResult { Document = doc.Info(), Path = path, Bytes = file.Length, Warnings = warnings };
+    }
+
+    /// <summary>The document is open at <paramref name="path"/> with no unsaved changes.</summary>
+    public static void Verify(ISolidWorksApplication sw, string path)
+    {
+        var doc = sw.Documents().FirstOrDefault(d => d.Info().Path is string p && DocumentKeys.Same(Path.GetFullPath(p), path));
+        if (doc == null) throw new SwAgentException(ErrorCode.VerificationFailed, $"no open document is {path} after saving it");
+        if (doc.Info().Dirty) throw new SwAgentException(ErrorCode.VerificationFailed, $"{path} still has unsaved changes after saving it");
+    }
+}
+
+public sealed class DocumentSaveOperation : Operation<DocumentSaveRequest, DocumentSaveResult>
+{
+    readonly AddInServices _services;
+
+    public DocumentSaveOperation(AddInServices services)
+    {
+        _services = services;
+    }
+
+    protected override DocumentSaveResult Run(DocumentSaveRequest request, IOperationContext context)
+    {
+        var doc = DocumentLocator.Find(_services.SolidWorks, request.Document);
+        var info = doc.Info();
+        if (info.Path == null)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{info.Title} has never been saved, so it has nowhere to be saved to; use document.save_as with a path",
+                new JsonObject { ["field"] = "document", ["document"] = info.Title });
+        }
+        string path = Path.GetFullPath(info.Path);
+        return Saving.Save(doc, path, doc.Save, context);
+    }
+
+    protected override void Verify(DocumentSaveRequest request, DocumentSaveResult result, IOperationContext context) =>
+        Saving.Verify(_services.SolidWorks, result.Path);
+}
+
+public sealed class DocumentSaveAsOperation : Operation<DocumentSaveAsRequest, DocumentSaveResult>
+{
+    readonly AddInServices _services;
+
+    public DocumentSaveAsOperation(AddInServices services)
+    {
+        _services = services;
+    }
+
+    protected override DocumentSaveResult Run(DocumentSaveAsRequest request, IOperationContext context)
+    {
+        var doc = DocumentLocator.Find(_services.SolidWorks, request.Document);
+        var info = doc.Info();
+        string extension = info.Type switch
+        {
+            DocumentType.Assembly => ".SLDASM",
+            DocumentType.Drawing => ".SLDDRW",
+            _ => ".SLDPRT",
+        };
+        string path = PathRules.Writable(request.Path, "path", request.Overwrite == true, extension);
+        string oldKey = DocumentKeys.Of(info);
+        var other = _services.SolidWorks.Documents().FirstOrDefault(d =>
+            d.Info().Path is string p && DocumentKeys.Same(Path.GetFullPath(p), path) && !DocumentKeys.Same(DocumentKeys.Of(d.Info()), oldKey));
+        if (other != null)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{path} is open as another document ({other.Info().Title}); close it first or choose another path",
+                new JsonObject { ["field"] = "path", ["path"] = path });
+        }
+        var result = Saving.Save(doc, path, () => doc.SaveAs(path), context);
+        if (!DocumentKeys.Same(DocumentKeys.Of(result.Document), path))
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"SOLIDWORKS wrote {path} but the document is still {DocumentKeys.Of(result.Document)}",
+                new JsonObject { ["path"] = path });
+        }
+        _services.Runtime.DocumentRenamed(oldKey, path);
+        return result;
+    }
+
+    protected override void Verify(DocumentSaveAsRequest request, DocumentSaveResult result, IOperationContext context) =>
+        Saving.Verify(_services.SolidWorks, result.Path);
+}

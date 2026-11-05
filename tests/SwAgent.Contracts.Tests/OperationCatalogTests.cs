@@ -20,7 +20,7 @@ public class OperationCatalogTests
     [Fact]
     public void Catalog_holds_the_phase_3A_operations()
     {
-        Assert.Equal(new[] { "addin.events", "addin.state", "diag.dialog", "diag.scratch_part", "diag.sleep", "dialog.respond", "document.new", "document.open", "session.hello", "session.status" },
+        Assert.Equal(new[] { "addin.events", "addin.state", "diag.dialog", "diag.scratch_part", "diag.sleep", "dialog.respond", "document.new", "document.open", "document.save", "document.save_as", "session.hello", "session.status" },
             OperationCatalog.All.Select(o => o.Name).ToArray());
         var status = OperationCatalog.Find("session.status")!;
         Assert.Equal("session", status.Family);

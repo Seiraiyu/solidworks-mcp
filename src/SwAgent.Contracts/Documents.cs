@@ -58,3 +58,45 @@ public sealed class DocumentOpenResult
     [Description("What SOLIDWORKS warned about while opening it (swFileLoadWarning_e names), for example swFileLoadWarning_ModelOutOfDate.")]
     public List<string> Warnings { get; set; } = new List<string>();
 }
+
+[Operation("document.save", typeof(DocumentSaveResult))]
+[Description("Saves a document where it already is. A document never saved needs document.save_as. Checked on disk: the file was written by this call.")]
+public sealed class DocumentSaveRequest
+{
+    [Description("The document: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+}
+
+[Operation("document.save_as", typeof(DocumentSaveResult))]
+[Description("Saves a document to a new file, which it then is (not a copy). Refuses an existing file unless overwrite. References issued before keep working. Checked on disk: the file was written by this call.")]
+public sealed class DocumentSaveAsRequest
+{
+    [Description("The document: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("Full path of the new file, in an existing folder, with the document's own extension (.SLDPRT for a part).")]
+    public string Path { get; set; } = "";
+
+    [Description("Replace the file if it exists. Default false.")]
+    public bool? Overwrite { get; set; }
+}
+
+[Description("The document saved.")]
+public sealed class DocumentSaveResult
+{
+    [Required]
+    [Description("The document, now without unsaved changes.")]
+    public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Required]
+    [Description("The file written.")]
+    public string Path { get; set; } = "";
+
+    [Description("The file's size in bytes.")]
+    public long Bytes { get; set; }
+
+    [Required]
+    [Description("What SOLIDWORKS warned about while saving (swFileSaveWarning_e names).")]
+    public List<string> Warnings { get; set; } = new List<string>();
+}

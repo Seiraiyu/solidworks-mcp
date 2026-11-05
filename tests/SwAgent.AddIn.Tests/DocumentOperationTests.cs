@@ -277,6 +277,121 @@ public class DocumentOpenTests : DocumentTestBase
     }
 }
 
+public class DocumentSaveTests : DocumentTestBase
+{
+    DocumentSaveResult Save(DocumentSaveRequest request) => Run(new DocumentSaveOperation(Services), request);
+
+    DocumentSaveResult SaveAs(DocumentSaveAsRequest request) => Run(new DocumentSaveAsOperation(Services), request);
+
+    [Fact]
+    public void Save_writes_the_file_where_it_is_and_clears_unsaved_changes()
+    {
+        string path = PathOf("plate.SLDPRT");
+        var doc = Sw.Track(FakeDocument.Part("plate.SLDPRT", path));
+        doc.Document.Dirty = true;
+        var result = Save(new DocumentSaveRequest { Document = "plate" });
+        Assert.Equal(path, result.Path);
+        Assert.False(result.Document.Dirty);
+        Assert.Equal(4, result.Bytes);
+        Assert.Equal(new[] { path }, doc.Saves);
+    }
+
+    [Fact]
+    public void A_document_never_saved_needs_save_as()
+    {
+        Sw.Track(FakeDocument.Part("Part1"));
+        var e = Fails(() => Save(new DocumentSaveRequest()));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Contains("document.save_as", e.Message);
+    }
+
+    [Fact]
+    public void A_read_only_document_is_not_saved()
+    {
+        string path = PathOf("ro.SLDPRT");
+        var doc = Sw.Track(new FakeDocument("ro.SLDPRT", path) { ReadOnly = true });
+        Assert.Equal(ErrorCode.OperationFailed, Fails(() => Save(new DocumentSaveRequest())).Code);
+        Assert.Empty(doc.Saves);
+    }
+
+    [Fact]
+    public void A_save_SOLIDWORKS_refuses_is_operation_failed_with_its_errors()
+    {
+        var doc = Sw.Track(FakeDocument.Part("plate.SLDPRT", PathOf("plate.SLDPRT")));
+        doc.FailNextSave = new SaveOutcome(false, 64, 0);
+        var e = Fails(() => Save(new DocumentSaveRequest()));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.Contains("swFileSaveWithRebuildError", e.Message);
+    }
+
+    [Fact]
+    public void A_save_reported_but_not_written_is_verification_failed()
+    {
+        string path = PathOf("old.SLDPRT");
+        File.WriteAllText(path, "old");
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddHours(-1));
+        var doc = Sw.Track(FakeDocument.Part("old.SLDPRT", path));
+        doc.SaveWritesNothing = true;
+        var e = Fails(() => Save(new DocumentSaveRequest()));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Contains("before this call", e.Message);
+    }
+
+    [Fact]
+    public void Save_as_makes_the_document_that_file_and_its_references_follow()
+    {
+        var doc = Sw.Track(FakeDocument.Part("Part1"));
+        string path = PathOf("bracket.SLDPRT");
+        var result = SaveAs(new DocumentSaveAsRequest { Path = path });
+        Assert.Equal(path, result.Document.Path);
+        Assert.Equal("bracket.SLDPRT", result.Document.Title);
+        Assert.True(File.Exists(path));
+        Assert.Equal(path, Services.Runtime.Renames.Current("Part1"));
+    }
+
+    [Fact]
+    public void Save_as_keeps_the_agents_ownership_of_its_part()
+    {
+        Sw.Track(FakeDocument.Part("Part1"));
+        Services.Runtime.Owned.Add("Part1");
+        SaveAs(new DocumentSaveAsRequest { Path = PathOf("mine.SLDPRT") });
+        Assert.True(Services.Runtime.Owned.Contains(PathOf("mine.SLDPRT")));
+    }
+
+    [Fact]
+    public void Save_as_refuses_an_existing_file_unless_overwrite()
+    {
+        Sw.Track(FakeDocument.Part("Part1"));
+        string path = PathOf("there.SLDPRT");
+        File.WriteAllText(path, "keep");
+        Assert.Equal(ErrorCode.InvalidArgument, Fails(() => SaveAs(new DocumentSaveAsRequest { Path = path })).Code);
+        Assert.Equal("keep", File.ReadAllText(path));
+        SaveAs(new DocumentSaveAsRequest { Path = path, Overwrite = true });
+        Assert.Equal("part", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void Save_as_needs_the_documents_own_extension()
+    {
+        Sw.Track(FakeDocument.Part("Part1"));
+        var e = Fails(() => SaveAs(new DocumentSaveAsRequest { Path = PathOf("part.STEP") }));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Contains(".SLDPRT", e.Message);
+    }
+
+    [Fact]
+    public void Save_as_onto_another_open_document_is_refused()
+    {
+        string path = PathOf("other.SLDPRT");
+        File.WriteAllText(path, "other");
+        Sw.Track(FakeDocument.Part("other.SLDPRT", path));
+        Sw.CurrentDoc = Sw.Track(FakeDocument.Part("Part1"));
+        var e = Fails(() => SaveAs(new DocumentSaveAsRequest { Path = path, Overwrite = true }));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Contains("open as another document", e.Message);
+    }
+}
+
 /// <summary>Passes everything to a FakeSolidWorks; subclasses change one call.</summary>
 abstract class DelegatingSolidWorks : ISolidWorksApplication
 {
