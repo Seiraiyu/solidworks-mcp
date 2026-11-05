@@ -5,4 +5,10 @@
     <RootNamespace>SwAgent.AddIn</RootNamespace>
   </PropertyGroup>
   <Import Project="..\..\build\SolidWorksInterop.props" />
+  <ItemGroup>
+    <ProjectReference Include="..\SwAgent.AddIn.Core\SwAgent.AddIn.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="SwAgent.AddIn.Tests" />
+  </ItemGroup>
 </Project>

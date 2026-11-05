@@ -8,6 +8,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SwAgent.AddIn.Core.Tests/SwAgent.AddIn.Core.Tests.csproj" />
+    <Project Path="tests/SwAgent.AddIn.Tests/SwAgent.AddIn.Tests.csproj" />
     <Project Path="tests/SwAgent.Contracts.Tests/SwAgent.Contracts.Tests.csproj" />
     <Project Path="tests/SwAgent.Mcp.Tests/SwAgent.Mcp.Tests.csproj" />
   </Folder>

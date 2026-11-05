@@ -1,21 +1,23 @@
 <Project>
   <PropertyGroup>
     <SolidWorksInteropDir Condition="'$(SolidWorksInteropDir)' == ''">$(MSBuildThisFileDirectory)..\lib\solidworks\2026-sp4\</SolidWorksInteropDir>
+    <!-- The add-in never ships these: SOLIDWORKS loads its own. Only test projects copy them, to load the add-in's types. -->
+    <SolidWorksInteropPrivate Condition="'$(SolidWorksInteropPrivate)' == ''">false</SolidWorksInteropPrivate>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="SolidWorks.Interop.sldworks">
       <HintPath>$(SolidWorksInteropDir)SolidWorks.Interop.sldworks.dll</HintPath>
-      <Private>false</Private>
+      <Private>$(SolidWorksInteropPrivate)</Private>
       <EmbedInteropTypes>false</EmbedInteropTypes>
     </Reference>
     <Reference Include="SolidWorks.Interop.swconst">
       <HintPath>$(SolidWorksInteropDir)SolidWorks.Interop.swconst.dll</HintPath>
-      <Private>false</Private>
+      <Private>$(SolidWorksInteropPrivate)</Private>
       <EmbedInteropTypes>false</EmbedInteropTypes>
     </Reference>
     <Reference Include="SolidWorks.Interop.swpublished">
       <HintPath>$(SolidWorksInteropDir)SolidWorks.Interop.swpublished.dll</HintPath>
-      <Private>false</Private>
+      <Private>$(SolidWorksInteropPrivate)</Private>
       <EmbedInteropTypes>false</EmbedInteropTypes>
     </Reference>
   </ItemGroup>
