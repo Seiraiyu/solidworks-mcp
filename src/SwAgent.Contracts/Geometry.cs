@@ -25,7 +25,7 @@ public sealed class Point3
     [Description("Z, mm.")]
     public double Z { get; set; }
 
-    public override string ToString() => $"({X:0.###}, {Y:0.###}, {Z:0.###})";
+    public override string ToString() => System.FormattableString.Invariant($"({X:0.###}, {Y:0.###}, {Z:0.###})");
 }
 
 [Description("A direction in the part's model space, of unit length.")]
@@ -51,7 +51,7 @@ public sealed class Vector3
     [Description("Z component.")]
     public double Z { get; set; }
 
-    public override string ToString() => $"({X:0.###}, {Y:0.###}, {Z:0.###})";
+    public override string ToString() => System.FormattableString.Invariant($"({X:0.###}, {Y:0.###}, {Z:0.###})");
 }
 
 [Description("An axis-aligned box in model space, in millimetres.")]
