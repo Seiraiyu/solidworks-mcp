@@ -185,6 +185,9 @@ sealed partial class FakeDocument : ISwDocument
     /// <summary>A relation of this type is not added (SOLIDWORKS refusing it).</summary>
     public SketchRelationType? SketchRefuses { get; set; }
 
+    /// <summary>A relation of this type is refused with the editor's own reason (what SOLIDWORKS selected and why).</summary>
+    public SketchRelationType? SketchRefusesSaying { get; set; }
+
     /// <summary>No dimension is added.</summary>
     public bool SketchRefusesDimensions { get; set; }
 

@@ -203,6 +203,7 @@ sealed class FakeSketchEditor : ISketchEditor
     public object? Relate(SketchRelationType type, IReadOnlyList<object> entities)
     {
         if (_sketch.Doc.SketchRefuses == type) return null;
+        if (_sketch.Doc.SketchRefusesSaying == type) throw new SwAgentException(ErrorCode.OperationFailed, "SOLIDWORKS selected 1 of 2");
         var token = new object();
         _sketch.Relations.Add((type, entities.ToList(), token));
         return token;

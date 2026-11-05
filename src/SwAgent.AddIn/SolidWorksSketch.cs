@@ -121,15 +121,41 @@ internal sealed class SolidWorksSketchEditor : ISketchEditor
 
     /// <summary>
     /// The relation SOLIDWORKS added, taken as the last in its list (it lists relations in the order they were made), or
-    /// null when none was. SOLIDWORKS adds no coincident relation between two points: it merges them (sgMERGEPOINTS, a
-    /// Merge relation), so a coincident relation between points SOLIDWORKS refuses is made that way (3.B live run).
+    /// null when none was. A coincident relation between points (3.B live run, the plate's line ends): when they are
+    /// already one point (SOLIDWORKS joins line ends drawn at one place) it holds as it is and <see cref="Joined"/> stands
+    /// for it; otherwise sgCOINCIDENT, then sgMERGEPOINTS (how SOLIDWORKS relates two points), and when both are refused
+    /// the refusal says what SOLIDWORKS selected and which points they were.
     /// </summary>
     public object? Relate(SketchRelationType type, IReadOnlyList<object> entities)
     {
         bool points = entities.All(e => e is ISketchPoint || e is IVertex || e is SketchOrigin);
-        return Constrain(ConstraintName(type, points), entities)
-            ?? (type == SketchRelationType.Coincident && points ? Constrain("sgMERGEPOINTS", entities) : null);
+        if (type != SketchRelationType.Coincident || !points) return Constrain(ConstraintName(type, points), entities);
+        var sketchPoints = entities.OfType<ISketchPoint>().ToList();
+        if (sketchPoints.Count == entities.Count && sketchPoints.Select(PointId).Distinct().Count() == 1) return Joined.Instance;
+        var relation = Constrain("sgCOINCIDENT", entities) ?? Constrain("sgMERGEPOINTS", entities);
+        if (relation != null) return relation;
+        Select(entities);
+        int selected = _doc.SelectionManager is ISelectionMgr selection ? selection.GetSelectedObjectCount2(-1) : -1;
+        _doc.ClearSelection2(true);
+        string described = string.Join("; ", entities.Select(e => e switch
+        {
+            ISketchPoint p => $"sketch point {PointId(p)} at {Mm(p)}",
+            SketchOrigin _ => "the origin",
+            _ => e.GetType().Name,
+        }));
+        throw new SwAgentException(ErrorCode.OperationFailed,
+            $"sgCOINCIDENT and sgMERGEPOINTS added no relation (SOLIDWORKS selected {selected} of {entities.Count}: {described})");
     }
+
+    /// <summary>A coincident relation that holds because its points are already one point: there is nothing to take back.</summary>
+    internal sealed class Joined
+    {
+        public static readonly Joined Instance = new Joined();
+
+        Joined() { }
+    }
+
+    static string PointId(ISketchPoint p) => string.Join(",", (int[])p.GetID());
 
     object? Constrain(string constraint, IReadOnlyList<object> entities)
     {
@@ -144,6 +170,7 @@ internal sealed class SolidWorksSketchEditor : ISketchEditor
 
     public void DeleteRelation(object relation)
     {
+        if (relation is Joined) return;
         if (!Active.RelationManager.DeleteRelation((SketchRelation)relation))
             throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not delete a sketch relation");
     }

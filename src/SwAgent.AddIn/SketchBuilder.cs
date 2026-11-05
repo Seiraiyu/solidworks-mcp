@@ -43,13 +43,19 @@ public static class SketchBuilder
         foreach (var r in draft.Relations)
         {
             var targets = r.Targets.Select(t => Target(editor, built, t, external)).ToList();
-            var relation = editor.Relate(r.Type, targets);
-            if (relation == null)
+            string refused = $"{r.Field}: SOLIDWORKS did not add the {WireNames.ForEnum(r.Type)} relation between {string.Join(", ", r.Targets.Select(t => t.Text))}";
+            object? relation;
+            try
             {
-                throw new SwAgentException(ErrorCode.OperationFailed,
-                    $"{r.Field}: SOLIDWORKS did not add the {WireNames.ForEnum(r.Type)} relation between {string.Join(", ", r.Targets.Select(t => t.Text))}; check that they can be related that way",
-                    new JsonObject { ["field"] = r.Field });
+                relation = editor.Relate(r.Type, targets);
             }
+            catch (SwAgentException e) when (e.Code == ErrorCode.OperationFailed)
+            {
+                // The editor's own reason (what SOLIDWORKS selected, which points), kept with the field.
+                throw new SwAgentException(ErrorCode.OperationFailed, $"{refused}: {e.Message}", new JsonObject { ["field"] = r.Field });
+            }
+            if (relation == null)
+                throw new SwAgentException(ErrorCode.OperationFailed, $"{refused}; check that they can be related that way", new JsonObject { ["field"] = r.Field });
             built.Relations.Add(relation);
         }
         foreach (var d in draft.Dimensions)

@@ -178,6 +178,19 @@ public class SketchCreateTests : DocumentTestBase
     }
 
     [Fact]
+    public void A_relation_refused_with_a_reason_names_its_field_and_the_reason()
+    {
+        var doc = Part();
+        doc.SketchRefusesSaying = SketchRelationType.Midpoint;
+        var e = Fails(() => Create(Plate()));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.Equal("/relations/1", e.Error.Details!["field"]);
+        Assert.Contains("SOLIDWORKS selected 1 of 2", e.Message);
+        Assert.StartsWith("/relations/1: SOLIDWORKS did not add the midpoint relation", e.Message);
+        Assert.Empty(doc.Sketches);
+    }
+
+    [Fact]
     public void A_relation_SOLIDWORKS_refuses_rolls_the_sketch_back()
     {
         var doc = Part();
