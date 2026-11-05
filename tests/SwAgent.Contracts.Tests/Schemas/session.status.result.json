@@ -1,0 +1,72 @@
+{
+  "type": "object",
+  "description": "The state of the SOLIDWORKS session.",
+  "properties": {
+    "sw_revision": {
+      "type": "string",
+      "description": "SOLIDWORKS' revision number, for example 34.4.0."
+    },
+    "process_id": {
+      "type": "integer",
+      "description": "The process id of sldworks.exe."
+    },
+    "addin_version": {
+      "type": "string",
+      "description": "The add-in's assembly version."
+    },
+    "protocol_version": {
+      "type": "integer",
+      "description": "The protocol version the add-in speaks."
+    },
+    "active_document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty"
+      ],
+      "additionalProperties": false,
+      "description": "The active document, absent when no document is open."
+    },
+    "open_document_count": {
+      "type": "integer",
+      "description": "How many documents are open."
+    },
+    "queued_requests": {
+      "type": "integer",
+      "description": "Requests waiting behind this one on SOLIDWORKS' UI thread."
+    }
+  },
+  "required": [
+    "sw_revision",
+    "process_id",
+    "addin_version",
+    "protocol_version",
+    "open_document_count",
+    "queued_requests"
+  ],
+  "additionalProperties": false
+}

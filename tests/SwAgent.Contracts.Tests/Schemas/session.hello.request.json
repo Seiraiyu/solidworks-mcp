@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "description": "Opens a connection: exchanges protocol versions and identifies the SOLIDWORKS instance.",
+  "properties": {
+    "protocol_version": {
+      "type": "integer",
+      "description": "The protocol version the client speaks."
+    },
+    "client_version": {
+      "type": "string",
+      "description": "The client's assembly version, recorded in the add-in's log."
+    }
+  },
+  "required": [
+    "protocol_version"
+  ],
+  "additionalProperties": false
+}

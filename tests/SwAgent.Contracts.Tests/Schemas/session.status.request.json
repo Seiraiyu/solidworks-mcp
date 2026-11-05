@@ -1,0 +1,6 @@
+{
+  "type": "object",
+  "description": "Reports the SOLIDWORKS session: versions, the active document and how many requests are waiting.",
+  "properties": {},
+  "additionalProperties": false
+}

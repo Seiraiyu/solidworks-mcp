@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "description": "The add-in's side of the hello.",
+  "properties": {
+    "protocol_version": {
+      "type": "integer",
+      "description": "The protocol version the add-in speaks."
+    },
+    "addin_version": {
+      "type": "string",
+      "description": "The add-in's assembly version."
+    },
+    "sw_revision": {
+      "type": "string",
+      "description": "SOLIDWORKS' revision number, for example 34.4.0."
+    },
+    "process_id": {
+      "type": "integer",
+      "description": "The process id of sldworks.exe."
+    }
+  },
+  "required": [
+    "protocol_version",
+    "addin_version",
+    "sw_revision",
+    "process_id"
+  ],
+  "additionalProperties": false
+}
