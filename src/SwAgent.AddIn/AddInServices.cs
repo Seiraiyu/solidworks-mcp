@@ -20,6 +20,9 @@ public sealed class AddInServices
 
     public AgentRuntime Runtime { get; }
 
+    /// <summary>Applied on session.hello; null when preferences are not managed (tests).</summary>
+    public PreferenceGuard? Preferences { get; set; }
+
     /// <summary>Requests waiting on the UI thread.</summary>
     public Func<int> QueuedRequests { get; set; }
 }
