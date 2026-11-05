@@ -98,13 +98,14 @@ internal sealed class SolidWorksDocument : ISwDocument
 
     public IReadOnlyList<FeatureRecord> Features()
     {
-        var list = new List<FeatureRecord>();
+        var walked = new List<(FeatureRecord, IReadOnlyList<FeatureRecord>)>();
         foreach (var top in TopFeatures())
         {
-            list.Add(Record(top, null));
-            for (var sub = top.GetFirstSubFeature() as IFeature; sub != null; sub = sub.GetNextSubFeature() as IFeature) list.Add(Record(sub, top.Name));
+            var subs = new List<FeatureRecord>();
+            for (var sub = top.GetFirstSubFeature() as IFeature; sub != null; sub = sub.GetNextSubFeature() as IFeature) subs.Add(Record(sub, top.Name));
+            walked.Add((Record(top, null), subs));
         }
-        return list;
+        return FeatureTree.Arrange(walked);
     }
 
     static FeatureRecord Record(IFeature f, string? parent)

@@ -60,7 +60,7 @@ public interface ISwDocument
     /// <summary>The features with a rebuild error or warning (SOLIDWORKS' What's Wrong list), in tree order.</summary>
     System.Collections.Generic.IReadOnlyList<RebuildItem> WhatsWrong();
 
-    /// <summary>Every feature in tree order, each followed by its sub-features.</summary>
+    /// <summary>Every feature in tree order from the first reference plane, each followed by its sub-features (see <see cref="FeatureTree"/>).</summary>
     System.Collections.Generic.IReadOnlyList<FeatureRecord> Features();
 
     /// <summary>How many solid bodies the part has.</summary>

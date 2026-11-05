@@ -213,7 +213,8 @@ public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
 
         var tree = await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = doc });
         var extrude = tree.Features.Single(f => f.Type == "Extrusion");
-        Assert.Contains(tree.Features, f => f.Type == "ProfileFeature" && f.Parent == extrude.Name);
+        Assert.Equal("RefPlane", tree.Features[0].Type);
+        Assert.Equal(extrude.Name, Assert.Single(tree.Features, f => f.Type == "ProfileFeature").Parent);
         var status = await Call<ModelRebuildStatusRequest, RebuildResult>(new ModelRebuildStatusRequest { Document = doc });
         Assert.Equal(0, status.Errors);
         return $"volume {mass.VolumeMm3} mm³, area {mass.AreaMm2} mm², centre {mass.CenterOfMass}, density {mass.DensityKgM3} kg/m³ ({mass.Material ?? "no material"}); " +
