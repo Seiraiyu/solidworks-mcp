@@ -37,13 +37,16 @@ public sealed class OperationAttribute : Attribute
     /// <summary>True for operations the client uses itself and never offers to an agent as an MCP tool.</summary>
     public bool Internal { get; set; }
 
+    /// <summary>True for operations that never change a document or SOLIDWORKS' state; their MCP tools say so.</summary>
+    public bool ReadOnly { get; set; }
+
     public string Family => Name.IndexOf('.') < 0 ? Name : Name.Substring(0, Name.IndexOf('.'));
 }
 
 public sealed class OperationDescriptor
 {
     public OperationDescriptor(string name, string family, Type requestType, Type resultType, string description,
-        OperationThread thread = OperationThread.Ui, bool isInternal = false)
+        OperationThread thread = OperationThread.Ui, bool isInternal = false, bool readOnly = false)
     {
         Name = name;
         Family = family;
@@ -52,6 +55,7 @@ public sealed class OperationDescriptor
         Description = description;
         Thread = thread;
         Internal = isInternal;
+        ReadOnly = readOnly;
     }
 
     public string Name { get; }
@@ -61,6 +65,10 @@ public sealed class OperationDescriptor
     public string Description { get; }
     public OperationThread Thread { get; }
     public bool Internal { get; }
+    public bool ReadOnly { get; }
+
+    /// <summary>The MCP tool name of an operation: sw_ and the name with dots as underscores (dialog.respond is sw_dialog_respond).</summary>
+    public string ToolName => "sw_" + Name.Replace('.', '_');
 }
 
 /// <summary>Every operation the contracts declare, validated once.</summary>
@@ -93,7 +101,7 @@ public static class OperationCatalog
             TypeMeta.For(type);
             TypeMeta.For(a.ResultType);
             list.Add(new OperationDescriptor(a.Name, a.Family, type, a.ResultType,
-                type.GetCustomAttribute<DescriptionAttribute>()?.Description ?? "", a.Thread, a.Internal));
+                type.GetCustomAttribute<DescriptionAttribute>()?.Description ?? "", a.Thread, a.Internal, a.ReadOnly));
         }
         return list.OrderBy(d => d.Name, StringComparer.Ordinal).ToList();
     }

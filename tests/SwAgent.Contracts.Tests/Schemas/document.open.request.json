@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "description": "Opens a part, assembly or drawing from a local file and makes it the active document. A document that is already open is made active, not opened again. A document this call opened is the agent's own, so document.close may close it.",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Full path of an existing .SLDPRT, .SLDASM or .SLDDRW file."
+    },
+    "read_only": {
+      "type": "boolean",
+      "description": "Open it read-only. Default false."
+    }
+  },
+  "required": [
+    "path"
+  ],
+  "additionalProperties": false
+}

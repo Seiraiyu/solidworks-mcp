@@ -13,14 +13,14 @@ namespace SwAgent.Contracts.Tests;
 public class EventCatalogTests
 {
     [Fact]
-    public void Catalog_holds_the_phase_2B_kinds()
+    public void Catalog_holds_the_phase_3A_kinds()
     {
         Assert.Equal(
             new[]
             {
                 "dialog.answered", "dialog.closed", "dialog.opened",
                 "document.activated", "document.closed", "document.opened", "document.rebuilt", "document.saved",
-                "documents.changed", "operation.completed", "session.closing",
+                "documents.changed", "operation.completed", "selection.changed", "session.closing",
             },
             EventCatalog.All.Select(e => e.Kind).ToArray());
         Assert.Equal(typeof(DocumentEvent), EventCatalog.Find("document.saved")!.DataType);

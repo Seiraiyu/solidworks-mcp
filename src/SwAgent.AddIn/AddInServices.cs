@@ -12,6 +12,7 @@ public sealed class AddInServices
         AddinVersion = addinVersion;
         Runtime = runtime ?? new AgentRuntime(addinVersion, 0, NullLog.Instance);
         QueuedRequests = () => Runtime.Ledger.QueuedCount;
+        References = new ReferenceService(Runtime.Renames);
     }
 
     public ISolidWorksApplication SolidWorks { get; }
@@ -19,6 +20,9 @@ public sealed class AddInServices
     public string AddinVersion { get; }
 
     public AgentRuntime Runtime { get; }
+
+    /// <summary>Issues and resolves references, following documents saved under a new name.</summary>
+    public ReferenceService References { get; }
 
     /// <summary>Applied on session.hello; null when preferences are not managed (tests).</summary>
     public PreferenceGuard? Preferences { get; set; }

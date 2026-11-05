@@ -1,0 +1,61 @@
+{
+  "type": "object",
+  "description": "The document saved.",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty"
+      ],
+      "additionalProperties": false,
+      "description": "The document, now without unsaved changes."
+    },
+    "path": {
+      "type": "string",
+      "description": "The file written."
+    },
+    "bytes": {
+      "type": "integer",
+      "description": "The file's size in bytes."
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What SOLIDWORKS warned about while saving (swFileSaveWarning_e names)."
+    }
+  },
+  "required": [
+    "document",
+    "path",
+    "bytes",
+    "warnings"
+  ],
+  "additionalProperties": false
+}

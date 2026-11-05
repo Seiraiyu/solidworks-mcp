@@ -45,6 +45,7 @@ public class ClientTests
         Assert.Equal((long)Protocol.Version, e.Error.Details!["client_protocol_version"]);
         Assert.Equal((long)Protocol.Version + 1, e.Error.Details["addin_protocol_version"]);
         Assert.Equal("0.1.0-fake", e.Error.Details["addin_version"]);
+        Assert.Contains("restart SOLIDWORKS from the 3DEXPERIENCE dashboard to load the new add-in", e.Message);
     }
 
     [Fact]

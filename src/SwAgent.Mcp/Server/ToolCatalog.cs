@@ -16,16 +16,23 @@ namespace SwAgent.Mcp.Server;
 /// </summary>
 public sealed record ToolDefinition(string Name, string? Operation, bool ReadOnly);
 
-/// <summary>The tools the MCP server offers. Phase 2: sw_status, sw_dialog_respond, sw_events, sw_reconnect.</summary>
+/// <summary>
+/// The tools the MCP server offers (design 371, MCP tools): the server tools (sw_status, sw_events, sw_reconnect), then
+/// one tool per operation that is not internal, named <see cref="OperationDescriptor.ToolName"/>, read-only when its
+/// contract says so. Nothing else decides the list.
+/// </summary>
 public static class ToolCatalog
 {
-    public static readonly IReadOnlyList<ToolDefinition> All = new[]
-    {
-        new ToolDefinition("sw_status", null, ReadOnly: true),
-        new ToolDefinition("sw_dialog_respond", "dialog.respond", ReadOnly: false),
-        new ToolDefinition("sw_events", null, ReadOnly: true),
-        new ToolDefinition("sw_reconnect", null, ReadOnly: false),
-    };
+    static readonly HashSet<string> ReadOnlyServerTools = new HashSet<string>(StringComparer.Ordinal) { "sw_status", "sw_events" };
+
+    public static readonly IReadOnlyList<ToolDefinition> All = Build(ServerToolCatalog.All, OperationCatalog.All);
+
+    /// <summary>The tool list for these server tools and operations; internal operations are left out.</summary>
+    public static IReadOnlyList<ToolDefinition> Build(IEnumerable<ServerToolDescriptor> serverTools, IEnumerable<OperationDescriptor> operations) =>
+        serverTools.Select(t => new ToolDefinition(t.Name, null, ReadOnlyServerTools.Contains(t.Name)))
+            .Concat(operations.Where(o => !o.Internal).Select(o => new ToolDefinition(o.ToolName, o.Name, o.ReadOnly)))
+            .OrderBy(t => t.Name, StringComparer.Ordinal)
+            .ToList();
 
     /// <summary>A tool per definition, each built from its contract, logging its calls to <paramref name="log"/>.</summary>
     public static IReadOnlyList<McpServerTool> Create(Supervisor supervisor, ILogger? log = null) =>

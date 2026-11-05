@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "description": "What is selected now in a part, each item with its reference and shape: how an agent acts on what the user picked in SOLIDWORKS (\"fillet these edges\"). References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    }
+  },
+  "additionalProperties": false
+}

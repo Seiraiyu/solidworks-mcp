@@ -1,0 +1,179 @@
+using System.Collections.Generic;
+using System.ComponentModel;
+
+namespace SwAgent.Contracts;
+
+[Operation("document.new", typeof(DocumentNewResult))]
+[Description("Creates a part from the user's default part template (or a named template) and makes it the active document. With path, saves it there at once. The part is the agent's own, so document.close may close it.")]
+public sealed class DocumentNewRequest
+{
+    [Description("What to create; only part in this version. Default part.")]
+    public DocumentType? Type { get; set; }
+
+    [Description("Full path of a part template (.PRTDOT); the user's default part template when absent.")]
+    public string? Template { get; set; }
+
+    [Description("Full path of a .SLDPRT file that does not exist yet, in an existing folder: the new part is saved there at once.")]
+    public string? Path { get; set; }
+}
+
+[Description("The part created.")]
+public sealed class DocumentNewResult
+{
+    [Required]
+    [Description("The new document.")]
+    public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Required]
+    [Description("The template it was made from.")]
+    public string Template { get; set; } = "";
+}
+
+[Operation("document.open", typeof(DocumentOpenResult))]
+[Description("Opens a part, assembly or drawing from a local file and makes it the active document. A document that is already open is made active, not opened again. A document this call opened is the agent's own, so document.close may close it.")]
+public sealed class DocumentOpenRequest
+{
+    [Required]
+    [Description("Full path of an existing .SLDPRT, .SLDASM or .SLDDRW file.")]
+    public string Path { get; set; } = "";
+
+    [Description("Open it read-only. Default false.")]
+    public bool? ReadOnly { get; set; }
+}
+
+[Description("The document opened.")]
+public sealed class DocumentOpenResult
+{
+    [Required]
+    [Description("The document.")]
+    public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Description("True when it was already open; it was made active and not opened again.")]
+    public bool AlreadyOpen { get; set; }
+
+    [Description("True when it is open read-only.")]
+    public bool ReadOnly { get; set; }
+
+    [Required]
+    [Description("What SOLIDWORKS warned about while opening it (swFileLoadWarning_e names), for example swFileLoadWarning_ModelOutOfDate.")]
+    public List<string> Warnings { get; set; } = new List<string>();
+}
+
+[Operation("document.save", typeof(DocumentSaveResult))]
+[Description("Saves a document where it already is. A document never saved needs document.save_as. Checked on disk: the file was written by this call.")]
+public sealed class DocumentSaveRequest
+{
+    [Description("The document: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+}
+
+[Operation("document.save_as", typeof(DocumentSaveResult))]
+[Description("Saves a document to a new file, which it then is (not a copy). Refuses an existing file unless overwrite. References issued before keep working. Checked on disk: the file was written by this call.")]
+public sealed class DocumentSaveAsRequest
+{
+    [Description("The document: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("Full path of the new file, in an existing folder, with the document's own extension (.SLDPRT for a part).")]
+    public string Path { get; set; } = "";
+
+    [Description("Replace the file if it exists. Default false.")]
+    public bool? Overwrite { get; set; }
+}
+
+[Description("The document saved.")]
+public sealed class DocumentSaveResult
+{
+    [Required]
+    [Description("The document, now without unsaved changes.")]
+    public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Required]
+    [Description("The file written.")]
+    public string Path { get; set; } = "";
+
+    [Description("The file's size in bytes.")]
+    public long Bytes { get; set; }
+
+    [Required]
+    [Description("What SOLIDWORKS warned about while saving (swFileSaveWarning_e names).")]
+    public List<string> Warnings { get; set; } = new List<string>();
+}
+
+[Operation("document.close", typeof(DocumentCloseResult))]
+[Description("Closes a document. Refuses one with unsaved changes unless discard, and one the agent did not open or create (document.new, document.open) unless users_document, which is only for when the user asked for it to be closed.")]
+public sealed class DocumentCloseRequest
+{
+    [Description("The document: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("Close it even though it has unsaved changes, losing them. Default false.")]
+    public bool? Discard { get; set; }
+
+    [Description("Close it even though the agent did not open or create it. Only when the user asked for this document to be closed. Default false.")]
+    public bool? UsersDocument { get; set; }
+}
+
+[Description("The document closed.")]
+public sealed class DocumentCloseResult
+{
+    [Required]
+    [Description("The document as it was just before it closed.")]
+    public DocumentInfo Closed { get; set; } = new DocumentInfo();
+
+    [Description("True when it had unsaved changes, which were lost.")]
+    public bool Discarded { get; set; }
+}
+
+[Operation("document.rebuild", typeof(RebuildResult))]
+[Description("Rebuilds a document (only what changed; everything with force) and reports its rebuild errors and warnings by feature.")]
+public sealed class DocumentRebuildRequest
+{
+    [Description("The document: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("Rebuild every feature, not only what changed. Default false.")]
+    public bool? Force { get; set; }
+}
+
+[Operation("model.rebuild_status", typeof(RebuildResult), ReadOnly = true)]
+[Description("Reports a document's rebuild errors and warnings by feature (SOLIDWORKS' What's Wrong list), without rebuilding it.")]
+public sealed class ModelRebuildStatusRequest
+{
+    [Description("The document: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+}
+
+[Description("A document's rebuild errors and warnings.")]
+public sealed class RebuildResult
+{
+    [Required]
+    [Description("The document.")]
+    public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Description("How many features have a rebuild error.")]
+    public int Errors { get; set; }
+
+    [Description("How many features have a rebuild warning.")]
+    public int Warnings { get; set; }
+
+    [Required]
+    [Description("Each feature with an error or warning.")]
+    public List<RebuildItem> Items { get; set; } = new List<RebuildItem>();
+}
+
+[Description("A feature with a rebuild error or warning.")]
+public sealed class RebuildItem
+{
+    [Required]
+    [Description("The feature's name.")]
+    public string Feature { get; set; } = "";
+
+    [Required]
+    [Description("SOLIDWORKS' error code name (swFeatureError_e), for example swFeatureErrorFilletNoEdge.")]
+    public string Code { get; set; } = "";
+
+    [Description("True for a warning, false for an error.")]
+    public bool Warning { get; set; }
+}

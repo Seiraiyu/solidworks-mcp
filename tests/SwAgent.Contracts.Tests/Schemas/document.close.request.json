@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "description": "Closes a document. Refuses one with unsaved changes unless discard, and one the agent did not open or create (document.new, document.open) unless users_document, which is only for when the user asked for it to be closed.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The document: its title or full path. The active document when absent."
+    },
+    "discard": {
+      "type": "boolean",
+      "description": "Close it even though it has unsaved changes, losing them. Default false."
+    },
+    "users_document": {
+      "type": "boolean",
+      "description": "Close it even though the agent did not open or create it. Only when the user asked for this document to be closed. Default false."
+    }
+  },
+  "additionalProperties": false
+}

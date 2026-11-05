@@ -1,0 +1,104 @@
+{
+  "type": "object",
+  "description": "A part's mass properties. All zero, with no centre of mass, when it has no solid body.",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty"
+      ],
+      "additionalProperties": false,
+      "description": "The part."
+    },
+    "bodies": {
+      "type": "integer",
+      "description": "How many solid bodies it has."
+    },
+    "volume_mm3": {
+      "type": "number",
+      "description": "Volume, mm³."
+    },
+    "area_mm2": {
+      "type": "number",
+      "description": "Surface area, mm²."
+    },
+    "mass_g": {
+      "type": "number",
+      "description": "Mass, g."
+    },
+    "density_kg_m3": {
+      "type": "number",
+      "description": "Density used, kg/m³ (SOLIDWORKS' default when no material is set)."
+    },
+    "material": {
+      "type": "string",
+      "description": "The material's name; absent when none is set."
+    },
+    "center_of_mass": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "X, mm."
+        },
+        "y": {
+          "type": "number",
+          "description": "Y, mm."
+        },
+        "z": {
+          "type": "number",
+          "description": "Z, mm."
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "additionalProperties": false,
+      "description": "Centre of mass, mm."
+    },
+    "principal_moments_g_mm2": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "Principal moments of inertia at the centre of mass, g·mm², smallest first."
+    }
+  },
+  "required": [
+    "document",
+    "bodies",
+    "volume_mm3",
+    "area_mm2",
+    "mass_g",
+    "density_kg_m3",
+    "principal_moments_g_mm2"
+  ],
+  "additionalProperties": false
+}

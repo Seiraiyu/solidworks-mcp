@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "description": "Reports a document's rebuild errors and warnings by feature (SOLIDWORKS' What's Wrong list), without rebuilding it.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The document: its title or full path. The active document when absent."
+    }
+  },
+  "additionalProperties": false
+}

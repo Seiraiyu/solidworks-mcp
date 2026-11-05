@@ -1,0 +1,269 @@
+{
+  "type": "object",
+  "description": "What model.find found.",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty"
+      ],
+      "additionalProperties": false,
+      "description": "The part."
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A face, edge, vertex, feature, plane, axis or point, with its reference and a short geometric description. Lengths in mm, areas in mm².",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "face",
+              "edge",
+              "vertex",
+              "feature",
+              "sketch",
+              "sketch_entity",
+              "sketch_point",
+              "plane",
+              "axis",
+              "point",
+              "dimension"
+            ],
+            "description": "What it is."
+          },
+          "reference": {
+            "type": "string",
+            "description": "Its persistent reference (r1.<kind>.…), to pass to other operations; absent when SOLIDWORKS cannot give one. References are opaque: pass one back exactly as it was given, and never build or change one."
+          },
+          "name": {
+            "type": "string",
+            "description": "Its name, for features, planes, axes and points."
+          },
+          "feature": {
+            "type": "string",
+            "description": "The feature that made it, for faces, edges and vertices. An edge or vertex where several features meet names the first; see features."
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "For edges and vertices, every feature that made a face it lies on: the circular edge of a hole cut in a boss belongs to both."
+          },
+          "geometry": {
+            "type": "string",
+            "enum": [
+              "plane",
+              "cylinder",
+              "cone",
+              "sphere",
+              "torus",
+              "line",
+              "circle",
+              "ellipse",
+              "spline",
+              "point",
+              "other"
+            ],
+            "description": "Its shape: plane, cylinder, cone, sphere, torus, line, circle, ellipse, spline, point or other."
+          },
+          "area_mm2": {
+            "type": "number",
+            "description": "Area of a face, mm²."
+          },
+          "length_mm": {
+            "type": "number",
+            "description": "Length of an edge, mm."
+          },
+          "normal": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X component."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y component."
+              },
+              "z": {
+                "type": "number",
+                "description": "Z component."
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "z"
+            ],
+            "additionalProperties": false,
+            "description": "Outward normal of a planar face, or the normal of a plane."
+          },
+          "axis": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X component."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y component."
+              },
+              "z": {
+                "type": "number",
+                "description": "Z component."
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "z"
+            ],
+            "additionalProperties": false,
+            "description": "Axis of a cylinder, cone, circle or axis; direction of a line."
+          },
+          "origin": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y, mm."
+              },
+              "z": {
+                "type": "number",
+                "description": "Z, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "z"
+            ],
+            "additionalProperties": false,
+            "description": "A point on it: a planar face's or edge's centre, a circle's or cylinder's centre on its axis, a vertex or point itself."
+          },
+          "radius_mm": {
+            "type": "number",
+            "description": "Radius of a cylinder, cone base, sphere, torus or circle, mm."
+          },
+          "box": {
+            "type": "object",
+            "properties": {
+              "min": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "X, mm."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Y, mm."
+                  },
+                  "z": {
+                    "type": "number",
+                    "description": "Z, mm."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "additionalProperties": false,
+                "description": "The corner with the smallest coordinates."
+              },
+              "max": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "X, mm."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Y, mm."
+                  },
+                  "z": {
+                    "type": "number",
+                    "description": "Z, mm."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "additionalProperties": false,
+                "description": "The corner with the largest coordinates."
+              }
+            },
+            "required": [
+              "min",
+              "max"
+            ],
+            "additionalProperties": false,
+            "description": "Its axis-aligned bounding box, for faces only."
+          },
+          "distance_mm": {
+            "type": "number",
+            "description": "Distance from the point model.find was asked to be near, mm."
+          }
+        },
+        "required": [
+          "kind",
+          "geometry"
+        ],
+        "additionalProperties": false
+      },
+      "description": "What matched, nearest first when near was given, else in SOLIDWORKS' order; at most limit."
+    },
+    "total": {
+      "type": "integer",
+      "description": "How many matched in all."
+    },
+    "truncated": {
+      "type": "boolean",
+      "description": "True when more matched than were returned; narrow the search or raise limit."
+    }
+  },
+  "required": [
+    "document",
+    "entities",
+    "total",
+    "truncated"
+  ],
+  "additionalProperties": false
+}

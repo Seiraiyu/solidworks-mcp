@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "description": "Saves a document to a new file, which it then is (not a copy). Refuses an existing file unless overwrite. References issued before keep working. Checked on disk: the file was written by this call.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The document: its title or full path. The active document when absent."
+    },
+    "path": {
+      "type": "string",
+      "description": "Full path of the new file, in an existing folder, with the document's own extension (.SLDPRT for a part)."
+    },
+    "overwrite": {
+      "type": "boolean",
+      "description": "Replace the file if it exists. Default false."
+    }
+  },
+  "required": [
+    "path"
+  ],
+  "additionalProperties": false
+}

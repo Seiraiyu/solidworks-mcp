@@ -18,9 +18,9 @@ public sealed class EmptyResult { }
 public class OperationCatalogTests
 {
     [Fact]
-    public void Catalog_holds_the_phase_2D_operations()
+    public void Catalog_holds_the_phase_3A_operations()
     {
-        Assert.Equal(new[] { "addin.events", "addin.state", "diag.dialog", "diag.scratch_part", "diag.sleep", "dialog.respond", "session.hello", "session.status" },
+        Assert.Equal(new[] { "addin.events", "addin.state", "diag.dialog", "diag.scratch_block", "diag.scratch_part", "diag.select", "diag.sleep", "dialog.respond", "document.close", "document.new", "document.open", "document.rebuild", "document.save", "document.save_as", "model.bounding_box", "model.find", "model.mass", "model.rebuild_status", "model.tree", "selection.get", "session.hello", "session.status" },
             OperationCatalog.All.Select(o => o.Name).ToArray());
         var status = OperationCatalog.Find("session.status")!;
         Assert.Equal("session", status.Family);
@@ -45,7 +45,36 @@ public class OperationCatalogTests
         Assert.Equal("Ui/internal", Shape("diag.dialog"));
         Assert.Equal("Ui/internal", Shape("diag.scratch_part"));
         Assert.Equal("Ui/internal", Shape("session.hello"));
-        Assert.Equal("Ui/tool", Shape("session.status"));
+        Assert.Equal("Ui/internal", Shape("session.status"));
+        Assert.Equal("Ui/tool", Shape("document.new"));
+        Assert.Equal("Ui/tool", Shape("document.open"));
+        Assert.True(OperationCatalog.Find("model.rebuild_status")!.ReadOnly);
+        Assert.True(OperationCatalog.Find("model.tree")!.ReadOnly);
+        Assert.True(OperationCatalog.Find("model.mass")!.ReadOnly);
+        Assert.True(OperationCatalog.Find("model.bounding_box")!.ReadOnly);
+        Assert.True(OperationCatalog.Find("model.find")!.ReadOnly);
+        Assert.True(OperationCatalog.Find("selection.get")!.ReadOnly);
+        Assert.Equal("Ui/internal", Shape("diag.select"));
+        Assert.Equal("Ui/internal", Shape("diag.scratch_block"));
+    }
+
+    [Fact]
+    public void Read_only_operations_are_marked_and_the_rest_are_not()
+    {
+        var readOnly = OperationCatalog.All.Where(o => o.ReadOnly).Select(o => o.Name).ToArray();
+        Assert.Contains("session.status", readOnly);
+        Assert.Contains("addin.state", readOnly);
+        Assert.DoesNotContain("dialog.respond", readOnly);
+        Assert.False(OperationCatalog.FromTypes(new[] { typeof(OneRequest) }).Single().ReadOnly);
+    }
+
+    [Theory]
+    [InlineData("dialog.respond", "sw_dialog_respond")]
+    [InlineData("document.save_as", "sw_document_save_as")]
+    public void A_tool_name_is_sw_and_the_operation_with_underscores(string operation, string tool)
+    {
+        var descriptor = new OperationDescriptor(operation, operation.Split('.')[0], typeof(OneRequest), typeof(EmptyResult), "");
+        Assert.Equal(tool, descriptor.ToolName);
     }
 
     [Fact]
@@ -81,7 +110,7 @@ public class OperationCatalogTests
     public void Pipe_name_carries_the_process_id()
     {
         Assert.Equal("solidworks-mcp-1234", Protocol.PipeName(1234));
-        Assert.Equal(2, Protocol.Version);
+        Assert.Equal(3, Protocol.Version);
     }
 
     [Fact]

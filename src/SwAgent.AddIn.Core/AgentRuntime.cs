@@ -17,6 +17,8 @@ public sealed class AgentRuntime
         DiagnosticsEnabled = diagnosticsEnabled;
         Ledger = new RequestLedger();
         Events = new EventHub(log, UtcNow);
+        Renames = new RenameMap();
+        Owned = new OwnedDocuments();
     }
 
     public string AddinVersion { get; }
@@ -30,11 +32,37 @@ public sealed class AgentRuntime
     public RequestLedger Ledger { get; }
     public EventHub Events { get; }
 
+    /// <summary>Documents saved under a new name while the add-in is loaded, so their references still resolve.</summary>
+    public RenameMap Renames { get; }
+
+    /// <summary>The documents the connected client opened or created; cleared when it disconnects.</summary>
+    public OwnedDocuments Owned { get; }
+
+    /// <summary>
+    /// A document is open under <paramref name="key"/>, freshly opened or created: references to that key name it (any
+    /// earlier rename of the key is forgotten), and when <paramref name="owned"/> the client may close it.
+    /// </summary>
+    public void DocumentOpened(string key, bool owned)
+    {
+        Renames.Forget(key);
+        if (owned) Owned.Add(key);
+    }
+
+    /// <summary>A document was saved under a new name: its references follow it, and so does the client's ownership.</summary>
+    public void DocumentRenamed(string oldKey, string newKey)
+    {
+        Renames.Record(oldKey, newKey);
+        Owned.Rename(oldKey, newKey);
+    }
+
     /// <summary>Set by the add-in once SOLIDWORKS can be read; null in tests that do not need it.</summary>
     public DocumentTracker? Documents { get; set; }
 
     /// <summary>Set by the add-in; null when preferences are not managed (tests).</summary>
     public PreferenceGuard? Preferences { get; set; }
+
+    /// <summary>Set by the add-in: raises selection.changed for the user's selections. Null in tests that do not need it.</summary>
+    public SelectionReporter? Selection { get; set; }
 
     /// <summary>SOLIDWORKS' main frame window, read on the UI thread at load; zero when unknown (then no dialog watch).</summary>
     public IntPtr MainWindow { get; set; }

@@ -6,12 +6,27 @@ Lets an AI agent drive SOLIDWORKS through the [Model Context Protocol](https://m
 - **`SwAgent.Client`** is the one library that talks to that pipe.
 - **`swmcp`** is the MCP server (`swmcp serve`, the default) and the command line (`swmcp call`, `swmcp addin ...`).
 
-It offers four tools:
+It offers these tools:
 
 - `sw_status` says what SOLIDWORKS is doing: whether it runs, what the add-in is running and has queued, any open dialog, the open documents and, when SOLIDWORKS is idle, the active document. It always answers, even while SOLIDWORKS is busy, stopped in a dialog, starting or absent.
 - `sw_dialog_respond` presses a button on the modal dialog SOLIDWORKS is showing.
-- `sw_events` returns what happened since a cursor: documents opened, saved, closed and changed, dialogs, and the late outcomes of operations.
+- `sw_events` returns what happened since a cursor: documents opened, saved, closed and changed, the user's selection, dialogs, and the late outcomes of operations.
 - `sw_reconnect` connects again, to a named SOLIDWORKS when several run.
+- Documents: `sw_document_new` (a part from your default template, saved at once when given a path), `sw_document_open`, `sw_document_save`, `sw_document_save_as`, `sw_document_close` and `sw_document_rebuild`.
+- Inspection of parts: `sw_model_tree`, `sw_model_mass`, `sw_model_bounding_box`, `sw_model_rebuild_status` and `sw_model_find`.
+- `sw_selection_get` reads what is selected in a part.
+
+There is one tool per add-in operation, named `sw_` and the operation with underscores (`document.save_as` is `sw_document_save_as`).
+
+Lengths are millimetres and angles degrees everywhere.
+
+### References
+
+Faces, edges, vertices, features and planes are named by references: strings such as `r1.face.AQAAAB…`, given in results (`sw_model_find`, `sw_model_tree`, `sw_selection_get`). The part after `r1.` says what kind of thing it names; the rest is opaque. A reference survives rebuilds, saving under a new name, and closing and opening the part again. When the thing it named is gone (deleted, suppressed, or in another part), the operation answers `reference_unresolved` with what the thing was, and never picks something nearby instead. Feature names (`Boss-Extrude1`) work too, and `front`, `top`, `right` and `origin` name the template's own planes and origin in any language.
+
+### Closing documents
+
+`sw_document_close` closes only a document the agent opened or created (with `sw_document_new` or `sw_document_open`) since it connected. Any other document is yours: closing it needs `users_document: true`, which an agent should pass only when you asked. A document with unsaved changes needs `discard: true` as well.
 
 Every tool takes an optional `deadline_ms`.
 
@@ -63,7 +78,23 @@ The run sets `HKCU\Software\solidworks-mcp\Diagnostics` to 1, which turns on the
 
 The suite ends SOLIDWORKS twice. Each time it first reads the open documents again through its own connection, and it refuses if a document it did not create is open, or a dialog is open. It ends SOLIDWORKS only by process id. It creates documents only under `%LOCALAPPDATA%\solidworks-mcp\live-scratch\`.
 
+### Parts suite
+
+`PartsSuite` checks documents, references, inspection and selection against exact geometry: a 40 x 20 x 10 mm block must measure 8000 mm³, its top face must be the one face whose normal is +Z, and a reference to it must survive a rebuild, a save as and a close and reopen. It never ends SOLIDWORKS. It needs the add-in loaded with diagnostics on, as the fault suite does, and stops if any document it did not create is open:
+
+```powershell
+$env:SWMCP_LIVE = "1"
+dotnet test tests/SwAgent.Live.Tests -c Release --filter "FullyQualifiedName~SwAgent.Live.Tests.PartsSuite"
+Remove-Item env:SWMCP_LIVE
+```
+
+Its report is in `%LOCALAPPDATA%\solidworks-mcp\live-runs\<run>-parts-suite\report.md`.
+
 The SP4 canary, `Canary`, checks that a sketch call made through COM from outside SOLIDWORKS still crashes it. It is expected to crash SOLIDWORKS. It never runs by default: it needs `SWMCP_CANARY=1` as well, and is run on its own with `--filter "FullyQualifiedName~Canary"`, after a SOLIDWORKS update.
+
+## Upgrading
+
+The add-in speaks protocol version 3. A SOLIDWORKS that still has an older add-in loaded answers `addin_incompatible`: start SOLIDWORKS again from the 3DEXPERIENCE dashboard, and the next call loads the new add-in.
 
 ## Install
 
@@ -136,7 +167,7 @@ swmcp call session.status
 & "$app\swmcp.exe" call addin.state
 ```
 
-A call that names no `--deadline-ms` gets its operation family's default (10 s for `session.*`, 5 s for `addin.*`). Any deadline must be between 1 ms and one hour.
+A call that names no `--deadline-ms` gets its operation family's default (10 s for `session.*`, 5 s for `addin.*`, 60 s for `document.*`, 30 s for `model.*` and `selection.*`). Any deadline must be between 1 ms and one hour.
 
 A request whose deadline passes before SOLIDWORKS can start it is answered `busy` (it never ran; retrying is safe). One that started but ran past its deadline is answered `timeout`; it keeps running, and its outcome is raised as an `operation.completed` event.
 

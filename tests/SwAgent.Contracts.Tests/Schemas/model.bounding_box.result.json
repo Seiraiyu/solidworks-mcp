@@ -1,0 +1,127 @@
+{
+  "type": "object",
+  "description": "A part's bounding box. No box when it has no solid body.",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty"
+      ],
+      "additionalProperties": false,
+      "description": "The part."
+    },
+    "bodies": {
+      "type": "integer",
+      "description": "How many solid bodies it has."
+    },
+    "box": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number",
+              "description": "X, mm."
+            },
+            "y": {
+              "type": "number",
+              "description": "Y, mm."
+            },
+            "z": {
+              "type": "number",
+              "description": "Z, mm."
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "additionalProperties": false,
+          "description": "The corner with the smallest coordinates."
+        },
+        "max": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number",
+              "description": "X, mm."
+            },
+            "y": {
+              "type": "number",
+              "description": "Y, mm."
+            },
+            "z": {
+              "type": "number",
+              "description": "Z, mm."
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "additionalProperties": false,
+          "description": "The corner with the largest coordinates."
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "additionalProperties": false,
+      "description": "The box, mm."
+    },
+    "size_x": {
+      "type": "number",
+      "description": "Its size along X, mm."
+    },
+    "size_y": {
+      "type": "number",
+      "description": "Its size along Y, mm."
+    },
+    "size_z": {
+      "type": "number",
+      "description": "Its size along Z, mm."
+    },
+    "precise": {
+      "type": "boolean",
+      "description": "True when the box is exact."
+    }
+  },
+  "required": [
+    "document",
+    "bodies",
+    "size_x",
+    "size_y",
+    "size_z",
+    "precise"
+  ],
+  "additionalProperties": false
+}

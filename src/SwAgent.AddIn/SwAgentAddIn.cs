@@ -58,11 +58,19 @@ public sealed class SwAgentAddIn : ISwAddin
             if (runtime.DiagnosticsEnabled) _log.Warn("diagnostic operations are ON (HKCU\\Software\\solidworks-mcp\\Diagnostics = 1)");
             var services = new AddInServices(app, Version, runtime) { Preferences = _preferences };
             runtime.Documents = new DocumentTracker(app.OpenDocuments, runtime.Events, _log);
+            // The selection is read on the UI thread, between requests, once it has been still for 250 ms.
+            runtime.Selection = new SelectionReporter(runtime.Events, () => runtime.Ledger.Running != null, _log,
+                read => _host?.Dispatcher.Post("selection.changed", read));
             var registry = CreateRegistry(services);
             _host = AgentHost.Start(Protocol.PipeName(pid), registry, runtime);
             var preferences = _preferences;
-            _host.ClientDisconnected = () => preferences.Restore("the client disconnected");
-            _events = new SolidWorksEventBridge(_sw, runtime.Documents, _log);
+            _host.ClientDisconnected = () =>
+            {
+                // The next client is a new agent: the documents this one opened are no longer its to close.
+                runtime.Owned.Clear();
+                preferences.Restore("the client disconnected");
+            };
+            _events = new SolidWorksEventBridge(_sw, runtime.Documents, _log, runtime, services.References);
             _events.Start();
             _log.Info("add-in loaded");
             return true;
@@ -131,6 +139,7 @@ public sealed class SwAgentAddIn : ISwAddin
             _log?.Error("unsubscribing SOLIDWORKS events failed", e);
         }
         _events = null;
+        _runtime?.Selection?.Dispose();
         try
         {
             _preferences?.Restore("the add-in is unloading");

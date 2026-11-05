@@ -1,0 +1,104 @@
+{
+  "type": "object",
+  "description": "Finds a part's faces, edges or vertices by what they are, each with its persistent reference and shape: by the feature that made them, their geometry, a direction (a planar face's outward normal, or an edge's or cylinder's axis either way), or a point they contain or are near. Use it to get references to pass to other operations, such as the top face of Boss-Extrude1 or the circular edges of a hole. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "face",
+        "edge",
+        "vertex"
+      ],
+      "description": "What to find: face, edge or vertex."
+    },
+    "feature": {
+      "type": "string",
+      "description": "Only what this feature made (for an edge or vertex, any feature of a face it lies on): its name, or a reference exactly as a result gave it."
+    },
+    "geometry": {
+      "type": "string",
+      "enum": [
+        "plane",
+        "cylinder",
+        "cone",
+        "sphere",
+        "torus",
+        "line",
+        "circle",
+        "ellipse",
+        "spline",
+        "point",
+        "other"
+      ],
+      "description": "Only this shape, for example plane or cylinder for faces, line or circle for edges."
+    },
+    "direction": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "X component."
+        },
+        "y": {
+          "type": "number",
+          "description": "Y component."
+        },
+        "z": {
+          "type": "number",
+          "description": "Z component."
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "additionalProperties": false,
+      "description": "Only faces whose outward normal points this way, or edges, cylinders and cones whose axis is parallel to it."
+    },
+    "angle_tolerance_deg": {
+      "type": "number",
+      "description": "How far from direction still counts, degrees, 0 to 90. Default 1."
+    },
+    "near": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "X, mm."
+        },
+        "y": {
+          "type": "number",
+          "description": "Y, mm."
+        },
+        "z": {
+          "type": "number",
+          "description": "Z, mm."
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "additionalProperties": false,
+      "description": "Only what is within max_distance_mm of this point (mm), nearest first."
+    },
+    "max_distance_mm": {
+      "type": "number",
+      "description": "How far from near still counts, mm. Default 1. Needs near."
+    },
+    "limit": {
+      "type": "integer",
+      "description": "At most this many, 1 to 1000. Default 50."
+    }
+  },
+  "required": [
+    "kind"
+  ],
+  "additionalProperties": false
+}

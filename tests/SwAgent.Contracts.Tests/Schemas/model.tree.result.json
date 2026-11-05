@@ -1,0 +1,107 @@
+{
+  "type": "object",
+  "description": "A part's feature tree.",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty"
+      ],
+      "additionalProperties": false,
+      "description": "The part."
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A feature in the tree.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Its name, for example Boss-Extrude1."
+          },
+          "type": {
+            "type": "string",
+            "description": "SOLIDWORKS' type name for it, for example Extrusion, Cut, Fillet, RefPlane, ProfileFeature (a sketch)."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "face",
+              "edge",
+              "vertex",
+              "feature",
+              "sketch",
+              "sketch_entity",
+              "sketch_point",
+              "plane",
+              "axis",
+              "point",
+              "dimension"
+            ],
+            "description": "feature, sketch, plane, axis or point."
+          },
+          "reference": {
+            "type": "string",
+            "description": "Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one."
+          },
+          "parent": {
+            "type": "string",
+            "description": "The feature it sits under (a sketch under the extrude that uses it); absent at the top level."
+          },
+          "suppressed": {
+            "type": "boolean",
+            "description": "True when it is suppressed in the active configuration."
+          },
+          "error": {
+            "type": "string",
+            "description": "Its rebuild error or warning code (swFeatureError_e name); absent when it rebuilt cleanly."
+          },
+          "warning": {
+            "type": "boolean",
+            "description": "True when Error is only a warning."
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "kind",
+          "suppressed",
+          "warning"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Every feature in tree order."
+    }
+  },
+  "required": [
+    "document",
+    "features"
+  ],
+  "additionalProperties": false
+}

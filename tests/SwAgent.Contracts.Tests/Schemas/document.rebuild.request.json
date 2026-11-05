@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "description": "Rebuilds a document (only what changed; everything with force) and reports its rebuild errors and warnings by feature.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The document: its title or full path. The active document when absent."
+    },
+    "force": {
+      "type": "boolean",
+      "description": "Rebuild every feature, not only what changed. Default false."
+    }
+  },
+  "additionalProperties": false
+}
