@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.IO.Compression;
 using System.Text;
 using SwAgent.Contracts.Serialization;
 
@@ -46,14 +47,18 @@ public sealed class ReferenceData
 
 /// <summary>
 /// Encodes and decodes references: <c>r1.&lt;kind&gt;.&lt;payload&gt;</c>, the payload base64url of a version byte and three
-/// length-prefixed blocks (document key, persistent id, description at issue). A string that does not start with
-/// <c>r1.</c> is a name, not a reference. Opaque to agents; only the kind is meant to be read.
+/// length-prefixed blocks (document key, persistent id, description at issue). Payload version 1 holds the blocks as they
+/// are; version 2 holds them deflated, after the deflated length, and is issued whenever it is shorter (SOLIDWORKS'
+/// persistent ids are long and repetitive: 3.A measured a face reference at 1047 characters). Both are read, so a
+/// reference issued by an earlier add-in keeps working. A string that does not start with <c>r1.</c> is a name, not a
+/// reference. Opaque to agents; only the kind is meant to be read.
 /// </summary>
 public static class References
 {
     public const string Prefix = "r1.";
 
-    const byte PayloadVersion = 1;
+    const byte Plain = 1;
+    const byte Deflated = 2;
     const int MaxBlock = 1 << 20;
 
     public static bool IsReference(string? text) => text != null && text.StartsWith(Prefix, StringComparison.Ordinal);
@@ -61,15 +66,22 @@ public static class References
     public static string Encode(ReferenceData data)
     {
         if (data.PersistId.Length == 0) throw new ArgumentException("a reference needs a persistent id", nameof(data));
-        using var buffer = new MemoryStream();
-        using (var writer = new BinaryWriter(buffer, Encoding.UTF8, leaveOpen: true))
+        byte[] blocks;
+        using (var buffer = new MemoryStream())
         {
-            writer.Write(PayloadVersion);
-            WriteBlock(writer, Encoding.UTF8.GetBytes(data.DocumentKey));
-            WriteBlock(writer, data.PersistId);
-            WriteBlock(writer, Encoding.UTF8.GetBytes(data.Description));
+            using (var writer = new BinaryWriter(buffer, Encoding.UTF8, leaveOpen: true))
+            {
+                WriteBlock(writer, Encoding.UTF8.GetBytes(data.DocumentKey));
+                WriteBlock(writer, data.PersistId);
+                WriteBlock(writer, Encoding.UTF8.GetBytes(data.Description));
+            }
+            blocks = buffer.ToArray();
         }
-        return Prefix + WireNames.ForEnum(data.Kind) + "." + ToBase64Url(buffer.ToArray());
+        byte[] deflated = Deflate(blocks);
+        byte[] payload = deflated.Length + 4 < blocks.Length
+            ? Concat(new[] { Deflated }, BitConverter.GetBytes(deflated.Length), deflated)
+            : Concat(new[] { Plain }, blocks);
+        return Prefix + WireNames.ForEnum(data.Kind) + "." + ToBase64Url(payload);
     }
 
     /// <summary>Decodes <paramref name="text"/>; invalid_argument naming <paramref name="field"/> when it is not a well-formed reference.</summary>
@@ -91,12 +103,17 @@ public static class References
         }
         try
         {
-            using var reader = new BinaryReader(new MemoryStream(payload), Encoding.UTF8);
-            if (reader.ReadByte() != PayloadVersion) throw Malformed(text, field, "has an unknown payload version");
+            byte[] blocks = payload[0] switch
+            {
+                Plain => Sub(payload, 1, payload.Length - 1),
+                Deflated => Inflate(payload, text, field),
+                _ => throw Malformed(text, field, "has an unknown payload version"),
+            };
+            using var reader = new BinaryReader(new MemoryStream(blocks), Encoding.UTF8);
             string documentKey = Encoding.UTF8.GetString(ReadBlock(reader));
             byte[] persistId = ReadBlock(reader);
             string description = Encoding.UTF8.GetString(ReadBlock(reader));
-            if (reader.BaseStream.Position != payload.Length) throw Malformed(text, field, "has bytes after its payload");
+            if (reader.BaseStream.Position != blocks.Length) throw Malformed(text, field, "has bytes after its payload");
             if (persistId.Length == 0 || documentKey.Length == 0) throw Malformed(text, field, "has an empty document or persistent id");
             return new ReferenceData((ReferenceKind)kind!, documentKey, persistId, description);
         }
@@ -118,6 +135,52 @@ public static class References
         if (dot < 0) return null;
         return WireNames.TryParseEnum(typeof(ReferenceKind), text.Substring(Prefix.Length, dot - Prefix.Length), out var kind)
             ? (ReferenceKind)kind! : (ReferenceKind?)null;
+    }
+
+    static byte[] Deflate(byte[] bytes)
+    {
+        using var output = new MemoryStream();
+        using (var deflate = new DeflateStream(output, CompressionLevel.Optimal, leaveOpen: true)) deflate.Write(bytes, 0, bytes.Length);
+        return output.ToArray();
+    }
+
+    /// <summary>A version 2 payload's blocks. Its deflated length must be exactly what follows it, so nothing cut short or padded is read.</summary>
+    static byte[] Inflate(byte[] payload, string text, string field)
+    {
+        if (payload.Length < 5) throw new EndOfStreamException();
+        int length = BitConverter.ToInt32(payload, 1);
+        if (length != payload.Length - 5) throw Malformed(text, field, length > payload.Length - 5 || length < 0 ? "is cut short" : "has bytes after its payload");
+        try
+        {
+            using var input = new DeflateStream(new MemoryStream(payload, 5, length), CompressionMode.Decompress);
+            using var output = new MemoryStream();
+            var chunk = new byte[4096];
+            int read;
+            while ((read = input.Read(chunk, 0, chunk.Length)) > 0)
+            {
+                output.Write(chunk, 0, read);
+                if (output.Length > 3L * MaxBlock) throw new InvalidDataException();
+            }
+            return output.ToArray();
+        }
+        catch (InvalidDataException)
+        {
+            throw Malformed(text, field, "has a payload that does not inflate");
+        }
+    }
+
+    static byte[] Sub(byte[] bytes, int start, int count)
+    {
+        var sub = new byte[count];
+        Array.Copy(bytes, start, sub, 0, count);
+        return sub;
+    }
+
+    static byte[] Concat(params byte[][] parts)
+    {
+        using var all = new MemoryStream();
+        foreach (var part in parts) all.Write(part, 0, part.Length);
+        return all.ToArray();
     }
 
     static void WriteBlock(BinaryWriter writer, byte[] block)
