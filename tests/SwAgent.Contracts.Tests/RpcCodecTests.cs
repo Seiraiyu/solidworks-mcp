@@ -39,6 +39,7 @@ public class RpcCodecTests
     [InlineData("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"\",\"deadline_ms\":5}", RpcErrorCodes.InvalidRequest, 3L)]
     [InlineData("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"m.x\"}", RpcErrorCodes.InvalidRequest, 3L)]
     [InlineData("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"m.x\",\"deadline_ms\":0}", RpcErrorCodes.InvalidRequest, 3L)]
+    [InlineData("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"m.x\",\"deadline_ms\":9223372036854775807}", RpcErrorCodes.InvalidRequest, 3L)]
     [InlineData("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"m.x\",\"deadline_ms\":5,\"params\":[]}", RpcErrorCodes.InvalidRequest, 3L)]
     [InlineData("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"m.x\",\"deadline_ms\":5,\"extra\":1}", RpcErrorCodes.InvalidRequest, 3L)]
     public void Bad_requests_are_refused_with_the_right_code(string line, int rpcCode, long? id)

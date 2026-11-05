@@ -132,6 +132,8 @@ public static class RpcCodec
         else throw Invalid(id, "'params' must be an object");
         if (!(o.TryGetValue("deadline_ms", out var rawDeadline) && rawDeadline is long deadline && deadline > 0))
             throw Invalid(id, "the request needs a positive integer 'deadline_ms'");
+        if (deadline > int.MaxValue)
+            throw Invalid(id, $"'deadline_ms' must be at most {int.MaxValue}");
         return new RpcRequest(id.Value, method, parameters, deadline);
     }
 
