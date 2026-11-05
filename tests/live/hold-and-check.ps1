@@ -1,20 +1,27 @@
 <#
 .SYNOPSIS
-  swmcp 2.A live check: holds one connection to the add-in, reports its state, and optionally ends SOLIDWORKS by
-  process id -- only when every open document is one this check created.
+  swmcp live checks: holds one connection to the add-in, reports its state, and optionally ends SOLIDWORKS by
+  process id -- only when every open document is one this check created. It is the only way a live check ends
+  SOLIDWORKS: -Close for a normal close, -Kill for a crash.
 .PARAMETER ExpectedFiles
-  Full paths of every document the live check created. Any other open document (or an unsaved one) refuses -Kill.
+  Full paths of every document the live check created; @() when it created none. Any other open document (or an
+  unsaved one) refuses -Kill and -Close.
 .PARAMETER HoldSeconds
   How long to hold the connection (preferences applied) before the final check, for inspecting SOLIDWORKS.
 .PARAMETER Kill
   End SOLIDWORKS (Stop-Process -Id) after the final check, leaving the preferences applied so the journal is exercised.
+.PARAMETER Close
+  Close SOLIDWORKS normally after the final check: disconnect (so the add-in restores the preferences), then close
+  the main window of the process addin.state names, and wait up to 120 s for it to exit.
 #>
 param(
-    [Parameter(Mandatory)] [string[]] $ExpectedFiles,
+    [Parameter(Mandatory)] [AllowEmptyCollection()] [string[]] $ExpectedFiles,
     [int] $HoldSeconds = 0,
-    [switch] $Kill
+    [switch] $Kill,
+    [switch] $Close
 )
 $ErrorActionPreference = 'Stop'
+if ($Kill -and $Close) { Write-Host "REFUSED: -Kill and -Close cannot be used together"; exit 2 }
 
 $running = @(Get-Process -Name SLDWORKS -ErrorAction SilentlyContinue)
 if ($running.Count -ne 1) { Write-Host "REFUSED: expected exactly one SOLIDWORKS, found $($running.Count)"; exit 3 }
@@ -66,7 +73,7 @@ if ($HoldSeconds -gt 0) {
     Start-Sleep -Seconds $HoldSeconds
 }
 
-if ($Kill) {
+if ($Kill -or $Close) {
     $state = Invoke-Addin 'addin.state'
     Show-State $state
     $foreign = Get-Foreign $state
@@ -76,8 +83,26 @@ if ($Kill) {
         $pipe.Dispose()
         exit 3
     }
-    Write-Host "ending SOLIDWORKS process $($state.process_id) with the preferences still applied"
-    Stop-Process -Id $state.process_id -Force
+    if ($state.PSObject.Properties['dialog'] -and $state.dialog) {
+        Write-Host "REFUSED: SOLIDWORKS is showing a dialog: $($state.dialog.title)"
+        $pipe.Dispose()
+        exit 3
+    }
+    if ($Kill) {
+        Write-Host "ending SOLIDWORKS process $($state.process_id) with the preferences still applied"
+        Stop-Process -Id $state.process_id -Force
+        exit 0
+    }
+    $target = Get-Process -Id $state.process_id
+    $pipe.Dispose()
+    Start-Sleep -Seconds 1   # the add-in restores the preferences when the client disconnects
+    Write-Host "closing SOLIDWORKS process $($state.process_id) normally"
+    [void]$target.CloseMainWindow()
+    if (-not $target.WaitForExit(120000)) {
+        Write-Host "SOLIDWORKS process $($state.process_id) did not exit within 120 s (it may be showing a prompt); nothing more was done"
+        exit 4
+    }
+    Write-Host "SOLIDWORKS process $($state.process_id) exited"
     exit 0
 }
 $pipe.Dispose()
