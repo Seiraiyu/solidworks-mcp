@@ -246,7 +246,7 @@
                   "max"
                 ],
                 "additionalProperties": false,
-                "description": "Its axis-aligned bounding box, for faces and edges."
+                "description": "Its axis-aligned bounding box, for faces only."
               },
               "distance_mm": {
                 "type": "number",

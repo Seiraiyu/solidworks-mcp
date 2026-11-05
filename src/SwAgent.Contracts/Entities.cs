@@ -66,7 +66,7 @@ public sealed class EntityInfo
     [Description("Radius of a cylinder, cone base, sphere, torus or circle, mm.")]
     public double? RadiusMm { get; set; }
 
-    [Description("Its axis-aligned bounding box, for faces and edges.")]
+    [Description("Its axis-aligned bounding box, for faces only.")]
     public Box3? Box { get; set; }
 
     [Description("Distance from the point model.find was asked to be near, mm.")]
