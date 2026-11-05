@@ -18,9 +18,9 @@ public sealed class EmptyResult { }
 public class OperationCatalogTests
 {
     [Fact]
-    public void Catalog_holds_the_phase_2A_operations()
+    public void Catalog_holds_the_phase_2B_operations()
     {
-        Assert.Equal(new[] { "addin.events", "addin.state", "diag.sleep", "session.hello", "session.status" },
+        Assert.Equal(new[] { "addin.events", "addin.state", "diag.sleep", "dialog.respond", "session.hello", "session.status" },
             OperationCatalog.All.Select(o => o.Name).ToArray());
         var status = OperationCatalog.Find("session.status")!;
         Assert.Equal("session", status.Family);
@@ -41,6 +41,7 @@ public class OperationCatalogTests
         Assert.Equal("Pipe/internal", Shape("addin.state"));
         Assert.Equal("Pipe/internal", Shape("addin.events"));
         Assert.Equal("Ui/internal", Shape("diag.sleep"));
+        Assert.Equal("Pipe/tool", Shape("dialog.respond"));
         Assert.Equal("Ui/internal", Shape("session.hello"));
         Assert.Equal("Ui/tool", Shape("session.status"));
     }

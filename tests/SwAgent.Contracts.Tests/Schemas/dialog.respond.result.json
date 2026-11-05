@@ -1,0 +1,139 @@
+{
+  "type": "object",
+  "description": "What was pressed, and what followed.",
+  "properties": {
+    "dialog": {
+      "type": "string",
+      "description": "The dialog id."
+    },
+    "pressed": {
+      "type": "string",
+      "description": "The button pressed (its text), or close."
+    },
+    "control_id": {
+      "type": "integer",
+      "description": "The control id pressed; absent for close."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "no_request",
+        "result",
+        "error",
+        "dialog_open",
+        "still_running"
+      ],
+      "description": "What followed: no_request, result, error, dialog_open or still_running."
+    },
+    "result": {
+      "type": "object",
+      "description": "The request's result, when the outcome is result."
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "sw_not_running",
+            "sw_crashed",
+            "sw_multiple_instances",
+            "addin_not_loaded",
+            "addin_incompatible",
+            "timeout",
+            "busy",
+            "dialog_open",
+            "invalid_argument",
+            "reference_unresolved",
+            "wrong_document_type",
+            "operation_failed",
+            "verification_failed",
+            "api_error",
+            "sw_starting"
+          ],
+          "description": "Stable error code; branch on this."
+        },
+        "message": {
+          "type": "string",
+          "description": "What happened and what to do next."
+        },
+        "details": {
+          "type": "object",
+          "description": "Structured facts about the failure."
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false,
+      "description": "The request's error, when the outcome is error."
+    },
+    "next_dialog": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Names this dialog until it closes; pass it to dialog.respond."
+        },
+        "title": {
+          "type": "string",
+          "description": "The dialog's title bar text."
+        },
+        "text": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The dialog's text, one entry per static text control; empty when it could not be read."
+        },
+        "buttons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A push button on a dialog.",
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "The button's text, without its & accelerator marks."
+              },
+              "control_id": {
+                "type": "integer",
+                "description": "The button's control id; dialog.respond accepts it in place of the text."
+              }
+            },
+            "required": [
+              "text",
+              "control_id"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Its push buttons; empty when they could not be read (close still works)."
+        },
+        "request_id": {
+          "type": "integer",
+          "description": "The request that was running when it opened; absent when none was."
+        },
+        "opened_at": {
+          "type": "string",
+          "description": "When it was first seen, UTC, ISO 8601."
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "text",
+        "buttons",
+        "opened_at"
+      ],
+      "additionalProperties": false,
+      "description": "The next dialog the request raised, when the outcome is dialog_open."
+    }
+  },
+  "required": [
+    "dialog",
+    "pressed",
+    "outcome"
+  ],
+  "additionalProperties": false
+}
