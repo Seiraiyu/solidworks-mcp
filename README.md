@@ -6,7 +6,14 @@ Lets an AI agent drive SOLIDWORKS through the [Model Context Protocol](https://m
 - **`SwAgent.Client`** is the one library that talks to that pipe.
 - **`swmcp`** is the MCP server (`swmcp serve`, the default) and the command line (`swmcp call`, `swmcp addin ...`).
 
-Phase 1 offers one tool, `sw_status`: the SOLIDWORKS revision, the active document and whether it has unsaved changes.
+It offers four tools:
+
+- `sw_status` says what SOLIDWORKS is doing: whether it runs, what the add-in is running and has queued, any open dialog, the open documents and, when SOLIDWORKS is idle, the active document. It always answers, even while SOLIDWORKS is busy, stopped in a dialog, starting or absent.
+- `sw_dialog_respond` presses a button on the modal dialog SOLIDWORKS is showing.
+- `sw_events` returns what happened since a cursor: documents opened, saved, closed and changed, dialogs, and the late outcomes of operations.
+- `sw_reconnect` connects again, to a named SOLIDWORKS when several run.
+
+Every tool takes an optional `deadline_ms`.
 
 ## Requirements
 
@@ -35,13 +42,15 @@ dotnet publish src/SwAgent.Mcp -c Release -o $app
 
 ## Load the add-in
 
-SOLIDWORKS does not load add-ins registered only for the current user at startup. So after each start of SOLIDWORKS, load it:
+SOLIDWORKS does not load add-ins registered only for the current user at startup, so `swmcp serve`, `swmcp call` and `swmcp status` load it themselves. On the first call after SOLIDWORKS starts, they wait until SOLIDWORKS has finished starting, then attach to it (they never start one) and ask it to load the registered add-in. While SOLIDWORKS is still starting, including while it waits at a 3DEXPERIENCE sign-in or update prompt, calls answer `sw_starting` and `sw_status` says `starting`. swmcp never touches that prompt.
+
+If the add-in fails to load, the error names the add-in's log. swmcp does not retry for that SOLIDWORKS until `sw_reconnect` (or a new `swmcp`), so a broken add-in is reported rather than reloaded in a loop. To load it explicitly:
 
 ```powershell
 & "$app\swmcp.exe" addin load
 ```
 
-This attaches to the running SOLIDWORKS (it never starts one) and asks it to load the registered add-in. Name an instance with `--pid` when more than one is running. Until it is loaded, `sw_status` answers `addin_not_loaded` with this same instruction.
+Name an instance with `--pid` when more than one is running.
 
 ## Use it from Claude Code
 
@@ -65,6 +74,10 @@ Or in a project's `.mcp.json`:
 
 Then ask Claude for the SOLIDWORKS status, and it calls `sw_status`. A failure comes back as an error result whose JSON body has a stable `code` (`sw_not_running`, `addin_not_loaded`, `busy`, `timeout`, ...), a `message` saying what to do next, and `details`. Only a bug in the server itself comes back as an MCP protocol error (internal error); its detail is in the server log.
 
+`sw_status` answers while another call waits on SOLIDWORKS. When SOLIDWORKS is not running, starting, or ambiguous, it says so as its `state` (`not_running`, `starting`, `multiple`, ...), with a `message` saying what to do.
+
+If SOLIDWORKS crashes, the calls in flight get `sw_crashed` within about a second. The error names those calls and the documents that had unsaved changes. When no call was in flight, the next call gets it. Start SOLIDWORKS again from the 3DEXPERIENCE dashboard in the browser, and the next call reattaches by itself: it loads the add-in again. A SOLIDWORKS closed normally gives `sw_not_running`, not `sw_crashed`. swmcp never starts, restarts or ends SOLIDWORKS.
+
 The add-in serves one client at a time. While an MCP client is connected, `swmcp call` from a terminal answers `busy`.
 
 ## From a terminal
@@ -74,6 +87,13 @@ swmcp call session.status
 ```
 
 `call` prints the result, or the typed error, as JSON. It exits 0 on success and with a code per error otherwise (`swmcp --help`).
+
+`swmcp status` prints what `sw_status` answers, and always exits 0. `swmcp events` prints the events the add-in still holds. Add `--after-seq N` to see only those after event N, or `--follow` to print each new event as a line of JSON until Ctrl+C:
+
+```powershell
+& "$app\swmcp.exe" status
+& "$app\swmcp.exe" events --follow
+```
 
 `addin.state` answers even while SOLIDWORKS is busy with another request, and shows what is running, what waits, the open documents and whether the automation preferences are applied:
 
@@ -94,7 +114,7 @@ When SOLIDWORKS shows a modal dialog, a request that raised it is answered `dial
 & "$app\swmcp.exe" call dialog.respond '{"dialog":"d3-1a2b","button":"Cancel"}'
 ```
 
-Each `swmcp call` opens a new connection, and a new connection's hello waits for SOLIDWORKS' UI thread. So from a terminal this answers a dialog that no request is waiting on (one opened by hand). A dialog that a request raised is answered on the connection that sent the request; `swmcp serve` keeps one open from phase 2.C.
+Each `swmcp call` opens a new connection, and a new connection's hello waits for SOLIDWORKS' UI thread. So from a terminal this answers a dialog that no request is waiting on (one opened by hand). A dialog that a request raised is answered on the connection that sent the request: an agent does it with `sw_dialog_respond`, over the server's one connection.
 
 The add-in presses a button only when asked, or for a prompt on its built-in allow-list of measured, always-safe answers (empty in this release).
 
@@ -103,6 +123,6 @@ The add-in presses a button only when asked, or for a prompt on its built-in all
 Logs are in `%LOCALAPPDATA%\solidworks-mcp\logs\` and are kept 14 days:
 
 - `addin-<yyyyMMdd>.log` is the add-in's log: load, unload, and every request with its thread.
-- `server-<yyyyMMdd>.log` is the MCP server's log: every tool call with its outcome code and duration. The server also logs to stderr.
+- `server-<yyyyMMdd>.log` is the MCP server's log. It records every tool call with its outcome code and duration, every change in what the server sees (`not_running`, `starting`, `loading`, `ready`, `crashed`, ...), every `LoadAddIn` with its result and how long the add-in's pipe took, and how each connection ended (crash, close, add-in turned off), with its evidence. The server also logs to stderr.
 
 `SWMCP_LOG_LEVEL` (`trace`, `debug`, `information`, `warning`, `error`) sets the server's minimum level; the default is `information`. At `debug` the server also logs each call's parameters.

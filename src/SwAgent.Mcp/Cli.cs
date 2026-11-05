@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Win32;
 using SwAgent.Client;
@@ -33,8 +35,14 @@ public sealed class CliEnvironment
     /// <summary>How long <c>addin load</c> waits for the add-in's pipe after LoadAddIn returns.</summary>
     public TimeSpan AddinLoadWait { get; init; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>Tells when a SOLIDWORKS process exits; a fake in tests.</summary>
+    public IProcessWatch Processes { get; init; } = SystemProcessWatch.Instance;
+
     /// <summary>Runs the MCP server on stdio until the client disconnects; a fake in tests.</summary>
-    public Func<ClientOptions, Task<int>> Serve { get; init; } = client => McpHost.RunAsync(client);
+    public Func<SupervisorOptions, Task<int>> Serve { get; init; } = options => McpHost.RunAsync(options);
+
+    /// <summary>Ends <c>events --follow</c> (Ctrl+C).</summary>
+    public CancellationToken Stop { get; init; }
 }
 
 public sealed class UsageException : Exception
@@ -51,6 +59,8 @@ public static class Cli
         "usage:\n" +
         "  swmcp [serve] [--pid N]          MCP server on stdio (the default)\n" +
         "  swmcp call <method> [json-params] [--pid N] [--deadline-ms N]\n" +
+        "  swmcp status [--pid N]\n" +
+        "  swmcp events [--after-seq N] [--follow] [--pid N]\n" +
         "  swmcp addin register [--path <SwAgent.AddIn.dll>]\n" +
         "  swmcp addin load [--pid N]\n" +
         "  swmcp addin unregister\n" +
@@ -77,6 +87,10 @@ public static class Cli
                     return await ServeAsync(args.Skip(1).ToArray(), env).ConfigureAwait(false);
                 case "call":
                     return await CallAsync(args.Skip(1).ToArray(), env).ConfigureAwait(false);
+                case "status":
+                    return await StatusAsync(args.Skip(1).ToArray(), env).ConfigureAwait(false);
+                case "events":
+                    return await EventsAsync(args.Skip(1).ToArray(), env).ConfigureAwait(false);
                 case "addin":
                     return await AddinAsync(args.Skip(1).ToArray(), env).ConfigureAwait(false);
                 default:
@@ -107,7 +121,7 @@ public static class Cli
         if (a.Positional.Count > 0) throw new UsageException("serve takes no arguments besides --pid");
         int? pid = a.Int("--pid");
         if (pid != null) env.Client.ProcessId = pid;
-        return await env.Serve(env.Client).ConfigureAwait(false);
+        return await env.Serve(Options(env)).ConfigureAwait(false);
     }
 
     static async Task<int> CallAsync(string[] args, CliEnvironment env)
@@ -133,12 +147,79 @@ public static class Cli
         int? deadlineMs = a.Int("--deadline-ms");
         if (pid != null) env.Client.ProcessId = pid;
 
-        using var client = await SwAgentClient.ConnectAsync(env.Client).ConfigureAwait(false);
+        using var supervisor = new Supervisor(Options(env));
         TimeSpan? deadline = deadlineMs == null ? null : TimeSpan.FromMilliseconds(deadlineMs.Value);
-        object? result = await client.CallAsync(method, parameters, deadline).ConfigureAwait(false);
+        object? result = await supervisor.CallAsync(method, parameters, deadline).ConfigureAwait(false);
         Write(env, result);
         return ExitCodes.Success;
     }
+
+    /// <summary>What sw_status answers, from a terminal. Always exits 0: a SOLIDWORKS that is absent or starting is a state.</summary>
+    static async Task<int> StatusAsync(string[] args, CliEnvironment env)
+    {
+        var a = Args.Parse(args, "--pid");
+        if (a.Positional.Count > 0) throw new UsageException("status takes no arguments besides --pid");
+        int? pid = a.Int("--pid");
+        if (pid != null) env.Client.ProcessId = pid;
+        using var supervisor = new Supervisor(Options(env));
+        Write(env, JsonCodec.ToJson(await supervisor.StatusAsync().ConfigureAwait(false)));
+        return ExitCodes.Success;
+    }
+
+    /// <summary>
+    /// The events the add-in still holds (after --after-seq, in the add-in's own numbering) as one JSON document; with
+    /// --follow, each held event and then each new one as a line of JSON, until Ctrl+C.
+    /// </summary>
+    static async Task<int> EventsAsync(string[] args, CliEnvironment env)
+    {
+        var a = Args.Parse(args, new[] { "--follow" }, "--pid", "--after-seq");
+        if (a.Positional.Count > 0) throw new UsageException("events takes no arguments besides --after-seq, --follow and --pid");
+        int? pid = a.Int("--pid");
+        if (pid != null) env.Client.ProcessId = pid;
+        var request = new AddinEventsRequest { AfterSeq = a.Int("--after-seq") };
+
+        using var supervisor = new Supervisor(Options(env));
+        if (!a.Flags.Contains("--follow"))
+        {
+            Write(env, JsonCodec.ToJson(await supervisor.CallAsync<AddinEventsRequest, AddinEventsResult>(request).ConfigureAwait(false)));
+            return ExitCodes.Success;
+        }
+
+        using var live = new BlockingCollection<EventEnvelope>();
+        supervisor.EventReceived += live.Add;
+        var held = await supervisor.CallAsync<AddinEventsRequest, AddinEventsResult>(request).ConfigureAwait(false);
+        long printed = request.AfterSeq ?? 0;
+        foreach (var e in held.Events) printed = Line(env, e);
+        try
+        {
+            while (true)
+            {
+                var e = live.Take(env.Stop);
+                if (e.Seq > printed || e.Seq == 1) printed = Line(env, e); // seq 1 again: the add-in was loaded again
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return ExitCodes.Success;
+        }
+    }
+
+    static long Line(CliEnvironment env, EventEnvelope e)
+    {
+        env.Out.WriteLine(Json.Write(JsonCodec.ToJson(e)));
+        env.Out.Flush();
+        return e.Seq;
+    }
+
+    /// <summary>The supervisor every command that reaches SOLIDWORKS uses, so each loads the add-in the same way.</summary>
+    static SupervisorOptions Options(CliEnvironment env) => new SupervisorOptions
+    {
+        Client = env.Client,
+        SolidWorks = env.SolidWorks,
+        Registration = new RegistrarAddinRegistration(new AddinRegistrar(env.RegistryRoot)),
+        Processes = env.Processes,
+        PipeWait = env.AddinLoadWait,
+    };
 
     static async Task<int> AddinAsync(string[] args, CliEnvironment env)
     {
@@ -217,61 +298,32 @@ public static class Cli
 
     /// <summary>
     /// Asks the running SOLIDWORKS to load the registered add-in (SOLIDWORKS does not discover per-user add-ins at
-    /// startup), then waits for its pipe. Attaches only: SOLIDWORKS is started by the user, never by swmcp.
+    /// startup), then waits for its pipe: the same loader the supervisor uses. Attaches only: SOLIDWORKS is started by
+    /// the user, never by swmcp.
     /// </summary>
     static async Task<int> LoadAsync(AddinRegistrar registrar, Args a, CliEnvironment env)
     {
         if (a.Positional.Count > 0) throw new UsageException("addin load takes no arguments besides --pid");
         int? wanted = a.Int("--pid") ?? env.Client.ProcessId;
-
-        var status = registrar.Status();
-        if (!status.Registered || status.Path == null)
-        {
-            throw new SwAgentException(ErrorCode.AddinNotLoaded,
-                status.Path != null && !status.FileExists
-                    ? $"the add-in is registered at {status.Path}, which no longer exists; run `swmcp addin register` first"
-                    : "the add-in is not registered for this user; run `swmcp addin register` first",
-                new JsonObject { ["registered_path"] = status.Path, ["file_exists"] = status.FileExists });
-        }
+        var loader = Loader(env, new RegistrarAddinRegistration(registrar));
+        string path = loader.RegisteredPath(); // said before looking for SOLIDWORKS: registering is the first thing to fix
 
         int pid = new AddinLocator(env.Client.Processes, env.Client.Pipes, env.Client.PipeNameFor).LocateProcess(wanted);
-        string pipe = env.Client.PipeNameFor(pid);
-        if (env.Client.Pipes.Exists(pipe))
-        {
-            Write(env, new JsonObject { ["loaded"] = true, ["already_loaded"] = true, ["process_id"] = (long)pid, ["path"] = status.Path });
-            return ExitCodes.Success;
-        }
-
-        int result = env.SolidWorks.LoadAddIn(pid, status.Path);
-        var deadline = DateTime.UtcNow + env.AddinLoadWait;
-        while (!env.Client.Pipes.Exists(pipe))
-        {
-            if (DateTime.UtcNow >= deadline)
-            {
-                string logs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "solidworks-mcp", "logs");
-                throw new SwAgentException(ErrorCode.AddinNotLoaded,
-                    $"SOLIDWORKS (process {pid}) did not start the add-in: LoadAddIn returned {result} and \\\\.\\pipe\\{pipe} " +
-                    $"did not appear within {env.AddinLoadWait.TotalSeconds:0.#} s; the add-in's log is in {logs}",
-                    new JsonObject
-                    {
-                        ["process_id"] = (long)pid,
-                        ["path"] = status.Path,
-                        ["load_addin_result"] = (long)result,
-                        ["log_directory"] = logs,
-                    });
-            }
-            await Task.Delay(100).ConfigureAwait(false);
-        }
-        Write(env, new JsonObject
+        var loaded = await loader.EnsureLoadedAsync(pid, DateTime.UtcNow + env.AddinLoadWait + TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+        var result = new JsonObject
         {
             ["loaded"] = true,
-            ["already_loaded"] = false,
+            ["already_loaded"] = loaded.AlreadyLoaded,
             ["process_id"] = (long)pid,
-            ["path"] = status.Path,
-            ["load_addin_result"] = (long)result,
-        });
+            ["path"] = path,
+        };
+        if (loaded.LoadAddInResult != null) result["load_addin_result"] = (long)loaded.LoadAddInResult.Value;
+        Write(env, result);
         return ExitCodes.Success;
     }
+
+    static AddinLoader Loader(CliEnvironment env, IAddinRegistration registration) =>
+        new AddinLoader(env.SolidWorks, registration, env.Client.Pipes, env.Client.PipeNameFor, env.Client.Logger) { PipeWait = env.AddinLoadWait };
 
     static List<(int ProcessId, bool AddinLoaded)> RunningSolidWorks(CliEnvironment env) =>
         env.Client.Processes.SolidWorksProcessIds()
@@ -286,7 +338,12 @@ public static class Cli
 
         public Dictionary<string, string> Options { get; } = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        public static Args Parse(string[] args, params string[] allowed)
+        /// <summary>The flags given (options that take no value).</summary>
+        public HashSet<string> Flags { get; } = new HashSet<string>(StringComparer.Ordinal);
+
+        public static Args Parse(string[] args, params string[] allowed) => Parse(args, Array.Empty<string>(), allowed);
+
+        public static Args Parse(string[] args, string[] flags, params string[] allowed)
         {
             var parsed = new Args();
             for (int i = 0; i < args.Length; i++)
@@ -295,6 +352,11 @@ public static class Cli
                 if (!arg.StartsWith("--", StringComparison.Ordinal))
                 {
                     parsed.Positional.Add(arg);
+                    continue;
+                }
+                if (flags.Contains(arg))
+                {
+                    parsed.Flags.Add(arg);
                     continue;
                 }
                 if (!allowed.Contains(arg)) throw new UsageException($"unknown option '{arg}'");

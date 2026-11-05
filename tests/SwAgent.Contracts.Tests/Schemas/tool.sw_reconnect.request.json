@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "description": "Drops the connection to SOLIDWORKS, forgets an add-in load that failed, and connects to the named SOLIDWORKS (or the only one), loading the add-in if needed. Answers with what sw_status would.",
+  "properties": {
+    "process_id": {
+      "type": "integer",
+      "description": "The SOLIDWORKS process to use, from sw_status' process_ids; the only one when absent."
+    }
+  },
+  "additionalProperties": false
+}

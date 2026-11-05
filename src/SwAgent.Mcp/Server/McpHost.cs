@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,23 +38,36 @@ public static class McpHost
             ? level
             : LogLevel.Information;
 
-    public static async Task<int> RunAsync(ClientOptions client, CancellationToken cancellationToken = default)
+    public static async Task<int> RunAsync(SupervisorOptions options, CancellationToken cancellationToken = default)
     {
         var builder = Host.CreateEmptyApplicationBuilder(new HostApplicationBuilderSettings());
         builder.Logging.SetMinimumLevel(MinimumLevel(Environment.GetEnvironmentVariable(LogLevelVariable)));
         builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
         builder.Logging.AddProvider(new FileLoggerProvider(FileLoggerProvider.DefaultDirectory, "server"));
 
-        using var session = new AddinSession(client);
+        Supervisor? supervisor = null;
         builder.Services.AddMcpServer().WithStdioServerTransport();
         builder.Services.AddOptions<McpServerOptions>()
-            .Configure<ILoggerFactory>((o, logs) => Configure(o, ToolCatalog.Create(session, logs.CreateLogger("SwAgent.Mcp"))));
+            .Configure<ILoggerFactory>((o, logs) =>
+            {
+                // The supervisor logs through the host's loggers, so it is made when the host configures the server.
+                options.Client.Logger = logs.CreateLogger("SwAgent.Client");
+                supervisor = new Supervisor(options);
+                Configure(o, ToolCatalog.Create(supervisor, logs.CreateLogger("SwAgent.Mcp")));
+            });
 
-        using var host = builder.Build();
-        var log = host.Services.GetRequiredService<ILoggerFactory>();
-        client.Logger = log.CreateLogger("SwAgent.Client");
-        log.CreateLogger("SwAgent.Mcp").LogInformation("swmcp {Version} serving MCP on stdio; tools: sw_status", SwAgentClient.Version);
-        await host.RunAsync(cancellationToken).ConfigureAwait(false);
-        return ExitCodes.Success;
+        try
+        {
+            using var host = builder.Build();
+            var log = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("SwAgent.Mcp");
+            log.LogInformation("swmcp {Version} serving MCP on stdio; tools: {Tools}", SwAgentClient.Version, string.Join(", ", ToolCatalog.All.Select(t => t.Name)));
+            await host.RunAsync(cancellationToken).ConfigureAwait(false);
+            return ExitCodes.Success;
+        }
+        finally
+        {
+            // Closing the connection lets the add-in restore the user's preferences at once.
+            supervisor?.Dispose();
+        }
     }
 }

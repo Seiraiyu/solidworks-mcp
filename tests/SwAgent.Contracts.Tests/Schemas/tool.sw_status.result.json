@@ -1,0 +1,475 @@
+{
+  "type": "object",
+  "description": "The state of SOLIDWORKS as the server sees it.",
+  "properties": {
+    "state": {
+      "type": "string",
+      "enum": [
+        "not_running",
+        "multiple",
+        "starting",
+        "loading",
+        "ready",
+        "crashed",
+        "addin_unavailable"
+      ],
+      "description": "not_running, multiple, starting, loading, ready, crashed or addin_unavailable."
+    },
+    "message": {
+      "type": "string",
+      "description": "What the state means and what to do next."
+    },
+    "swmcp_version": {
+      "type": "string",
+      "description": "This swmcp's version."
+    },
+    "process_id": {
+      "type": "integer",
+      "description": "The SOLIDWORKS process the server talks to, or would; absent when there is none or several."
+    },
+    "process_ids": {
+      "type": "array",
+      "items": {
+        "type": "integer"
+      },
+      "description": "Every SOLIDWORKS process in this Windows session."
+    },
+    "responding": {
+      "type": "boolean",
+      "description": "False when SOLIDWORKS' UI thread has not answered for over 5 s while nothing was running, or Windows reports its window hung; absent when not connected."
+    },
+    "not_responding_ms": {
+      "type": "integer",
+      "description": "How long SOLIDWORKS has not responded, when responding is false."
+    },
+    "addin": {
+      "type": "object",
+      "properties": {
+        "addin_version": {
+          "type": "string",
+          "description": "The add-in's assembly version."
+        },
+        "protocol_version": {
+          "type": "integer",
+          "description": "The protocol version the add-in speaks."
+        },
+        "process_id": {
+          "type": "integer",
+          "description": "The process id of sldworks.exe."
+        },
+        "running": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer",
+              "description": "Its id."
+            },
+            "method": {
+              "type": "string",
+              "description": "Its operation."
+            },
+            "running_ms": {
+              "type": "integer",
+              "description": "How long it has run."
+            },
+            "answered": {
+              "type": "boolean",
+              "description": "True when its client was already answered (timeout) and its outcome will come as operation.completed."
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "running_ms",
+            "answered"
+          ],
+          "additionalProperties": false,
+          "description": "The request running on the UI thread, absent when idle."
+        },
+        "queued": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A request waiting for the UI thread.",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Its id."
+              },
+              "method": {
+                "type": "string",
+                "description": "Its operation."
+              },
+              "waited_ms": {
+                "type": "integer",
+                "description": "How long it has waited."
+              }
+            },
+            "required": [
+              "id",
+              "method",
+              "waited_ms"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Requests waiting for the UI thread, oldest first."
+        },
+        "ui_last_pumped_ms": {
+          "type": "integer",
+          "description": "Milliseconds since the UI thread last ran the add-in's window procedure; absent before it ever has."
+        },
+        "watchdog_alive": {
+          "type": "boolean",
+          "description": "True while the watchdog thread is alive."
+        },
+        "preferences_applied": {
+          "type": "boolean",
+          "description": "True while the automation preferences are applied for a connected client."
+        },
+        "preferences_recovered": {
+          "type": "boolean",
+          "description": "True when, at load, preferences left applied by an earlier crash were restored."
+        },
+        "preferences_not_applied": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Automation preferences SOLIDWORKS did not take (set failed or did not stick); empty when all took."
+        },
+        "documents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A document open in SOLIDWORKS.",
+            "properties": {
+              "title": {
+                "type": "string",
+                "description": "The document's title as SOLIDWORKS shows it."
+              },
+              "path": {
+                "type": "string",
+                "description": "The full path, absent while the document has never been saved."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "part",
+                  "assembly",
+                  "drawing"
+                ],
+                "description": "Part, assembly or drawing."
+              },
+              "dirty": {
+                "type": "boolean",
+                "description": "True when the document has unsaved changes."
+              }
+            },
+            "required": [
+              "title",
+              "type",
+              "dirty"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Open documents and their dirty flags, as last read."
+        },
+        "documents_as_of": {
+          "type": "string",
+          "description": "When the documents were last read, UTC, ISO 8601; absent before the first read."
+        },
+        "last_event_seq": {
+          "type": "integer",
+          "description": "The sequence number of the last event raised, 0 before any."
+        },
+        "dialog": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Names this dialog until it closes; pass it to dialog.respond."
+            },
+            "title": {
+              "type": "string",
+              "description": "The dialog's title bar text."
+            },
+            "text": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The dialog's text, one entry per static text control; empty when it could not be read."
+            },
+            "buttons": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "description": "A push button on a dialog.",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "The button's text, without its & accelerator marks."
+                  },
+                  "control_id": {
+                    "type": "integer",
+                    "description": "The button's control id; dialog.respond accepts it in place of the text."
+                  }
+                },
+                "required": [
+                  "text",
+                  "control_id"
+                ],
+                "additionalProperties": false
+              },
+              "description": "Its push buttons; empty when they could not be read (close still works)."
+            },
+            "request_id": {
+              "type": "integer",
+              "description": "The request that was running when it opened; absent when none was."
+            },
+            "opened_at": {
+              "type": "string",
+              "description": "When it was first seen, UTC, ISO 8601."
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "text",
+            "buttons",
+            "opened_at"
+          ],
+          "additionalProperties": false,
+          "description": "The modal dialog SOLIDWORKS is showing; absent when none is open."
+        },
+        "dialog_watch_alive": {
+          "type": "boolean",
+          "description": "True while the dialog watch thread is alive."
+        }
+      },
+      "required": [
+        "addin_version",
+        "protocol_version",
+        "process_id",
+        "queued",
+        "watchdog_alive",
+        "preferences_applied",
+        "preferences_recovered",
+        "preferences_not_applied",
+        "documents",
+        "last_event_seq",
+        "dialog_watch_alive"
+      ],
+      "additionalProperties": false,
+      "description": "The add-in's own state; absent when not connected."
+    },
+    "session": {
+      "type": "object",
+      "properties": {
+        "sw_revision": {
+          "type": "string",
+          "description": "SOLIDWORKS' revision number, for example 34.4.0."
+        },
+        "process_id": {
+          "type": "integer",
+          "description": "The process id of sldworks.exe."
+        },
+        "addin_version": {
+          "type": "string",
+          "description": "The add-in's assembly version."
+        },
+        "protocol_version": {
+          "type": "integer",
+          "description": "The protocol version the add-in speaks."
+        },
+        "active_document": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "The document's title as SOLIDWORKS shows it."
+            },
+            "path": {
+              "type": "string",
+              "description": "The full path, absent while the document has never been saved."
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "part",
+                "assembly",
+                "drawing"
+              ],
+              "description": "Part, assembly or drawing."
+            },
+            "dirty": {
+              "type": "boolean",
+              "description": "True when the document has unsaved changes."
+            }
+          },
+          "required": [
+            "title",
+            "type",
+            "dirty"
+          ],
+          "additionalProperties": false,
+          "description": "The active document, absent when no document is open."
+        },
+        "open_document_count": {
+          "type": "integer",
+          "description": "How many documents are open."
+        },
+        "queued_requests": {
+          "type": "integer",
+          "description": "Requests waiting behind this one on SOLIDWORKS' UI thread."
+        }
+      },
+      "required": [
+        "sw_revision",
+        "process_id",
+        "addin_version",
+        "protocol_version",
+        "open_document_count",
+        "queued_requests"
+      ],
+      "additionalProperties": false,
+      "description": "The session status (active document); present only when SOLIDWORKS' UI thread was idle."
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "sw_not_running",
+            "sw_crashed",
+            "sw_multiple_instances",
+            "addin_not_loaded",
+            "addin_incompatible",
+            "timeout",
+            "busy",
+            "dialog_open",
+            "invalid_argument",
+            "reference_unresolved",
+            "wrong_document_type",
+            "operation_failed",
+            "verification_failed",
+            "api_error",
+            "sw_starting"
+          ],
+          "description": "Stable error code; branch on this."
+        },
+        "message": {
+          "type": "string",
+          "description": "What happened and what to do next."
+        },
+        "details": {
+          "type": "object",
+          "description": "Structured facts about the failure."
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false,
+      "description": "Why the server could not connect, when it could not."
+    },
+    "last_crash": {
+      "type": "object",
+      "properties": {
+        "process_id": {
+          "type": "integer",
+          "description": "The process that died."
+        },
+        "exit_code": {
+          "type": "integer",
+          "description": "Its exit code, when Windows reported one."
+        },
+        "at": {
+          "type": "string",
+          "description": "When the crash was seen, UTC, ISO 8601."
+        },
+        "in_flight": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A call in flight when SOLIDWORKS died.",
+            "properties": {
+              "method": {
+                "type": "string",
+                "description": "Its operation."
+              },
+              "running_ms": {
+                "type": "integer",
+                "description": "How long it had been running."
+              }
+            },
+            "required": [
+              "method",
+              "running_ms"
+            ],
+            "additionalProperties": false
+          },
+          "description": "The calls that were in flight."
+        },
+        "dirty_documents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A document open in SOLIDWORKS.",
+            "properties": {
+              "title": {
+                "type": "string",
+                "description": "The document's title as SOLIDWORKS shows it."
+              },
+              "path": {
+                "type": "string",
+                "description": "The full path, absent while the document has never been saved."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "part",
+                  "assembly",
+                  "drawing"
+                ],
+                "description": "Part, assembly or drawing."
+              },
+              "dirty": {
+                "type": "boolean",
+                "description": "True when the document has unsaved changes."
+              }
+            },
+            "required": [
+              "title",
+              "type",
+              "dirty"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Documents that had unsaved changes in the last document table the add-in sent."
+        },
+        "documents_as_of": {
+          "type": "string",
+          "description": "When that document table was sent, UTC, ISO 8601; absent when none was."
+        }
+      },
+      "required": [
+        "process_id",
+        "at",
+        "in_flight",
+        "dirty_documents"
+      ],
+      "additionalProperties": false,
+      "description": "The last crash since the server started (or since sw_reconnect)."
+    }
+  },
+  "required": [
+    "state",
+    "message",
+    "swmcp_version",
+    "process_ids"
+  ],
+  "additionalProperties": false
+}

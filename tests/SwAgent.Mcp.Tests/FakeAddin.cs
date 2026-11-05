@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipes;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,8 +15,9 @@ using SwAgent.Contracts.Serialization;
 namespace SwAgent.Mcp.Tests;
 
 /// <summary>
-/// A stand-in add-in in the test process: serves one pipe, answers session.hello itself, and hands every other
-/// request to the test. The handler returns the response line, or null to stay silent.
+/// A stand-in add-in in the test process: serves one pipe, answers session.hello, addin.state (from <see cref="State"/>)
+/// and addin.events (from <see cref="Held"/>) itself, and hands every other request to the test. The handler returns
+/// the response line, or null to stay silent.
 /// </summary>
 sealed class FakeAddin : IDisposable
 {
@@ -44,6 +47,20 @@ sealed class FakeAddin : IDisposable
 
     public BlockingCollection<RpcRequest> Received { get; } = new BlockingCollection<RpcRequest>();
 
+    /// <summary>What addin.state answers; tests change it to show work running, a dialog, a stalled UI thread.</summary>
+    public AddinStateResult State { get; set; } = new AddinStateResult
+    {
+        AddinVersion = "0.1.0-fake",
+        ProtocolVersion = Protocol.Version,
+        ProcessId = Environment.ProcessId,
+        UiLastPumpedMs = 10,
+        WatchdogAlive = true,
+        DialogWatchAlive = true,
+    };
+
+    /// <summary>What addin.events answers: the events the add-in still holds.</summary>
+    public List<EventEnvelope> Held { get; } = new List<EventEnvelope>();
+
     /// <summary>Options that reach this fake as "the only SOLIDWORKS", with short timeouts.</summary>
     public ClientOptions Options() => new ClientOptions
     {
@@ -56,6 +73,33 @@ sealed class FakeAddin : IDisposable
 
     public RpcRequest Next(int timeoutMs = 10000) =>
         Received.TryTake(out var r, timeoutMs) ? r : throw new TimeoutException("the fake add-in received nothing");
+
+    /// <summary>The next request for <paramref name="method"/>, skipping any other.</summary>
+    public RpcRequest Next(string method, int timeoutMs = 10000)
+    {
+        while (true)
+        {
+            var r = Next(timeoutMs);
+            if (r.Method == method) return r;
+        }
+    }
+
+    /// <summary>Pushes an event, as the add-in does.</summary>
+    public Task SendEventAsync(long seq, string kind, object data) =>
+        SendAsync(Json.Write(new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["method"] = EventEnvelope.Method,
+            ["params"] = JsonCodec.ToJson(new EventEnvelope { Seq = seq, Kind = kind, Time = DateTime.UtcNow.ToString("o"), Data = (JsonObject)JsonCodec.ToJson(data)! }),
+        }));
+
+    /// <summary>Says session.closing and drops the client, as DisconnectFromSW does.</summary>
+    public async Task CloseAsync(long seq)
+    {
+        await SendEventAsync(seq, "session.closing", new SessionClosingEvent { Reason = "SOLIDWORKS is closing" });
+        await Task.Delay(50);
+        Disconnect();
+    }
 
     /// <summary>Sends a line the client did not ask for: a notification or a late response.</summary>
     public async Task SendAsync(string line)
@@ -111,15 +155,23 @@ sealed class FakeAddin : IDisposable
                 if (line == null) return;
                 var request = RpcCodec.ParseRequest(line);
                 Received.Add(request);
-                string? reply = request.Method == "session.hello"
-                    ? RpcCodec.Success(request.Id, JsonCodec.ToJson(new SessionHelloResult
+                string? reply = request.Method switch
+                {
+                    "session.hello" => RpcCodec.Success(request.Id, JsonCodec.ToJson(new SessionHelloResult
                     {
                         ProtocolVersion = ProtocolVersion,
                         AddinVersion = "0.1.0-fake",
                         SwRevision = "34.4.0",
                         ProcessId = Environment.ProcessId,
-                    }))
-                    : _handler(request);
+                    })),
+                    "addin.state" => RpcCodec.Success(request.Id, JsonCodec.ToJson(State)),
+                    "addin.events" => RpcCodec.Success(request.Id, JsonCodec.ToJson(new AddinEventsResult
+                    {
+                        Events = Held.Where(e => e.Seq > ((request.Params.TryGetValue("after_seq", out var a) ? a as long? : null) ?? 0)).ToList(),
+                        LastSeq = Held.Count == 0 ? 0 : Held[Held.Count - 1].Seq,
+                    })),
+                    _ => _handler(request),
+                };
                 if (reply != null) await WriteAsync(reply);
             }
         }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -18,50 +19,131 @@ public class McpServerTests
 {
     static ClientOptions NoSolidWorks() => new ClientOptions { Processes = new FakeProcesses(), Pipes = new FakePipes(_ => false) };
 
+    /// <summary>A fake add-in that never answers dialog.respond, so a call to it stays in flight.</summary>
+    static FakeAddin Stalling() => new FakeAddin(r => r.Method == "dialog.respond" ? null : RpcCodec.Success(r.Id, JsonCodec.ToJson(FakeAddin.SampleStatus())));
+
     [Fact]
-    public async Task Lists_sw_status_with_the_contract_schema()
+    public async Task Lists_the_four_tools_each_with_its_contract_schema_and_deadline_ms()
     {
         await using var server = await InProcessServer.StartAsync(NoSolidWorks());
         Assert.Equal(McpHost.ServerName, server.Client.ServerInfo!.Name);
-        var tool = Assert.Single(await server.Client.ListToolsAsync());
-        Assert.Equal("sw_status", tool.Name);
-        Assert.Equal(OperationCatalog.Find("session.status")!.Description, tool.Description);
-        Assert.Equal(Json.Write(JsonSchema.For(typeof(SessionStatusRequest))), Json.Write(Json.Parse(tool.JsonSchema.GetRawText())));
-        Assert.True(tool.ProtocolTool.Annotations!.ReadOnlyHint);
+        var tools = (await server.Client.ListToolsAsync()).ToDictionary(t => t.Name);
+        Assert.Equal(new[] { "sw_dialog_respond", "sw_events", "sw_reconnect", "sw_status" }, tools.Keys.OrderBy(k => k, StringComparer.Ordinal).ToArray());
+
+        Assert.Equal(ServerToolCatalog.Find("sw_status")!.Description, tools["sw_status"].Description);
+        Assert.Equal(Json.Write(SwTool.WithDeadline(JsonSchema.For(typeof(SwStatusRequest)))), Json.Write(Json.Parse(tools["sw_status"].JsonSchema.GetRawText())));
+        Assert.Equal(Json.Write(SwTool.WithDeadline(JsonSchema.For(typeof(DialogRespondRequest)))), Json.Write(Json.Parse(tools["sw_dialog_respond"].JsonSchema.GetRawText())));
+        foreach (var tool in tools.Values)
+        {
+            var properties = (JsonObject)((JsonObject)Json.Parse(tool.JsonSchema.GetRawText())!)["properties"]!;
+            Assert.Equal("integer", ((JsonObject)properties["deadline_ms"]!)["type"]);
+        }
+        Assert.True(tools["sw_status"].ProtocolTool.Annotations!.ReadOnlyHint);
+        Assert.True(tools["sw_events"].ProtocolTool.Annotations!.ReadOnlyHint);
+        Assert.False(tools["sw_dialog_respond"].ProtocolTool.Annotations!.ReadOnlyHint);
     }
 
     [Fact]
-    public async Task Sw_status_returns_the_session_status()
+    public async Task Sw_status_composes_the_state_the_addin_state_and_the_session()
     {
         using var addin = new FakeAddin();
         await using var server = await InProcessServer.StartAsync(addin.Options());
         var (isError, body) = await server.StatusAsync();
         Assert.False(isError);
-        Assert.Equal("34.4.0", body["sw_revision"]);
-        Assert.Equal("Part1", ((JsonObject)body["active_document"]!)["title"]);
-        Assert.Equal("session.hello", addin.Next().Method);
-        Assert.Equal("session.status", addin.Next().Method);
+        Assert.Equal("ready", body["state"]);
+        Assert.Equal(true, body["responding"]);
+        Assert.Equal("0.1.0-fake", ((JsonObject)body["addin"]!)["addin_version"]);
+        Assert.Equal("Part1", ((JsonObject)((JsonObject)body["session"]!)["active_document"]!)["title"]);
+        addin.Next("session.status");
     }
 
     [Fact]
-    public async Task Without_SOLIDWORKS_sw_status_is_an_error_result_with_its_code()
+    public async Task Without_SOLIDWORKS_sw_status_answers_not_running_rather_than_failing()
     {
         await using var server = await InProcessServer.StartAsync(NoSolidWorks());
         var (isError, body) = await server.StatusAsync();
+        Assert.False(isError);
+        Assert.Equal("not_running", body["state"]);
+        Assert.Contains("3DEXPERIENCE dashboard", (string)body["message"]!);
+        Assert.Equal("sw_not_running", ((JsonObject)body["error"]!)["code"]);
+    }
+
+    [Fact]
+    public async Task Sw_status_answers_while_another_tool_call_waits_on_SOLIDWORKS()
+    {
+        using var addin = Stalling();
+        await using var server = await InProcessServer.StartAsync(addin.Options());
+        var waiting = server.CallAsync("sw_dialog_respond", new Dictionary<string, object?> { ["dialog"] = "d1-1", ["button"] = "OK", ["deadline_ms"] = 30000 });
+        addin.Next("dialog.respond");
+        var clock = Stopwatch.StartNew();
+        var (isError, body) = await server.StatusAsync();
+        Assert.False(isError);
+        Assert.Equal("ready", body["state"]);
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5));
+        Assert.False(waiting.IsCompleted);
+    }
+
+    [Fact]
+    public async Task Sw_dialog_respond_runs_dialog_respond_with_the_deadline_given()
+    {
+        using var addin = new FakeAddin(r => RpcCodec.Success(r.Id, JsonCodec.ToJson(new DialogRespondResult { Dialog = "d1-1", Pressed = "OK", ControlId = 1, Outcome = DialogOutcome.NoRequest })));
+        await using var server = await InProcessServer.StartAsync(addin.Options());
+        var (isError, body) = await server.CallAsync("sw_dialog_respond", new Dictionary<string, object?> { ["dialog"] = "d1-1", ["button"] = "OK", ["deadline_ms"] = 1234 });
+        Assert.False(isError);
+        Assert.Equal("no_request", body["outcome"]);
+        var request = addin.Next("dialog.respond");
+        Assert.Equal(1234L, request.DeadlineMs);
+        Assert.False(request.Params.ContainsKey("deadline_ms"));
+        Assert.Equal("OK", request.Params["button"]);
+    }
+
+    [Fact]
+    public async Task A_deadline_ms_out_of_range_is_invalid_argument()
+    {
+        await using var server = await InProcessServer.StartAsync(NoSolidWorks());
+        var (isError, body) = await server.CallAsync("sw_status", new Dictionary<string, object?> { ["deadline_ms"] = 0 });
         Assert.True(isError);
-        Assert.Equal("sw_not_running", body["code"]);
-        Assert.Contains("3DEXPERIENCE launcher", (string)body["message"]!);
+        Assert.Equal("invalid_argument", body["code"]);
     }
 
     [Fact]
     public async Task A_typed_error_from_the_addin_is_an_error_result()
     {
         using var addin = new FakeAddin(r => RpcCodec.Failure(r.Id, RpcErrorCodes.ServerError,
-            new SwAgentError(ErrorCode.VerificationFailed, "the active document changed")));
+            new SwAgentError(ErrorCode.InvalidArgument, "no open dialog 'd9-9'")));
         await using var server = await InProcessServer.StartAsync(addin.Options());
-        var (isError, body) = await server.StatusAsync();
+        var (isError, body) = await server.CallAsync("sw_dialog_respond", new Dictionary<string, object?> { ["dialog"] = "d9-9", ["button"] = "OK" });
         Assert.True(isError);
-        Assert.Equal("verification_failed", body["code"]);
+        Assert.Equal("invalid_argument", body["code"]);
+    }
+
+    [Fact]
+    public async Task Sw_events_returns_the_events_received_after_a_cursor()
+    {
+        using var addin = new FakeAddin();
+        await using var server = await InProcessServer.StartAsync(addin.Options());
+        await server.StatusAsync();
+        await addin.SendEventAsync(1, "document.saved", new DocumentEvent { Title = "Part1" });
+        await addin.SendEventAsync(2, "document.closed", new DocumentEvent { Title = "Part1" });
+        for (int i = 0; i < 250 && server.Supervisor.Events.LastSeq < 2; i++) await Task.Delay(20);
+
+        var (isError, body) = await server.CallAsync("sw_events", new Dictionary<string, object?> { ["after_seq"] = 1 });
+        Assert.False(isError);
+        var e = (JsonObject)Assert.Single((List<object?>)body["events"]!)!;
+        Assert.Equal("document.closed", e["kind"]);
+        Assert.Equal(2L, body["last_seq"]);
+        Assert.Equal(false, body["missed"]);
+    }
+
+    [Fact]
+    public async Task Sw_reconnect_answers_with_the_status()
+    {
+        using var addin = new FakeAddin();
+        await using var server = await InProcessServer.StartAsync(addin.Options());
+        var (isError, body) = await server.CallAsync("sw_reconnect", new Dictionary<string, object?> { ["process_id"] = Environment.ProcessId });
+        Assert.False(isError);
+        Assert.Equal("ready", body["state"]);
+        Assert.Equal((long)Environment.ProcessId, body["process_id"]);
     }
 
     [Fact]
@@ -83,19 +165,17 @@ public class McpServerTests
     public async Task Logs_each_call_with_its_outcome_and_the_params_at_debug_only()
     {
         var log = new CapturingLogger();
-        using var addin = new FakeAddin();
+        using var addin = new FakeAddin(r => RpcCodec.Failure(r.Id, RpcErrorCodes.ServerError, new SwAgentError(ErrorCode.InvalidArgument, "no such dialog")));
         await using var server = await InProcessServer.StartAsync(addin.Options(), log);
         Assert.False((await server.StatusAsync()).IsError);
-        await using var down = await InProcessServer.StartAsync(NoSolidWorks(), log);
-        Assert.True((await down.StatusAsync()).IsError);
+        Assert.True((await server.CallAsync("sw_dialog_respond", new Dictionary<string, object?> { ["dialog"] = "d1-1", ["button"] = "OK" })).IsError);
 
         var info = log.Entries.Where(l => l.Level == LogLevel.Information).Select(l => l.Message).ToList();
         Assert.Equal(2, info.Count);
-        Assert.Matches(@"^sw_status session\.status: ok in \d+ ms$", info[0]);
-        Assert.Matches(@"^sw_status session\.status: sw_not_running in \d+ ms$", info[1]);
+        Assert.Matches(@"^sw_status: ok in \d+ ms$", info[0]);
+        Assert.Matches(@"^sw_dialog_respond dialog\.respond: invalid_argument in \d+ ms$", info[1]);
         var debug = log.Entries.Where(l => l.Level == LogLevel.Debug).Select(l => l.Message).ToList();
-        Assert.Equal(2, debug.Count);
-        Assert.All(debug, m => Assert.Equal("sw_status params {}", m));
+        Assert.Equal(new[] { "sw_status params {}", "sw_dialog_respond params {\"dialog\":\"d1-1\",\"button\":\"OK\"}" }, debug);
     }
 
     [Theory]
@@ -116,19 +196,20 @@ public class McpServerTests
         using var first = new FakeAddin();
         var options = first.Options();
         await using var server = await InProcessServer.StartAsync(options);
-        Assert.False(server.Session.IsConnected);
+        Assert.False(server.Supervisor.IsConnected);
         Assert.False((await server.StatusAsync()).IsError);
         Assert.False((await server.StatusAsync()).IsError);
-        Assert.Equal(new[] { "session.hello", "session.status", "session.status" }, new[] { first.Next().Method, first.Next().Method, first.Next().Method });
+        Assert.Equal("session.hello", first.Next().Method);
+        Assert.DoesNotContain("session.hello", Enumerable.Range(0, 5).Select(_ => first.Next().Method));
 
         first.Disconnect();
-        for (int i = 0; i < 100 && server.Session.IsConnected; i++) await Task.Delay(50);
-        Assert.False(server.Session.IsConnected);
+        for (int i = 0; i < 100 && server.Supervisor.IsConnected; i++) await Task.Delay(50);
+        Assert.False(server.Supervisor.IsConnected);
 
         using var second = new FakeAddin();
         options.Pipes = new FakePipes(n => n == second.PipeName);
         options.PipeNameFor = _ => second.PipeName;
-        Assert.False((await server.StatusAsync()).IsError);
+        Assert.Equal("ready", (await server.StatusAsync()).Body["state"]);
         Assert.Equal("session.hello", second.Next().Method);
     }
 
@@ -139,16 +220,17 @@ public class McpServerTests
         foreach (var tool in ToolCatalog.All)
         {
             Assert.Matches(names, tool.Name);
-            Assert.NotNull(OperationCatalog.Find(tool.Operation));
+            if (tool.Operation != null) Assert.NotNull(OperationCatalog.Find(tool.Operation));
+            else Assert.NotNull(ServerToolCatalog.Find(tool.Name));
         }
         Assert.Equal(ToolCatalog.All.Count, ToolCatalog.All.Select(t => t.Name).Distinct().Count());
-        Assert.DoesNotContain(ToolCatalog.All, t => t.Operation == "session.hello");
+        Assert.Equal(ServerToolCatalog.All.Select(t => t.Name).OrderBy(n => n), ToolCatalog.All.Where(t => t.Operation == null).Select(t => t.Name).OrderBy(n => n));
     }
 
     [Fact]
     public void No_internal_operation_is_a_tool()
     {
-        foreach (var tool in ToolCatalog.All)
-            Assert.False(OperationCatalog.Find(tool.Operation)!.Internal, $"{tool.Name} exposes internal operation {tool.Operation}");
+        foreach (var tool in ToolCatalog.All.Where(t => t.Operation != null))
+            Assert.False(OperationCatalog.Find(tool.Operation!)!.Internal, $"{tool.Name} exposes internal operation {tool.Operation}");
     }
 }

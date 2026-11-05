@@ -32,7 +32,7 @@ public class CliTests
         public Client.ClientOptions Client { get; init; } = new Client.ClientOptions { Processes = new FakeProcesses(), Pipes = new FakePipes(_ => false) };
         public Microsoft.Win32.RegistryKey? Root { get; init; }
         // Tests that do not attach get one that fails the test, so a slip cannot reach the real SOLIDWORKS.
-        public ISolidWorksAttach SolidWorks { get; init; } = new FakeAttach((_, _) => throw new InvalidOperationException("this test must not attach to SOLIDWORKS"));
+        public Client.ISolidWorksAttach SolidWorks { get; init; } = new FakeAttach((_, _) => throw new InvalidOperationException("this test must not attach to SOLIDWORKS"));
 
         // The --pid of every serve the command line started (null for none); the MCP server never runs for real here.
         public System.Collections.Generic.List<int?> Served { get; } = new System.Collections.Generic.List<int?>();
@@ -47,8 +47,81 @@ public class CliTests
             BaseDirectory = AppContext.BaseDirectory,
             SolidWorks = SolidWorks,
             AddinLoadWait = TimeSpan.FromMilliseconds(300),
-            Serve = client => { Served.Add(client.ProcessId); return Task.FromResult(ExitCodes.Success); },
+            Serve = options => { Served.Add(options.Client.ProcessId); return Task.FromResult(ExitCodes.Success); },
+            Processes = new FakeProcessWatch(),
+            Stop = Stop,
         };
+
+        /// <summary>Ends events --follow.</summary>
+        public System.Threading.CancellationToken Stop { get; init; }
+    }
+
+    [Fact]
+    public async Task Call_loads_the_addin_when_SOLIDWORKS_runs_without_it()
+    {
+        using var scratch = Registered();
+        using var addin = new FakeAddin();
+        bool up = false;
+        var options = addin.Options();
+        options.Pipes = new FakePipes(n => up && n == addin.PipeName);
+        var env = new CliEnvironmentBuilder
+        {
+            Root = scratch.Root,
+            Client = options,
+            SolidWorks = new FakeAttach((_, _) => { up = true; return 0; }),
+        };
+        var run = await RunAsync(env, "call", "session.status");
+        Assert.Equal(ExitCodes.Success, run.Exit);
+        Assert.Equal("34.4.0", run.Json["sw_revision"]);
+    }
+
+    [Fact]
+    public async Task Status_without_SOLIDWORKS_prints_not_running_and_exits_zero()
+    {
+        var run = await RunAsync(new CliEnvironmentBuilder(), "status");
+        Assert.Equal(ExitCodes.Success, run.Exit);
+        Assert.Equal("not_running", run.Json["state"]);
+    }
+
+    [Fact]
+    public async Task Status_prints_what_sw_status_answers()
+    {
+        using var addin = new FakeAddin();
+        var run = await RunAsync(new CliEnvironmentBuilder { Client = addin.Options() }, "status");
+        Assert.Equal(ExitCodes.Success, run.Exit);
+        Assert.Equal("ready", run.Json["state"]);
+        Assert.Equal("0.1.0-fake", ((JsonObject)run.Json["addin"]!)["addin_version"]);
+    }
+
+    [Fact]
+    public async Task Events_prints_the_events_the_addin_holds_after_a_cursor()
+    {
+        using var addin = new FakeAddin();
+        addin.Held.Add(new EventEnvelope { Seq = 1, Kind = "document.opened", Time = "t1", Data = new JsonObject() });
+        addin.Held.Add(new EventEnvelope { Seq = 2, Kind = "document.saved", Time = "t2", Data = new JsonObject() });
+        var run = await RunAsync(new CliEnvironmentBuilder { Client = addin.Options() }, "events", "--after-seq", "1");
+        Assert.Equal(ExitCodes.Success, run.Exit);
+        var e = (JsonObject)Assert.Single((System.Collections.Generic.List<object?>)run.Json["events"]!)!;
+        Assert.Equal("document.saved", e["kind"]);
+        Assert.Equal(1L, addin.Next("addin.events").Params["after_seq"]);
+    }
+
+    [Fact]
+    public async Task Events_follow_prints_a_line_per_event_until_stopped()
+    {
+        using var addin = new FakeAddin();
+        addin.Held.Add(new EventEnvelope { Seq = 1, Kind = "document.opened", Time = "t1", Data = new JsonObject() });
+        using var stop = new System.Threading.CancellationTokenSource();
+        var stdout = new StringWriter();
+        var env = new CliEnvironmentBuilder { Client = addin.Options(), Stop = stop.Token };
+        var running = Cli.RunAsync(new[] { "events", "--follow" }, env.Build(stdout, new StringWriter()));
+        addin.Next("addin.events");
+        await addin.SendEventAsync(2, "document.saved", new DocumentEvent { Title = "Part1" });
+        for (int i = 0; i < 250 && !stdout.ToString().Contains("document.saved"); i++) await Task.Delay(20);
+        stop.Cancel();
+        Assert.Equal(ExitCodes.Success, await running.WaitAsync(TimeSpan.FromSeconds(10)));
+        var lines = stdout.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(new[] { "document.opened", "document.saved" }, lines.Select(l => (string)((JsonObject)Contracts.Serialization.Json.Parse(l)!)["kind"]!).ToArray());
     }
 
     [Fact]
@@ -93,8 +166,7 @@ public class CliTests
         var run = await RunAsync(new CliEnvironmentBuilder { Client = addin.Options() }, "call", "session.status", "{}", "--deadline-ms", "5000");
         Assert.Equal(ExitCodes.Success, run.Exit);
         Assert.Equal("34.4.0", run.Json["sw_revision"]);
-        addin.Next();
-        Assert.Equal(5000L, addin.Next().DeadlineMs);
+        Assert.Equal(5000L, addin.Next("session.status").DeadlineMs);
     }
 
     [Fact]
@@ -129,6 +201,9 @@ public class CliTests
     [InlineData("nonsense")]
     [InlineData("serve", "extra")]
     [InlineData("serve", "--pid", "0")]
+    [InlineData("status", "extra")]
+    [InlineData("events", "--after-seq", "x")]
+    [InlineData("events", "--follow", "extra")]
     public async Task Bad_command_lines_are_usage_errors(params string[] args)
     {
         var run = await RunAsync(new CliEnvironmentBuilder(), args);

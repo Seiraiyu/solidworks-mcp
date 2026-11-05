@@ -57,6 +57,26 @@ public class JsonSchemaTests
         Assert.Equal(File.ReadAllText(file).Replace("\r\n", "\n"), actual);
     }
 
+    public static IEnumerable<object[]> ToolSides() =>
+        ServerToolCatalog.All.SelectMany(t => new[] { new object[] { t.Name, "request" }, new object[] { t.Name, "result" } });
+
+    [Theory]
+    [MemberData(nameof(ToolSides))]
+    public void Server_tool_schema_matches_its_pinned_snapshot(string tool, string side)
+    {
+        var t = ServerToolCatalog.Find(tool)!;
+        string actual = Json.Write(JsonSchema.For(side == "request" ? t.RequestType : t.ResultType), indented: true) + "\n";
+        string name = $"tool.{tool}.{side}.json";
+        if (Environment.GetEnvironmentVariable("SWMCP_UPDATE_SNAPSHOTS") == "1")
+        {
+            File.WriteAllText(Path.Combine(SourceSchemaDirectory(), name), actual);
+            return;
+        }
+        string file = Path.Combine(AppContext.BaseDirectory, "Schemas", name);
+        Assert.True(File.Exists(file), $"no snapshot {name}; run the tests with SWMCP_UPDATE_SNAPSHOTS=1 and review the new file");
+        Assert.Equal(File.ReadAllText(file).Replace("\r\n", "\n"), actual);
+    }
+
     static string SourceSchemaDirectory([CallerFilePath] string source = "") =>
         Path.Combine(Path.GetDirectoryName(source) ?? ".", "Schemas");
 }

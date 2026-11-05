@@ -24,37 +24,52 @@ sealed class InProcessServer : IAsyncDisposable
     readonly McpServer _server;
     readonly Task _running;
 
-    InProcessServer(AddinSession session, CancellationTokenSource stop, McpServer server, Task running, McpClient client)
+    InProcessServer(Supervisor supervisor, CancellationTokenSource stop, McpServer server, Task running, McpClient client)
     {
-        Session = session;
+        Supervisor = supervisor;
         _stop = stop;
         _server = server;
         _running = running;
         Client = client;
     }
 
-    public AddinSession Session { get; }
+    public Supervisor Supervisor { get; }
 
     public McpClient Client { get; }
 
-    public static async Task<InProcessServer> StartAsync(ClientOptions options, ILogger? toolLog = null)
+    /// <summary>
+    /// A server whose supervisor reaches SOLIDWORKS through <paramref name="options"/>. It never loads an add-in (a test
+    /// that needs a load says so through <paramref name="attach"/>), and its SOLIDWORKS never exits unless the test
+    /// says so through <paramref name="exits"/>.
+    /// </summary>
+    public static async Task<InProcessServer> StartAsync(ClientOptions options, ILogger? toolLog = null, FakeAttach? attach = null, FakeProcessWatch? exits = null)
     {
         var toServer = new Pipe();
         var toClient = new Pipe();
-        var session = new AddinSession(options);
+        var supervisor = new Supervisor(new SupervisorOptions
+        {
+            Client = options,
+            SolidWorks = attach ?? new FakeAttach((_, _) => throw new InvalidOperationException("this test must not load the add-in")),
+            Registration = new FakeRegistration(),
+            Processes = exits ?? new FakeProcessWatch(),
+            PipeWait = TimeSpan.FromMilliseconds(300),
+        });
         var serverOptions = new McpServerOptions();
-        McpHost.Configure(serverOptions, ToolCatalog.Create(session, toolLog));
+        McpHost.Configure(serverOptions, ToolCatalog.Create(supervisor, toolLog));
         var server = McpServer.Create(new StreamServerTransport(toServer.Reader.AsStream(), toClient.Writer.AsStream()), serverOptions);
         var stop = new CancellationTokenSource();
         var running = server.RunAsync(stop.Token);
         var client = await McpClient.CreateAsync(new StreamClientTransport(toServer.Writer.AsStream(), toClient.Reader.AsStream()));
-        return new InProcessServer(session, stop, server, running, client);
+        return new InProcessServer(supervisor, stop, server, running, client);
     }
 
     /// <summary>Calls sw_status; returns whether it was an error result, and its JSON text.</summary>
-    public async Task<(bool IsError, JsonObject Body)> StatusAsync()
+    public Task<(bool IsError, JsonObject Body)> StatusAsync() => CallAsync("sw_status");
+
+    /// <summary>Calls a tool; returns whether it was an error result, and its JSON text.</summary>
+    public async Task<(bool IsError, JsonObject Body)> CallAsync(string tool, Dictionary<string, object?>? arguments = null)
     {
-        var result = await Client.CallToolAsync("sw_status", new Dictionary<string, object?>());
+        var result = await Client.CallToolAsync(tool, arguments ?? new Dictionary<string, object?>());
         var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
         return (result.IsError == true, (JsonObject)Json.Parse(text)!);
     }
@@ -72,7 +87,7 @@ sealed class InProcessServer : IAsyncDisposable
             // Stopped, as asked.
         }
         await _server.DisposeAsync();
-        Session.Dispose();
+        Supervisor.Dispose();
         _stop.Dispose();
     }
 }

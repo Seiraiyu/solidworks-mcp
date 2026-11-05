@@ -173,4 +173,25 @@ public class ClientTests
         Assert.Equal(ErrorCode.InvalidArgument, e.Code);
         Assert.False(addin.Received.TryTake(out _, 300));
     }
+
+    [Fact]
+    public async Task Closed_completes_when_the_addin_drops_the_connection()
+    {
+        using var addin = new FakeAddin();
+        using var client = await SwAgentClient.ConnectAsync(addin.Options());
+        Assert.False(client.Closed.IsCompleted);
+        addin.Disconnect();
+        var reason = await client.Closed.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(ErrorCode.AddinNotLoaded, reason.Code);
+        Assert.False(client.IsConnected);
+    }
+
+    [Fact]
+    public async Task Closed_completes_when_this_client_disposes()
+    {
+        using var addin = new FakeAddin();
+        var client = await SwAgentClient.ConnectAsync(addin.Options());
+        client.Dispose();
+        Assert.Contains("closed by this client", (await client.Closed.WaitAsync(TimeSpan.FromSeconds(5))).Message);
+    }
 }
