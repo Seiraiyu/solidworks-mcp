@@ -1,0 +1,82 @@
+{
+  "type": "object",
+  "description": "A document's rebuild errors and warnings.",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty"
+      ],
+      "additionalProperties": false,
+      "description": "The document."
+    },
+    "errors": {
+      "type": "integer",
+      "description": "How many features have a rebuild error."
+    },
+    "warnings": {
+      "type": "integer",
+      "description": "How many features have a rebuild warning."
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A feature with a rebuild error or warning.",
+        "properties": {
+          "feature": {
+            "type": "string",
+            "description": "The feature's name."
+          },
+          "code": {
+            "type": "string",
+            "description": "SOLIDWORKS' error code name (swFeatureError_e), for example swFeatureErrorFilletNoEdge."
+          },
+          "warning": {
+            "type": "boolean",
+            "description": "True for a warning, false for an error."
+          }
+        },
+        "required": [
+          "feature",
+          "code",
+          "warning"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Each feature with an error or warning."
+    }
+  },
+  "required": [
+    "document",
+    "errors",
+    "warnings",
+    "items"
+  ],
+  "additionalProperties": false
+}

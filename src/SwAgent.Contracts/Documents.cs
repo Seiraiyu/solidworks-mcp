@@ -100,3 +100,80 @@ public sealed class DocumentSaveResult
     [Description("What SOLIDWORKS warned about while saving (swFileSaveWarning_e names).")]
     public List<string> Warnings { get; set; } = new List<string>();
 }
+
+[Operation("document.close", typeof(DocumentCloseResult))]
+[Description("Closes a document. Refuses one with unsaved changes unless discard, and one the agent did not open or create (document.new, document.open) unless users_document, which is only for when the user asked for it to be closed.")]
+public sealed class DocumentCloseRequest
+{
+    [Description("The document: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("Close it even though it has unsaved changes, losing them. Default false.")]
+    public bool? Discard { get; set; }
+
+    [Description("Close it even though the agent did not open or create it. Only when the user asked for this document to be closed. Default false.")]
+    public bool? UsersDocument { get; set; }
+}
+
+[Description("The document closed.")]
+public sealed class DocumentCloseResult
+{
+    [Required]
+    [Description("The document as it was just before it closed.")]
+    public DocumentInfo Closed { get; set; } = new DocumentInfo();
+
+    [Description("True when it had unsaved changes, which were lost.")]
+    public bool Discarded { get; set; }
+}
+
+[Operation("document.rebuild", typeof(RebuildResult))]
+[Description("Rebuilds a document (only what changed; everything with force) and reports its rebuild errors and warnings by feature.")]
+public sealed class DocumentRebuildRequest
+{
+    [Description("The document: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("Rebuild every feature, not only what changed. Default false.")]
+    public bool? Force { get; set; }
+}
+
+[Operation("model.rebuild_status", typeof(RebuildResult), ReadOnly = true)]
+[Description("Reports a document's rebuild errors and warnings by feature (SOLIDWORKS' What's Wrong list), without rebuilding it.")]
+public sealed class ModelRebuildStatusRequest
+{
+    [Description("The document: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+}
+
+[Description("A document's rebuild errors and warnings.")]
+public sealed class RebuildResult
+{
+    [Required]
+    [Description("The document.")]
+    public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Description("How many features have a rebuild error.")]
+    public int Errors { get; set; }
+
+    [Description("How many features have a rebuild warning.")]
+    public int Warnings { get; set; }
+
+    [Required]
+    [Description("Each feature with an error or warning.")]
+    public List<RebuildItem> Items { get; set; } = new List<RebuildItem>();
+}
+
+[Description("A feature with a rebuild error or warning.")]
+public sealed class RebuildItem
+{
+    [Required]
+    [Description("The feature's name.")]
+    public string Feature { get; set; } = "";
+
+    [Required]
+    [Description("SOLIDWORKS' error code name (swFeatureError_e), for example swFeatureErrorFilletNoEdge.")]
+    public string Code { get; set; } = "";
+
+    [Description("True for a warning, false for an error.")]
+    public bool Warning { get; set; }
+}

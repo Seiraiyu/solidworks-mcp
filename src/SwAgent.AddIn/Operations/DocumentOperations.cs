@@ -252,3 +252,114 @@ public sealed class DocumentSaveAsOperation : Operation<DocumentSaveAsRequest, D
     protected override void Verify(DocumentSaveAsRequest request, DocumentSaveResult result, IOperationContext context) =>
         Saving.Verify(_services.SolidWorks, result.Path);
 }
+
+public sealed class DocumentCloseOperation : Operation<DocumentCloseRequest, DocumentCloseResult>
+{
+    readonly AddInServices _services;
+
+    public DocumentCloseOperation(AddInServices services)
+    {
+        _services = services;
+    }
+
+    protected override DocumentCloseResult Run(DocumentCloseRequest request, IOperationContext context)
+    {
+        var doc = DocumentLocator.Find(_services.SolidWorks, request.Document);
+        var info = doc.Info();
+        string key = DocumentKeys.Of(info);
+        bool owned = _services.Runtime.Owned.Contains(key);
+        if (!owned && request.UsersDocument != true)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{info.Title} was not opened or created by the agent, so it is the user's and was not closed; pass users_document: true only if the user asked for it to be closed",
+                new JsonObject { ["field"] = "users_document", ["document"] = key });
+        }
+        if (info.Dirty && request.Discard != true)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{info.Title} has unsaved changes and was not closed; save it first, or pass discard: true to lose them",
+                new JsonObject { ["field"] = "discard", ["document"] = key });
+        }
+        _services.SolidWorks.Close(doc);
+        _services.Runtime.Owned.Remove(key);
+        context.Log.Info($"document.close: {key}{(info.Dirty ? ", unsaved changes discarded" : "")}{(owned ? "" : ", the user's document, as asked")}");
+        return new DocumentCloseResult { Closed = info, Discarded = info.Dirty };
+    }
+
+    /// <summary>No open document is the one closed.</summary>
+    protected override void Verify(DocumentCloseRequest request, DocumentCloseResult result, IOperationContext context)
+    {
+        string key = DocumentKeys.Of(result.Closed);
+        if (_services.SolidWorks.Documents().Any(d => DocumentKeys.Same(DocumentKeys.Of(d.Info()), key)))
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"{key} is still open after closing it");
+    }
+}
+
+/// <summary>What document.rebuild and model.rebuild_status share.</summary>
+static class RebuildStatus
+{
+    public static RebuildResult Of(ISwDocument doc)
+    {
+        var items = doc.WhatsWrong().ToList();
+        return new RebuildResult
+        {
+            Document = doc.Info(),
+            Errors = items.Count(i => !i.Warning),
+            Warnings = items.Count(i => i.Warning),
+            Items = items,
+        };
+    }
+
+    public static void Verify(ISolidWorksApplication sw, RebuildResult result)
+    {
+        var doc = DocumentLocator.Find(sw, DocumentKeys.Of(result.Document));
+        var now = Of(doc);
+        if (now.Errors != result.Errors || now.Warnings != result.Warnings)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"the rebuild status changed while it was read ({result.Errors} errors, {result.Warnings} warnings, now {now.Errors} and {now.Warnings}); ask again");
+        }
+    }
+}
+
+public sealed class DocumentRebuildOperation : Operation<DocumentRebuildRequest, RebuildResult>
+{
+    readonly AddInServices _services;
+
+    public DocumentRebuildOperation(AddInServices services)
+    {
+        _services = services;
+    }
+
+    protected override RebuildResult Run(DocumentRebuildRequest request, IOperationContext context)
+    {
+        var doc = DocumentLocator.Find(_services.SolidWorks, request.Document);
+        bool rebuilt = doc.Rebuild(request.Force == true);
+        var result = RebuildStatus.Of(doc);
+        if (!rebuilt && result.Items.Count == 0)
+        {
+            throw new SwAgentException(ErrorCode.OperationFailed,
+                $"SOLIDWORKS reported that {result.Document.Title} did not rebuild, but lists no feature with an error");
+        }
+        return result;
+    }
+
+    protected override void Verify(DocumentRebuildRequest request, RebuildResult result, IOperationContext context) =>
+        RebuildStatus.Verify(_services.SolidWorks, result);
+}
+
+public sealed class ModelRebuildStatusOperation : Operation<ModelRebuildStatusRequest, RebuildResult>
+{
+    readonly AddInServices _services;
+
+    public ModelRebuildStatusOperation(AddInServices services)
+    {
+        _services = services;
+    }
+
+    protected override RebuildResult Run(ModelRebuildStatusRequest request, IOperationContext context) =>
+        RebuildStatus.Of(DocumentLocator.Find(_services.SolidWorks, request.Document));
+
+    protected override void Verify(ModelRebuildStatusRequest request, RebuildResult result, IOperationContext context) =>
+        RebuildStatus.Verify(_services.SolidWorks, result);
+}

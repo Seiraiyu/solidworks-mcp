@@ -67,6 +67,35 @@ internal sealed class SolidWorksDocument : ISwDocument
         return entity;
     }
 
+    public bool Rebuild(bool force) => force ? Doc.ForceRebuild3(false) : Doc.EditRebuild3();
+
+    public IReadOnlyList<RebuildItem> WhatsWrong()
+    {
+        object features, codes, warnings;
+        if (!Doc.Extension.GetWhatsWrong(out features, out codes, out warnings)) return new List<RebuildItem>();
+        return WhatsWrongItems(features, codes, warnings, f => (f as IFeature)?.Name);
+    }
+
+    /// <summary>
+    /// The What's Wrong arrays as items. COM may hand them back as object[] as well as int[] and bool[], so each element
+    /// is converted rather than the arrays cast (as SolidWorksEventBridge.CountWhatsWrong does).
+    /// </summary>
+    internal static IReadOnlyList<RebuildItem> WhatsWrongItems(object? features, object? codes, object? warnings, Func<object?, string?> nameOf)
+    {
+        var items = new List<RebuildItem>();
+        if (!(features is Array f) || !(codes is Array c) || !(warnings is Array w)) return items;
+        for (int i = 0; i < f.Length && i < c.Length && i < w.Length; i++)
+        {
+            items.Add(new RebuildItem
+            {
+                Feature = nameOf(f.GetValue(i)) ?? "?",
+                Code = SolidWorksCodes.FeatureError(Convert.ToInt32(c.GetValue(i), System.Globalization.CultureInfo.InvariantCulture)),
+                Warning = Convert.ToBoolean(w.GetValue(i), System.Globalization.CultureInfo.InvariantCulture),
+            });
+        }
+        return items;
+    }
+
     public ReferenceKind? KindOf(object entity) => entity switch
     {
         IFeature f => FeatureKind(f.GetTypeName2()),

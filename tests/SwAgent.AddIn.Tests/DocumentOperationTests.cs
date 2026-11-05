@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using SwAgent.AddIn.Core;
 using SwAgent.AddIn.Operations;
 using SwAgent.Contracts;
@@ -392,6 +393,169 @@ public class DocumentSaveTests : DocumentTestBase
     }
 }
 
+public class DocumentCloseTests : DocumentTestBase
+{
+    DocumentCloseResult Close(DocumentCloseRequest request) => Run(new DocumentCloseOperation(Services), request);
+
+    [Fact]
+    public void Closes_a_document_the_agent_made()
+    {
+        var doc = Sw.Track(FakeDocument.Part("Part1"));
+        Services.Runtime.Owned.Add("Part1");
+        var result = Close(new DocumentCloseRequest());
+        Assert.Equal("Part1", result.Closed.Title);
+        Assert.False(result.Discarded);
+        Assert.Equal(new[] { "Part1" }, Sw.ClosedTitles);
+        Assert.False(Services.Runtime.Owned.Contains("Part1"));
+        _ = doc;
+    }
+
+    [Fact]
+    public void Refuses_the_users_document_unless_told_the_user_asked()
+    {
+        Sw.Track(FakeDocument.Part("owner.SLDPRT", PathOf("owner.SLDPRT")));
+        var e = Fails(() => Close(new DocumentCloseRequest { Document = "owner" }));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal("users_document", e.Error.Details!["field"]);
+        Assert.Empty(Sw.ClosedTitles);
+        Close(new DocumentCloseRequest { Document = "owner", UsersDocument = true });
+        Assert.Equal(new[] { "owner.SLDPRT" }, Sw.ClosedTitles);
+    }
+
+    [Fact]
+    public void Refuses_unsaved_changes_unless_discard()
+    {
+        var doc = Sw.Track(FakeDocument.Part("Part1"));
+        doc.Document.Dirty = true;
+        Services.Runtime.Owned.Add("Part1");
+        var e = Fails(() => Close(new DocumentCloseRequest()));
+        Assert.Equal("discard", e.Error.Details!["field"]);
+        Assert.Empty(Sw.ClosedTitles);
+        Assert.True(Close(new DocumentCloseRequest { Discard = true }).Discarded);
+    }
+
+    [Fact]
+    public void A_users_document_with_unsaved_changes_needs_both()
+    {
+        var doc = Sw.Track(FakeDocument.Part("owner.SLDPRT", PathOf("owner.SLDPRT")));
+        doc.Document.Dirty = true;
+        Assert.Equal("users_document", Fails(() => Close(new DocumentCloseRequest { Discard = true })).Error.Details!["field"]);
+        Assert.Equal("discard", Fails(() => Close(new DocumentCloseRequest { UsersDocument = true })).Error.Details!["field"]);
+        Assert.Empty(Sw.ClosedTitles);
+        Close(new DocumentCloseRequest { Discard = true, UsersDocument = true });
+        Assert.Single(Sw.ClosedTitles);
+    }
+
+    [Fact]
+    public void A_part_saved_under_a_new_name_is_still_the_agents()
+    {
+        Sw.Track(FakeDocument.Part("Part1"));
+        Services.Runtime.Owned.Add("Part1");
+        Run(new DocumentSaveAsOperation(Services), new DocumentSaveAsRequest { Path = PathOf("mine.SLDPRT") });
+        Close(new DocumentCloseRequest { Document = "mine" });
+        Assert.Equal(new[] { "mine.SLDPRT" }, Sw.ClosedTitles);
+    }
+
+    [Fact]
+    public void A_file_reopened_after_a_save_as_is_the_agents_and_its_references_name_it()
+    {
+        string a = PathOf("a.SLDPRT"), b = PathOf("b.SLDPRT");
+        Run(new DocumentNewOperation(Services), new DocumentNewRequest { Path = a });
+        Run(new DocumentSaveAsOperation(Services), new DocumentSaveAsRequest { Path = b });
+        Run(new DocumentOpenOperation(Services), new DocumentOpenRequest { Path = a });
+        var reopened = (FakeDocument)Sw.ActiveDoc()!;
+        var face = reopened.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Plane });
+        string reference = Services.References.Describe(reopened, face).Reference!;
+        Assert.Same(face, Services.References.Resolve(reopened, reference, "face").Entity);
+        Run(new DocumentCloseOperation(Services), new DocumentCloseRequest { Document = a });
+        Run(new DocumentCloseOperation(Services), new DocumentCloseRequest { Document = b });
+        Assert.Equal(new[] { "a.SLDPRT", "b.SLDPRT" }, Sw.ClosedTitles);
+    }
+
+    [Fact]
+    public void A_document_still_open_after_close_fails_verification()
+    {
+        var stuck = new StuckSolidWorks(Sw);
+        Sw.Track(FakeDocument.Part("Part1"));
+        Services.Runtime.Owned.Add("Part1");
+        var services = new AddInServices(stuck, "t");
+        services.Runtime.Owned.Add("Part1");
+        Assert.Equal(ErrorCode.VerificationFailed, Fails(() => Run(new DocumentCloseOperation(services), new DocumentCloseRequest())).Code);
+    }
+
+    /// <summary>A SOLIDWORKS that ignores CloseDoc.</summary>
+    sealed class StuckSolidWorks : DelegatingSolidWorks
+    {
+        public StuckSolidWorks(FakeSolidWorks inner) : base(inner) { }
+
+        public override void Close(ISwDocument document)
+        {
+        }
+    }
+}
+
+public class RebuildTests : DocumentTestBase
+{
+    [Fact]
+    public void Rebuild_reports_errors_and_warnings_by_feature()
+    {
+        var doc = Sw.Track(FakeDocument.Part("Part1"));
+        doc.Problems.Add(new RebuildItem { Feature = "Fillet1", Code = "swFeatureErrorFilletNoEdge" });
+        doc.Problems.Add(new RebuildItem { Feature = "Sketch2", Code = "swSketchErrorUnderDefined", Warning = true });
+        var result = Run(new DocumentRebuildOperation(Services), new DocumentRebuildRequest { Force = true });
+        Assert.Equal(new[] { true }, doc.Rebuilds);
+        Assert.Equal(1, result.Errors);
+        Assert.Equal(1, result.Warnings);
+        Assert.Equal("Fillet1", result.Items[0].Feature);
+    }
+
+    [Fact]
+    public void A_failed_rebuild_with_errors_listed_is_reported_not_thrown()
+    {
+        var doc = Sw.Track(FakeDocument.Part("Part1"));
+        doc.RebuildSucceeds = false;
+        doc.Problems.Add(new RebuildItem { Feature = "Cut-Extrude1", Code = "swFeatureErrorCutNotIntersectModel" });
+        Assert.Equal(1, Run(new DocumentRebuildOperation(Services), new DocumentRebuildRequest()).Errors);
+    }
+
+    [Fact]
+    public void A_failed_rebuild_with_nothing_listed_is_operation_failed()
+    {
+        Sw.Track(FakeDocument.Part("Part1")).RebuildSucceeds = false;
+        Assert.Equal(ErrorCode.OperationFailed, Fails(() => Run(new DocumentRebuildOperation(Services), new DocumentRebuildRequest())).Code);
+    }
+
+    [Fact]
+    public void Rebuild_status_reads_without_rebuilding()
+    {
+        var doc = Sw.Track(FakeDocument.Part("Part1"));
+        var result = Run(new ModelRebuildStatusOperation(Services), new ModelRebuildStatusRequest());
+        Assert.Empty(result.Items);
+        Assert.Empty(doc.Rebuilds);
+    }
+
+    [Fact]
+    public void Whats_wrong_arrays_are_read_whatever_their_element_type()
+    {
+        var typed = SolidWorksDocument.WhatsWrongItems(new object[] { "Fillet1", "Sketch2" }, new[] { 13, 1 }, new[] { false, true }, f => (string?)f);
+        var boxed = SolidWorksDocument.WhatsWrongItems(new object[] { "Fillet1", "Sketch2" }, new object[] { 13, 1 }, new object[] { false, true }, f => (string?)f);
+        foreach (var items in new[] { typed, boxed })
+        {
+            Assert.Equal(new[] { "Fillet1", "Sketch2" }, items.Select(i => i.Feature));
+            Assert.Equal("swFeatureErrorFilletNoEdge", items[0].Code);
+            Assert.True(items[1].Warning);
+        }
+        Assert.Empty(SolidWorksDocument.WhatsWrongItems(null, null, null, f => null));
+    }
+
+    [Fact]
+    public void Feature_error_codes_are_named()
+    {
+        Assert.Equal("swFeatureErrorFilletNoEdge", SolidWorksCodes.FeatureError(13));
+        Assert.Equal("unknown_99999", SolidWorksCodes.FeatureError(99999));
+    }
+}
+
 /// <summary>Passes everything to a FakeSolidWorks; subclasses change one call.</summary>
 abstract class DelegatingSolidWorks : ISolidWorksApplication
 {
@@ -413,5 +577,5 @@ abstract class DelegatingSolidWorks : ISolidWorksApplication
     public string? DefaultPartTemplate() => Inner.DefaultPartTemplate();
     public virtual ISwDocument NewDocument(string template) => Inner.NewDocument(template);
     public OpenOutcome OpenDocument(string path, DocumentType type, bool readOnly) => Inner.OpenDocument(path, type, readOnly);
-    public void Close(ISwDocument document) => Inner.Close(document);
+    public virtual void Close(ISwDocument document) => Inner.Close(document);
 }

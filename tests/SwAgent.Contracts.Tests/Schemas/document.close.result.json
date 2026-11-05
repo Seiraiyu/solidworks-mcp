@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "description": "The document closed.",
+  "properties": {
+    "closed": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty"
+      ],
+      "additionalProperties": false,
+      "description": "The document as it was just before it closed."
+    },
+    "discarded": {
+      "type": "boolean",
+      "description": "True when it had unsaved changes, which were lost."
+    }
+  },
+  "required": [
+    "closed",
+    "discarded"
+  ],
+  "additionalProperties": false
+}

@@ -134,6 +134,23 @@ sealed class FakeDocument : ISwDocument
         return outcome;
     }
 
+    /// <summary>The rebuild errors and warnings WhatsWrong reports.</summary>
+    public List<RebuildItem> Problems { get; } = new List<RebuildItem>();
+
+    /// <summary>What Rebuild returns.</summary>
+    public bool RebuildSucceeds { get; set; } = true;
+
+    /// <summary>Each Rebuild call's force flag.</summary>
+    public List<bool> Rebuilds { get; } = new List<bool>();
+
+    public bool Rebuild(bool force)
+    {
+        Rebuilds.Add(force);
+        return RebuildSucceeds;
+    }
+
+    public IReadOnlyList<RebuildItem> WhatsWrong() => Problems.ToList();
+
     SaveOutcome Write(string path)
     {
         Saves.Add(path);

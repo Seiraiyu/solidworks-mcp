@@ -20,7 +20,7 @@ public class OperationCatalogTests
     [Fact]
     public void Catalog_holds_the_phase_3A_operations()
     {
-        Assert.Equal(new[] { "addin.events", "addin.state", "diag.dialog", "diag.scratch_part", "diag.sleep", "dialog.respond", "document.new", "document.open", "document.save", "document.save_as", "session.hello", "session.status" },
+        Assert.Equal(new[] { "addin.events", "addin.state", "diag.dialog", "diag.scratch_part", "diag.sleep", "dialog.respond", "document.close", "document.new", "document.open", "document.rebuild", "document.save", "document.save_as", "model.rebuild_status", "session.hello", "session.status" },
             OperationCatalog.All.Select(o => o.Name).ToArray());
         var status = OperationCatalog.Find("session.status")!;
         Assert.Equal("session", status.Family);
@@ -48,6 +48,7 @@ public class OperationCatalogTests
         Assert.Equal("Ui/internal", Shape("session.status"));
         Assert.Equal("Ui/tool", Shape("document.new"));
         Assert.Equal("Ui/tool", Shape("document.open"));
+        Assert.True(OperationCatalog.Find("model.rebuild_status")!.ReadOnly);
     }
 
     [Fact]

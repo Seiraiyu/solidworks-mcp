@@ -53,6 +53,12 @@ public interface ISwDocument
 
     /// <summary>Saves it to <paramref name="path"/> in the current version, silently; it is then that file.</summary>
     SaveOutcome SaveAs(string path);
+
+    /// <summary>Rebuilds what changed, or every feature when <paramref name="force"/>; false when SOLIDWORKS reports it failed.</summary>
+    bool Rebuild(bool force);
+
+    /// <summary>The features with a rebuild error or warning (SOLIDWORKS' What's Wrong list), in tree order.</summary>
+    System.Collections.Generic.IReadOnlyList<RebuildItem> WhatsWrong();
 }
 
 /// <summary>What a save reported: whether SOLIDWORKS said it succeeded, and its error and warning flags.</summary>

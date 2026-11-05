@@ -16,6 +16,9 @@ public static class SolidWorksCodes
 
     public static IReadOnlyList<string> LoadWarnings(int flags) => Names<swFileLoadWarning_e>(flags);
 
+    /// <summary>A feature's rebuild error code (IFeature.GetErrorCode2, What's Wrong) as its swFeatureError_e name.</summary>
+    public static string FeatureError(int code) => Enum.GetName(typeof(swFeatureError_e), code) ?? $"unknown_{code}";
+
     /// <summary>The names of the single-bit members of <typeparamref name="T"/> set in <paramref name="flags"/>, and unknown_&lt;bit&gt; for any other bit.</summary>
     public static IReadOnlyList<string> Names<T>(int flags) where T : struct, Enum
     {
