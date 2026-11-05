@@ -84,6 +84,12 @@ public sealed class AddinLoader
         _log = log ?? NullLogger.Instance;
     }
 
+    /// <summary>
+    /// Starts the LoadAddIn COM call and returns its outcome: <see cref="StaCall.Start{T}"/> in production. Tests replace
+    /// it, for example with one that completes synchronously.
+    /// </summary>
+    public Func<Func<int>, TimeSpan, Task<int>> StartComCall { get; set; } = (call, bound) => StaCall.Start("LoadAddIn", call, bound);
+
     /// <summary>How long to wait for the pipe after LoadAddIn returns before the load counts as failed.</summary>
     public TimeSpan PipeWait { get; set; } = TimeSpan.FromSeconds(30);
 
@@ -142,15 +148,19 @@ public sealed class AddinLoader
                     $"SOLIDWORKS (process {processId}) has not finished starting: {readiness.Reason}; wait for it, and answer any sign-in or update prompt in SOLIDWORKS yourself",
                     new JsonObject { ["process_id"] = (long)processId, ["reason"] = readiness.Reason });
             }
+            TaskCompletionSource<Loading>? started = null;
             lock (_gate)
             {
-                // Recorded before it is awaited, so no other call can start a second LoadAddIn meanwhile.
+                // Recorded before the load starts, so no other call can start a second LoadAddIn meanwhile, and a
+                // load that ends at once (even synchronously) always finds its own entry to remove.
                 if (!_loading.TryGetValue(processId, out load))
                 {
-                    load = LoadAsync(processId, path, pipe);
+                    started = new TaskCompletionSource<Loading>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    load = started.Task;
                     _loading[processId] = load;
                 }
             }
+            if (started != null) _ = RunLoadAsync(processId, path, pipe, started);
         }
 
         var left = deadlineUtc - DateTime.UtcNow;
@@ -185,58 +195,80 @@ public sealed class AddinLoader
         lock (_gate) _failed.Remove(processId);
     }
 
+    /// <summary>
+    /// Runs the load recorded as <paramref name="outcome"/>'s task. Its entry is removed, if it is still this load's,
+    /// before the outcome is set, so whoever sees the outcome never finds the finished load still recorded.
+    /// </summary>
+    async Task RunLoadAsync(int processId, string path, string pipe, TaskCompletionSource<Loading> outcome)
+    {
+        Loading loaded;
+        try
+        {
+            loaded = await LoadAsync(processId, path, pipe).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            Unrecord(processId, outcome.Task);
+            outcome.TrySetException(e);
+            return;
+        }
+        Unrecord(processId, outcome.Task);
+        outcome.TrySetResult(loaded);
+    }
+
+    void Unrecord(int processId, Task<Loading> load)
+    {
+        lock (_gate)
+        {
+            if (_loading.TryGetValue(processId, out var recorded) && ReferenceEquals(recorded, load)) _loading.Remove(processId);
+        }
+    }
+
     /// <summary>One LoadAddIn and the wait for its pipe; its outcome is the load's, whoever is still waiting for it.</summary>
     async Task<Loading> LoadAsync(int processId, string path, string pipe)
     {
+        var clock = Stopwatch.StartNew();
+        int result;
         try
         {
-            var clock = Stopwatch.StartNew();
-            int result;
-            try
-            {
-                result = await StaCall.Start("LoadAddIn", () => _solidWorks.LoadAddIn(processId, path), ComBound).ConfigureAwait(false);
-            }
-            catch (SwAgentException e) when (e.Code == ErrorCode.ApiError && e.Error.Details?["hresult"] is string h && Array.IndexOf(BusyHresults, h) >= 0)
-            {
-                _log.LogWarning("LoadAddIn into process {Pid} was refused while SOLIDWORKS was busy ({Hresult}); the next call tries again", processId, h);
-                throw new SwAgentException(ErrorCode.Busy,
-                    $"SOLIDWORKS (process {processId}) was too busy to load the add-in ({h}); nothing was run, so call again once it is idle",
-                    new JsonObject { ["process_id"] = (long)processId, ["started"] = false, ["hresult"] = h });
-            }
-            catch (SwAgentException e) when (e.Code == ErrorCode.ApiError)
-            {
-                _log.LogError("LoadAddIn into process {Pid} failed: {Message}", processId, e.Message);
-                throw Remember(processId, WithLogs(e.Error));
-            }
-            _log.LogInformation("LoadAddIn into process {Pid} returned {Result} after {Ms} ms; waiting for its pipe", processId, result, clock.ElapsedMilliseconds);
-
-            var returned = Stopwatch.StartNew();
-            while (!_pipes.Exists(pipe))
-            {
-                if (returned.Elapsed >= PipeWait)
-                {
-                    _log.LogError("the add-in's pipe for process {Pid} did not appear after LoadAddIn returned {Result}", processId, result);
-                    throw Remember(processId, new SwAgentError(ErrorCode.AddinNotLoaded,
-                        $"SOLIDWORKS (process {processId}) did not start the add-in: LoadAddIn returned {result} and \\\\.\\pipe\\{pipe} " +
-                        $"did not appear within {PipeWait.TotalSeconds:0.#} s; the add-in's log is in {LogDirectory}. " +
-                        "It is not loaded again until sw_reconnect",
-                        new JsonObject
-                        {
-                            ["process_id"] = (long)processId,
-                            ["path"] = path,
-                            ["load_addin_result"] = (long)result,
-                            ["log_directory"] = LogDirectory,
-                        }));
-                }
-                await Task.Delay(100).ConfigureAwait(false);
-            }
-            _log.LogInformation("the add-in serves process {Pid}, {Ms} ms after LoadAddIn", processId, clock.ElapsedMilliseconds);
-            return new Loading(path, result);
+            result = await StartComCall(() => _solidWorks.LoadAddIn(processId, path), ComBound).ConfigureAwait(false);
         }
-        finally
+        catch (SwAgentException e) when (e.Code == ErrorCode.ApiError && e.Error.Details?["hresult"] is string h && Array.IndexOf(BusyHresults, h) >= 0)
         {
-            lock (_gate) _loading.Remove(processId);
+            _log.LogWarning("LoadAddIn into process {Pid} was refused while SOLIDWORKS was busy ({Hresult}); the next call tries again", processId, h);
+            throw new SwAgentException(ErrorCode.Busy,
+                $"SOLIDWORKS (process {processId}) was too busy to load the add-in ({h}); nothing was run, so call again once it is idle",
+                new JsonObject { ["process_id"] = (long)processId, ["started"] = false, ["hresult"] = h });
         }
+        catch (SwAgentException e) when (e.Code == ErrorCode.ApiError)
+        {
+            _log.LogError("LoadAddIn into process {Pid} failed: {Message}", processId, e.Message);
+            throw Remember(processId, WithLogs(e.Error));
+        }
+        _log.LogInformation("LoadAddIn into process {Pid} returned {Result} after {Ms} ms; waiting for its pipe", processId, result, clock.ElapsedMilliseconds);
+
+        var returned = Stopwatch.StartNew();
+        while (!_pipes.Exists(pipe))
+        {
+            if (returned.Elapsed >= PipeWait)
+            {
+                _log.LogError("the add-in's pipe for process {Pid} did not appear after LoadAddIn returned {Result}", processId, result);
+                throw Remember(processId, new SwAgentError(ErrorCode.AddinNotLoaded,
+                    $"SOLIDWORKS (process {processId}) did not start the add-in: LoadAddIn returned {result} and \\\\.\\pipe\\{pipe} " +
+                    $"did not appear within {PipeWait.TotalSeconds:0.#} s; the add-in's log is in {LogDirectory}. " +
+                    "It is not loaded again until sw_reconnect",
+                    new JsonObject
+                    {
+                        ["process_id"] = (long)processId,
+                        ["path"] = path,
+                        ["load_addin_result"] = (long)result,
+                        ["log_directory"] = LogDirectory,
+                    }));
+            }
+            await Task.Delay(100).ConfigureAwait(false);
+        }
+        _log.LogInformation("the add-in serves process {Pid}, {Ms} ms after LoadAddIn", processId, clock.ElapsedMilliseconds);
+        return new Loading(path, result);
     }
 
     SwAgentException Remember(int processId, SwAgentError error)

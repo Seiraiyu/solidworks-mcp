@@ -126,6 +126,44 @@ public class AddinLoaderTests
     }
 
     [Fact]
+    public async Task A_load_that_fails_before_it_is_recorded_is_not_left_behind()
+    {
+        // The COM call completes synchronously, so the whole load (busy, then its finally) runs before
+        // EnsureLoadedAsync has recorded it. A load left recorded would answer busy forever without loading again.
+        int calls = 0;
+        bool up = false;
+        var attach = new FakeAttach((_, _) =>
+        {
+            if (++calls == 1)
+            {
+                throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS (process 7) failed ISldWorks.LoadAddIn (0x8001010A): retry later",
+                    new JsonObject { ["hresult"] = "0x8001010A" });
+            }
+            up = true;
+            return 0;
+        });
+        var loader = Loader(attach, () => up);
+        loader.StartComCall = (call, _) =>
+        {
+            try
+            {
+                return Task.FromResult(call());
+            }
+            catch (Exception e)
+            {
+                return Task.FromException<int>(e);
+            }
+        };
+
+        Assert.Equal(ErrorCode.Busy, (await Assert.ThrowsAsync<SwAgentException>(() => loader.EnsureLoadedAsync(7, Soon))).Code);
+        Assert.False(loader.IsLoading(7));
+        var result = await loader.EnsureLoadedAsync(7, Soon);
+        Assert.Equal(0, result.LoadAddInResult);
+        Assert.Equal(2, attach.Loads);
+        Assert.False(loader.IsLoading(7));
+    }
+
+    [Fact]
     public async Task A_LoadAddIn_SOLIDWORKS_rejected_as_busy_is_busy_and_not_remembered()
     {
         int calls = 0;
