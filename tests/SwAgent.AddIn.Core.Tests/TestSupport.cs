@@ -4,7 +4,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Windows.Forms;
 using SwAgent.Contracts;
+using SwAgent.Contracts.Rpc;
 
 namespace SwAgent.AddIn.Core.Tests;
 
@@ -126,4 +128,73 @@ static class TestOps
                 echo ?? ((r, c) => new EchoResult { Text = r.Text, ThreadId = Thread.CurrentThread.ManagedThreadId }), verify),
             new DelegateOperation<OtherRequest, EchoResult>(other ?? ((r, c) => new EchoResult { Text = "other" })),
         });
+}
+
+/// <summary>An STA thread running a WinForms message loop: stands in for SOLIDWORKS' UI thread.</summary>
+sealed class UiThread : IDisposable
+{
+    readonly Thread _thread;
+    readonly ManualResetEventSlim _ready = new ManualResetEventSlim(false);
+    SynchronizationContext? _context;
+
+    public UiThread()
+    {
+        _thread = new Thread(() =>
+        {
+            _context = new WindowsFormsSynchronizationContext();
+            SynchronizationContext.SetSynchronizationContext(_context);
+            ThreadId = Thread.CurrentThread.ManagedThreadId;
+            _ready.Set();
+            Application.Run();
+        }) { IsBackground = true, Name = "fake-ui" };
+        _thread.SetApartmentState(ApartmentState.STA);
+        _thread.Start();
+        if (!_ready.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("the fake UI thread did not start");
+    }
+
+    public int ThreadId { get; private set; }
+
+    public SynchronizationContext Context => _context!;
+
+    public T Invoke<T>(Func<T> func)
+    {
+        T result = default!;
+        Exception? error = null;
+        _context!.Send(_ => { try { result = func(); } catch (Exception e) { error = e; } }, null);
+        if (error != null) throw new AggregateException(error);
+        return result;
+    }
+
+    public void Invoke(Action action) => Invoke<object?>(() => { action(); return null; });
+
+    public void Dispose()
+    {
+        _context?.Post(_ => Application.ExitThread(), null);
+        _thread.Join(TimeSpan.FromSeconds(10));
+    }
+}
+
+sealed class CapturingReply : IReplyChannel
+{
+    public volatile bool Open = true;
+    public readonly BlockingCollection<string> Lines = new BlockingCollection<string>();
+
+    public bool IsOpen => Open;
+
+    public void Send(string line) => Lines.Add(line);
+
+    public RpcResponse Next(int timeoutMs = 10000)
+    {
+        if (!Lines.TryTake(out var line, timeoutMs)) throw new TimeoutException("no reply");
+        return RpcCodec.ParseResponse(line);
+    }
+}
+
+static class Requests
+{
+    public static RpcRequest Echo(long id, string text, long deadlineMs = 10000) =>
+        new RpcRequest(id, "test.echo", new Contracts.Serialization.JsonObject { ["text"] = text }, deadlineMs);
+
+    public static RpcRequest Other(long id, long deadlineMs = 10000) =>
+        new RpcRequest(id, "test.other", new Contracts.Serialization.JsonObject(), deadlineMs);
 }
