@@ -9,4 +9,9 @@ public sealed class DocumentTracker
 {
     public IReadOnlyList<DocumentInfo> Current { get; private set; } = Array.Empty<DocumentInfo>();
     public DateTime? AsOfUtc { get; private set; }
+
+    /// <summary>Re-reads the open documents. Task 15 fills this in.</summary>
+    public void Refresh()
+    {
+    }
 }

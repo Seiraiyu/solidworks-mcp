@@ -20,6 +20,7 @@ internal sealed class PipeSession : IReplyChannel
     readonly Action<string, IReplyChannel> _onLine;
     readonly ILog _log;
     readonly int _maxBytes;
+    readonly Action<PipeSession>? _onClosed;
     readonly ConcurrentQueue<string> _outgoing = new ConcurrentQueue<string>();
     readonly SemaphoreSlim _signal = new SemaphoreSlim(0);
     readonly CancellationTokenSource _cts = new CancellationTokenSource();
@@ -27,13 +28,14 @@ internal sealed class PipeSession : IReplyChannel
     volatile bool _closeWhenFlushed;
     Task _writer = Task.CompletedTask;
 
-    public PipeSession(NamedPipeServerStream stream, int clientProcessId, Action<string, IReplyChannel> onLine, ILog log, int maxBytes)
+    public PipeSession(NamedPipeServerStream stream, int clientProcessId, Action<string, IReplyChannel> onLine, ILog log, int maxBytes, Action<PipeSession>? onClosed = null)
     {
         _stream = stream;
         ClientProcessId = clientProcessId;
         _onLine = onLine;
         _log = log;
         _maxBytes = maxBytes;
+        _onClosed = onClosed;
     }
 
     public int ClientProcessId { get; }
@@ -68,6 +70,14 @@ internal sealed class PipeSession : IReplyChannel
         _cts.Cancel();
         try { _stream.Dispose(); } catch (Exception) { /* already broken */ }
         _log.Info($"pipe: client {ClientProcessId} disconnected");
+        try
+        {
+            _onClosed?.Invoke(this);
+        }
+        catch (Exception e)
+        {
+            _log.Error("pipe: the disconnect handler threw", e);
+        }
     }
 
     async Task ReadLoopAsync()

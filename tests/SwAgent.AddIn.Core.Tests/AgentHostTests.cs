@@ -114,4 +114,72 @@ public class AgentHostTests
         ui.Invoke(() => Assert.Throws<PipeNameInUseException>(() => AgentHost.Start(name, TestOps.Registry(), new MemoryLog())));
         ui.Invoke(host.Dispose);
     }
+
+    [Fact]
+    public async Task A_pipe_operation_answers_while_the_UI_thread_is_blocked()
+    {
+        using var ui = new UiThread();
+        string name = PipeNames.Unique();
+        var release = new ManualResetEventSlim(false);
+        var started = new ManualResetEventSlim(false);
+        var registry = TestOps.RegistryWithPeek(echo: (r, c) => { started.Set(); release.Wait(TimeSpan.FromSeconds(20)); return new EchoResult { Text = r.Text }; });
+        var runtime = new AgentRuntime("t", 1, new MemoryLog());
+        var host = ui.Invoke(() => AgentHost.Start(name, registry, runtime));
+        using (var client = new RawClient(name))
+        {
+            await client.SendAsync(RpcCodec.FormatRequest(Requests.Echo(1, "block")));
+            Assert.True(started.Wait(TimeSpan.FromSeconds(10)));
+            await client.SendAsync(RpcCodec.FormatRequest(new RpcRequest(2, "test.peek", new JsonObject(), 5000)));
+            var peek = RpcCodec.ParseResponse((await client.ReadLineAsync())!);
+            Assert.Equal(2L, peek.Id);
+            Assert.NotEqual((long)ui.ThreadId, ((JsonObject)peek.Result!)["thread_id"]);
+            release.Set();
+            Assert.Equal(1L, RpcCodec.ParseResponse((await client.ReadLineAsync())!).Id);
+        }
+        ui.Invoke(host.Dispose);
+    }
+
+    [Fact]
+    public async Task The_watchdog_answers_a_running_request_timeout_and_its_end_arrives_as_an_event()
+    {
+        using var ui = new UiThread();
+        string name = PipeNames.Unique();
+        var release = new ManualResetEventSlim(false);
+        var registry = TestOps.RegistryWithPeek(echo: (r, c) => { release.Wait(TimeSpan.FromSeconds(20)); return new EchoResult { Text = r.Text }; });
+        var host = ui.Invoke(() => AgentHost.Start(name, registry, new AgentRuntime("t", 1, new MemoryLog())));
+        using (var client = new RawClient(name))
+        {
+            await client.SendAsync(RpcCodec.FormatRequest(Requests.Echo(1, "slow", deadlineMs: 300)));
+            var timeout = RpcCodec.ParseResponse((await client.ReadLineAsync())!);
+            Assert.Equal(ErrorCode.Timeout, timeout.Error!.Code);
+            release.Set();
+            var line = (await client.ReadLineAsync())!;
+            var p = (JsonObject)((JsonObject)Json.Parse(line)!)["params"]!;
+            Assert.Equal("operation.completed", p["kind"]);
+        }
+        ui.Invoke(host.Dispose);
+    }
+
+    [Fact]
+    public async Task Connection_hooks_attach_events_and_post_the_disconnect_action()
+    {
+        using var ui = new UiThread();
+        string name = PipeNames.Unique();
+        var runtime = new AgentRuntime("t", 1, new MemoryLog());
+        var disconnected = new ManualResetEventSlim(false);
+        int disconnectThread = 0;
+        var host = ui.Invoke(() => AgentHost.Start(name, TestOps.RegistryWithPeek(), runtime));
+        host.ClientDisconnected = () => { disconnectThread = Thread.CurrentThread.ManagedThreadId; disconnected.Set(); };
+        using (var client = new RawClient(name))
+        {
+            await client.SendAsync(RpcCodec.FormatRequest(new RpcRequest(1, "test.peek", new JsonObject(), 5000)));
+            await client.ReadLineAsync();
+            runtime.Events.Publish("session.closing", new SessionClosingEvent { Reason = "x" });
+            var p = (JsonObject)((JsonObject)Json.Parse((await client.ReadLineAsync())!)!)["params"]!;
+            Assert.Equal("session.closing", p["kind"]);
+        }
+        Assert.True(disconnected.Wait(TimeSpan.FromSeconds(10)));
+        Assert.Equal(ui.ThreadId, disconnectThread);
+        ui.Invoke(host.Dispose);
+    }
 }
