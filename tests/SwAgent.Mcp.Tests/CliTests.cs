@@ -305,4 +305,10 @@ public class CliTests
         Assert.Equal(ExitCodes.For(ErrorCode.InvalidArgument), run.Exit);
         Assert.Equal("invalid_argument", run.Json["code"]);
     }
+
+    [Fact]
+    public void Sw_starting_has_its_own_exit_code()
+    {
+        Assert.Equal(15, ExitCodes.For(ErrorCode.SwStarting));
+    }
 }

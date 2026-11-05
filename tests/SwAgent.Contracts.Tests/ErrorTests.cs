@@ -15,7 +15,7 @@ public class ErrorTests
         {
             "sw_not_running", "sw_crashed", "sw_multiple_instances", "addin_not_loaded", "addin_incompatible",
             "timeout", "busy", "dialog_open", "invalid_argument", "reference_unresolved", "wrong_document_type",
-            "operation_failed", "verification_failed", "api_error",
+            "operation_failed", "verification_failed", "api_error", "sw_starting",
         };
         Assert.Equal(expected, WireNames.EnumNames(typeof(ErrorCode)).ToArray());
     }
@@ -29,5 +29,12 @@ public class ErrorTests
         Assert.Equal("x is wrong", e.Message);
         Assert.Same(details, e.Error.Details);
         Assert.Equal("invalid_argument: x is wrong", e.Error.ToString());
+    }
+
+    [Fact]
+    public void Sw_starting_is_on_the_wire_as_snake_case_and_comes_last()
+    {
+        Assert.Equal("sw_starting", WireNames.ForEnum(ErrorCode.SwStarting));
+        Assert.Equal(ErrorCode.SwStarting, Enum.GetValues(typeof(ErrorCode)).Cast<ErrorCode>().Last());
     }
 }

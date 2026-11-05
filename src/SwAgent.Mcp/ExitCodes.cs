@@ -3,7 +3,7 @@ using SwAgent.Contracts;
 namespace SwAgent.Mcp;
 
 /// <summary>
-/// swmcp's exit codes. A typed error exits with its own code, grouped by class: 1x reaching SOLIDWORKS,
+/// swmcp's exit codes. A typed error exits with its own code, grouped by class: 1x reaching SOLIDWORKS (15: still starting),
 /// 2x SOLIDWORKS unavailable, 3x a bad request, 4x the operation failed.
 /// </summary>
 public static class ExitCodes
@@ -20,6 +20,7 @@ public static class ExitCodes
         ErrorCode.AddinNotLoaded => 12,
         ErrorCode.AddinIncompatible => 13,
         ErrorCode.SwCrashed => 14,
+        ErrorCode.SwStarting => 15,
         ErrorCode.Timeout => 20,
         ErrorCode.Busy => 21,
         ErrorCode.DialogOpen => 22,
