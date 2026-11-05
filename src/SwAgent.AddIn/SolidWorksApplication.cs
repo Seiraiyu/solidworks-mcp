@@ -19,6 +19,12 @@ public interface ISolidWorksApplication
 
     /// <summary>Every open document, hidden ones (loaded by an assembly) included, with its dirty flag.</summary>
     IReadOnlyList<DocumentInfo> OpenDocuments();
+
+    /// <summary>
+    /// Fault testing only (diag.scratch_part): a new part from the default part template, saved to
+    /// <paramref name="path"/> and then marked as having unsaved changes. Left open.
+    /// </summary>
+    DocumentInfo CreateScratchPart(string path);
 }
 
 /// <summary>The real SOLIDWORKS, through the ISldWorks it handed the add-in in ConnectToSW.</summary>
@@ -48,6 +54,29 @@ internal sealed class SolidWorksApplication : ISolidWorksApplication
             if (o is IModelDoc2 doc) list.Add(Describe(doc));
         }
         return list;
+    }
+
+    public DocumentInfo CreateScratchPart(string path)
+    {
+        string template = _sw.GetUserPreferenceStringValue((int)swUserPreferenceStringValue_e.swDefaultTemplatePart);
+        if (string.IsNullOrEmpty(template) || !System.IO.File.Exists(template))
+        {
+            throw new SwAgentException(ErrorCode.ApiError,
+                $"SOLIDWORKS has no usable default part template ('{template}'); set one in Tools > Options > Default Templates");
+        }
+        if (!(_sw.NewDocument(template, 0, 0, 0) is IModelDoc2 doc))
+            throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS did not create a part from the template {template}");
+        int errors = 0, warnings = 0;
+        bool saved = doc.Extension.SaveAs3(path, (int)swSaveAsVersion_e.swSaveAsCurrentVersion,
+            (int)swSaveAsOptions_e.swSaveAsOptions_Silent, null, null, ref errors, ref warnings);
+        if (!saved)
+        {
+            _sw.CloseDoc(doc.GetTitle());
+            throw new SwAgentException(ErrorCode.ApiError,
+                $"SOLIDWORKS could not save the new part to {path} (errors {errors}, warnings {warnings}); it was closed unsaved");
+        }
+        doc.SetSaveFlag();
+        return Describe(doc);
     }
 
     internal static DocumentInfo Describe(IModelDoc2 doc)

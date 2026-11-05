@@ -48,3 +48,12 @@ public sealed class DiagDialogResult
     [Description("The button that closed it: ok, cancel, yes or no.")]
     public string Pressed { get; set; } = "";
 }
+
+[Operation("diag.scratch_part", typeof(DocumentInfo), Internal = true)]
+[Description("Fault testing only: creates a part from the default part template, saves it as a new file in the live suite's scratch directory, and marks it as having unsaved changes. Refused unless diagnostics are on.")]
+public sealed class DiagScratchPartRequest
+{
+    [Required]
+    [Description("The new part's full path: a .SLDPRT file under %LOCALAPPDATA%/solidworks-mcp/live-scratch that does not exist yet.")]
+    public string Path { get; set; } = "";
+}

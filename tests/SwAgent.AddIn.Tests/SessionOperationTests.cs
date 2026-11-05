@@ -27,6 +27,18 @@ sealed class FakeSolidWorks : ISolidWorksApplication
     public System.Collections.Generic.List<DocumentInfo> Open { get; set; } = new System.Collections.Generic.List<DocumentInfo>();
 
     public System.Collections.Generic.IReadOnlyList<DocumentInfo> OpenDocuments() => Open;
+
+    /// <summary>The paths CreateScratchPart was asked for, in order.</summary>
+    public System.Collections.Generic.List<string> ScratchParts { get; } = new System.Collections.Generic.List<string>();
+
+    /// <summary>Whether the part CreateScratchPart returns has unsaved changes, as SOLIDWORKS should report.</summary>
+    public bool ScratchPartDirty { get; set; } = true;
+
+    public DocumentInfo CreateScratchPart(string path)
+    {
+        ScratchParts.Add(path);
+        return new DocumentInfo { Title = System.IO.Path.GetFileName(path), Path = path, Type = DocumentType.Part, Dirty = ScratchPartDirty };
+    }
 }
 
 sealed class TestContext : IOperationContext
