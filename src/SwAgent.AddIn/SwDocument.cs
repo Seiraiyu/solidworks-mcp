@@ -59,6 +59,47 @@ public interface ISwDocument
 
     /// <summary>The features with a rebuild error or warning (SOLIDWORKS' What's Wrong list), in tree order.</summary>
     System.Collections.Generic.IReadOnlyList<RebuildItem> WhatsWrong();
+
+    /// <summary>Every feature in tree order, each followed by its sub-features.</summary>
+    System.Collections.Generic.IReadOnlyList<FeatureRecord> Features();
+
+    /// <summary>How many solid bodies the part has.</summary>
+    int SolidBodyCount();
+
+    /// <summary>Mass properties in mm and g (Document, Bodies and Material left for the caller), or null when SOLIDWORKS gives none.</summary>
+    ModelMassResult? Mass();
+
+    /// <summary>The material's name, or null when none is set.</summary>
+    string? Material();
+
+    /// <summary>The box around the solid bodies, in mm: SOLIDWORKS' quick one, or the exact one from extreme points.</summary>
+    Box3? BoundingBox(bool precise);
+}
+
+/// <summary>A feature as the tree lists it.</summary>
+public sealed class FeatureRecord
+{
+    public FeatureRecord(object feature, string name, string type, string? parent, bool suppressed, int errorCode, bool warning)
+    {
+        Feature = feature;
+        Name = name;
+        Type = type;
+        Parent = parent;
+        Suppressed = suppressed;
+        ErrorCode = errorCode;
+        Warning = warning;
+    }
+
+    /// <summary>SOLIDWORKS' feature object, for references.</summary>
+    public object Feature { get; }
+    public string Name { get; }
+    public string Type { get; }
+    public string? Parent { get; }
+    public bool Suppressed { get; }
+
+    /// <summary>IFeature.GetErrorCode2: 0 when it rebuilt cleanly.</summary>
+    public int ErrorCode { get; }
+    public bool Warning { get; }
 }
 
 /// <summary>What a save reported: whether SOLIDWORKS said it succeeded, and its error and warning flags.</summary>

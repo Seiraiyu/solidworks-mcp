@@ -151,6 +151,38 @@ sealed class FakeDocument : ISwDocument
 
     public IReadOnlyList<RebuildItem> WhatsWrong() => Problems.ToList();
 
+    /// <summary>What Features returns.</summary>
+    public List<FeatureRecord> Tree { get; } = new List<FeatureRecord>();
+
+    public IReadOnlyList<FeatureRecord> Features() => Tree.ToList();
+
+    /// <summary>Adds a top-level feature (with an entity for its reference) and returns its entity.</summary>
+    public FakeEntity AddFeature(string name, string type, ReferenceKind kind = ReferenceKind.Feature, string? parent = null, bool suppressed = false, int errorCode = 0, bool warning = false)
+    {
+        var e = Add(kind, new EntityInfo { Name = name, Geometry = GeometryType.Other });
+        Tree.Add(new FeatureRecord(e, name, type, parent, suppressed, errorCode, warning));
+        return e;
+    }
+
+    public int Bodies { get; set; }
+
+    public int SolidBodyCount() => Bodies;
+
+    /// <summary>What Mass returns.</summary>
+    public ModelMassResult? MassProperties { get; set; }
+
+    public ModelMassResult? Mass() => MassProperties == null ? null : SwAgent.Contracts.Serialization.JsonCodec.Deserialize<ModelMassResult>(SwAgent.Contracts.Serialization.JsonCodec.Serialize(MassProperties));
+
+    public string? MaterialName { get; set; }
+
+    public string? Material() => MaterialName;
+
+    /// <summary>What BoundingBox returns, by precise flag.</summary>
+    public Box3? QuickBox { get; set; }
+    public Box3? ExactBox { get; set; }
+
+    public Box3? BoundingBox(bool precise) => precise ? ExactBox : QuickBox;
+
     SaveOutcome Write(string path)
     {
         Saves.Add(path);

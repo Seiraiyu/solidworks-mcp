@@ -96,6 +96,83 @@ internal sealed class SolidWorksDocument : ISwDocument
         return items;
     }
 
+    public IReadOnlyList<FeatureRecord> Features()
+    {
+        var list = new List<FeatureRecord>();
+        foreach (var top in TopFeatures())
+        {
+            list.Add(Record(top, null));
+            for (var sub = top.GetFirstSubFeature() as IFeature; sub != null; sub = sub.GetNextSubFeature() as IFeature) list.Add(Record(sub, top.Name));
+        }
+        return list;
+    }
+
+    static FeatureRecord Record(IFeature f, string? parent)
+    {
+        bool warning;
+        int code = f.GetErrorCode2(out warning);
+        return new FeatureRecord(f, f.Name, f.GetTypeName2(), parent, f.IsSuppressed(), code, warning);
+    }
+
+    object[] SolidBodies() => Doc is IPartDoc part && part.GetBodies2((int)swBodyType_e.swSolidBody, true) is object[] bodies ? bodies : new object[0];
+
+    public int SolidBodyCount() => SolidBodies().Length;
+
+    public ModelMassResult? Mass()
+    {
+        if (!(Doc.Extension.CreateMassProperty() is IMassProperty mp)) return null;
+        mp.UseSystemUnits = true;
+        var com = (double[])mp.CenterOfMass;
+        var moments = (double[])mp.PrincipleMomentsOfInertia;
+        return new ModelMassResult
+        {
+            VolumeMm3 = mp.Volume * 1e9,
+            AreaMm2 = mp.SurfaceArea * Mm2,
+            MassG = mp.Mass * 1000,
+            DensityKgM3 = mp.Density,
+            CenterOfMass = new Point3(com[0] * Mm, com[1] * Mm, com[2] * Mm),
+            PrincipalMomentsGMm2 = moments.Take(3).Select(m => m * 1e9).ToList(),
+        };
+    }
+
+    public string? Material()
+    {
+        if (!(Doc is IPartDoc part)) return null;
+        string database;
+        string name = part.GetMaterialPropertyName2("", out database);
+        return string.IsNullOrEmpty(name) ? null : name;
+    }
+
+    public Box3? BoundingBox(bool precise)
+    {
+        if (!precise) return Doc is IPartDoc part && part.GetPartBox(true) is double[] b ? Box(b) : null;
+        double[]? box = null;
+        foreach (var o in SolidBodies())
+        {
+            if (!(o is IBody2 body)) continue;
+            var lo = new double[3];
+            var hi = new double[3];
+            for (int axis = 0; axis < 3; axis++)
+            {
+                lo[axis] = Extreme(body, axis, -1);
+                hi[axis] = Extreme(body, axis, 1);
+            }
+            box = box == null
+                ? new[] { lo[0], lo[1], lo[2], hi[0], hi[1], hi[2] }
+                : new[] { Math.Min(box[0], lo[0]), Math.Min(box[1], lo[1]), Math.Min(box[2], lo[2]), Math.Max(box[3], hi[0]), Math.Max(box[4], hi[1]), Math.Max(box[5], hi[2]) };
+        }
+        return box == null ? null : Box(box);
+    }
+
+    /// <summary>The body's farthest coordinate along <paramref name="axis"/> in direction <paramref name="sign"/>, in metres.</summary>
+    static double Extreme(IBody2 body, int axis, int sign)
+    {
+        double x, y, z;
+        if (!body.GetExtremePoint(axis == 0 ? sign : 0, axis == 1 ? sign : 0, axis == 2 ? sign : 0, out x, out y, out z))
+            throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS gave no extreme point for a body");
+        return axis == 0 ? x : axis == 1 ? y : z;
+    }
+
     public ReferenceKind? KindOf(object entity) => entity switch
     {
         IFeature f => FeatureKind(f.GetTypeName2()),
