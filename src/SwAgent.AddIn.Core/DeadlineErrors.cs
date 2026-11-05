@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using SwAgent.Contracts;
 using SwAgent.Contracts.Serialization;
 
@@ -50,6 +51,27 @@ public static class DeadlineErrors
                 ["deadline_ms"] = running.Request.DeadlineMs,
                 ["running_ms"] = Ms(nowUtc - (running.StartedUtc ?? nowUtc)),
             });
+
+    /// <summary>
+    /// A request held up by a modal dialog: <paramref name="started"/> when it raised the dialog and waits on it (its
+    /// outcome follows as operation.completed); not started when the dialog was already open and nothing may run under it.
+    /// </summary>
+    public static SwAgentError DialogOpen(LedgerEntry entry, DialogInfo dialog, bool started)
+    {
+        string buttons = dialog.Buttons.Count == 0 ? "none readable" : string.Join(", ", dialog.Buttons.Select(b => b.Text));
+        string message = started
+            ? $"{entry.Request.Method} is waiting on the SOLIDWORKS dialog \"{dialog.Title}\" (buttons: {buttons}); answer it with " +
+              $"dialog.respond (dialog {dialog.Id}); the operation's outcome follows as operation.completed"
+            : $"{entry.Request.Method} was not started: SOLIDWORKS is showing the dialog \"{dialog.Title}\" (buttons: {buttons}); " +
+              $"answer or close it with dialog.respond (dialog {dialog.Id}), then retry";
+        return new SwAgentError(ErrorCode.DialogOpen, message, new JsonObject
+        {
+            ["started"] = started,
+            ["operation_running"] = started,
+            ["method"] = entry.Request.Method,
+            ["dialog"] = JsonCodec.ToJson(dialog),
+        });
+    }
 
     static long Ms(TimeSpan span) => (long)Math.Max(0, span.TotalMilliseconds);
 }

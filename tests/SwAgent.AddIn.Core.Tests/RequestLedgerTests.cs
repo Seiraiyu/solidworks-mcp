@@ -133,4 +133,32 @@ public class RequestLedgerTests
         Assert.Equal("test.echo", running["method"]);
         Assert.Contains("safe to retry", error.Message);
     }
+
+    [Fact]
+    public void Dialog_open_names_the_dialog_and_whether_the_request_started()
+    {
+        var ledger = new RequestLedger();
+        var entry = ledger.Enqueue(Requests.Echo(1, "a"), T0, new CapturingReply());
+        var dialog = new DialogInfo { Id = "d3-1f", Title = "Rebuild", Buttons = { new DialogButton { Text = "OK", ControlId = 1 } } };
+
+        var waiting = DeadlineErrors.DialogOpen(entry, dialog, started: true);
+        Assert.Equal(ErrorCode.DialogOpen, waiting.Code);
+        Assert.True(waiting.Details!["operation_running"] is true);
+        Assert.Equal("d3-1f", ((JsonObject)waiting.Details["dialog"]!)["id"]);
+        Assert.Contains("operation.completed", waiting.Message);
+
+        var refused = DeadlineErrors.DialogOpen(entry, dialog, started: false);
+        Assert.True(refused.Details!["started"] is false);
+        Assert.Contains("was not started", refused.Message);
+        Assert.Contains("buttons: OK", refused.Message);
+    }
+
+    [Fact]
+    public void An_entry_holds_the_outcome_of_its_own_run()
+    {
+        var entry = new RequestLedger().Enqueue(Requests.Echo(1, "a"), T0, new CapturingReply());
+        Assert.Null(entry.Outcome);
+        entry.Outcome = SwAgent.Contracts.Rpc.RpcResponse.Success(1, null);
+        Assert.True(entry.Outcome.IsSuccess);
+    }
 }
