@@ -20,6 +20,10 @@ public sealed record CaseResult(int Step, string Name, CaseOutcome Outcome, stri
 public sealed class ReportHeader
 {
     public string RunId { get; set; } = "";
+
+    /// <summary>Which suite ran, for example parts suite.</summary>
+    public string Suite { get; set; } = "";
+
     public string Machine { get; set; } = "";
     public string? SwRevision { get; set; }
     public string? AddinVersion { get; set; }
@@ -42,7 +46,7 @@ public static class LiveReport
     public static string Render(ReportHeader header, IReadOnlyList<CaseResult> results)
     {
         var s = new StringBuilder();
-        s.AppendLine($"# swmcp live fault suite: run {header.RunId}");
+        s.AppendLine($"# swmcp live {header.Suite}: run {header.RunId}");
         s.AppendLine();
         s.AppendLine($"- Machine: {header.Machine}");
         s.AppendLine($"- SOLIDWORKS revision: {header.SwRevision ?? "unknown"}");

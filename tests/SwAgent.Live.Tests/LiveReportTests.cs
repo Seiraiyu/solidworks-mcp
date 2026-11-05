@@ -8,6 +8,7 @@ public class LiveReportTests
     static ReportHeader Header(string? stopped = null) => new ReportHeader
     {
         RunId = "20261105-140000",
+        Suite = "parts suite",
         Machine = "seiraiyu2",
         SwRevision = "34.4.0",
         AddinVersion = "0.1.0+abc",
@@ -51,5 +52,12 @@ public class LiveReportTests
     {
         string report = LiveReport.Render(Header(), new[] { new CaseResult(1, "x", CaseOutcome.Pass, "a\r\nb", 1) });
         Assert.Contains("| 1 | x | PASS | a<br>b | 1.0 |", report);
+    }
+
+    [Fact]
+    public void The_title_names_the_suite()
+    {
+        string report = LiveReport.Render(Header(), Array.Empty<CaseResult>());
+        Assert.StartsWith("# swmcp live parts suite: run 20261105-140000", report);
     }
 }

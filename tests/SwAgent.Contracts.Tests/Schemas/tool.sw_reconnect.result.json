@@ -245,6 +245,10 @@
         "dialog_watch_alive": {
           "type": "boolean",
           "description": "True while the dialog watch thread is alive."
+        },
+        "diagnostics_enabled": {
+          "type": "boolean",
+          "description": "True when diagnostic operations (diag.*) are on in this add-in load: HKCU\\Software\\solidworks-mcp\\Diagnostics was 1 when SOLIDWORKS loaded it."
         }
       },
       "required": [
@@ -258,7 +262,8 @@
         "preferences_not_applied",
         "documents",
         "last_event_seq",
-        "dialog_watch_alive"
+        "dialog_watch_alive",
+        "diagnostics_enabled"
       ],
       "additionalProperties": false,
       "description": "The add-in's own state; absent when not connected."

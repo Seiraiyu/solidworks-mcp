@@ -69,9 +69,7 @@ public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
     [SkippableFact, Step(1)]
     public Task SOLIDWORKS_is_ready_with_nothing_of_the_owners_open() => _run.CaseAsync(1, "SOLIDWORKS ready, only the suite's documents open, diagnostics on", async () =>
     {
-        var ids = SystemProcessList.Instance.SolidWorksProcessIds();
-        if (ids.Count > 1) throw _run.Stop($"{ids.Count} SOLIDWORKS processes are running; the suite needs exactly one");
-        if (ids.Count == 0) await _run.WaitForSolidWorksAsync(TimeSpan.FromMinutes(10));
+        await _run.PrepareSolidWorksAsync();
         var clock = Stopwatch.StartNew();
         SessionStatusResult status;
         while (true)
@@ -93,8 +91,7 @@ public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
         }
         catch (SwAgentException e) when (e.Code == ErrorCode.InvalidArgument)
         {
-            throw _run.Stop("diagnostic operations are off in this add-in load (it was loaded before the run set Diagnostics); " +
-                "close SOLIDWORKS with hold-and-check.ps1 -Close (no documents open), start it again from the 3DEXPERIENCE tab, and rerun: " + e.Message);
+            throw _run.Stop("diagnostic operations are off in this add-in load, although addin.state said they were on; rerun, and report it: " + e.Message);
         }
         _run.SwRevision = status.SwRevision;
         _run.AddinVersion = status.AddinVersion;

@@ -50,6 +50,7 @@ public sealed class AddinStateOperation : PipeOperation<AddinStateRequest, Addin
             LastEventSeq = _runtime.Events.LastSeq,
             Dialog = _runtime.Dialogs?.Current,
             DialogWatchAlive = _runtime.Dialogs?.IsAlive ?? false,
+            DiagnosticsEnabled = _runtime.DiagnosticsEnabled,
         };
     }
 
