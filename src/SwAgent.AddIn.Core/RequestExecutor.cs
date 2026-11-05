@@ -22,9 +22,16 @@ public sealed class RequestExecutor
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
 
-    public string Execute(RpcRequest request, DateTime receivedUtc)
+    public string Execute(RpcRequest request, DateTime receivedUtc) => RpcCodec.FormatResponse(ExecuteResponse(request, receivedUtc));
+
+    /// <summary>
+    /// Runs <paramref name="request"/> and returns its response; never throws. <paramref name="startedUtc"/> is when the
+    /// ledger started it (the deadline is judged against that); now when absent.
+    /// </summary>
+    public RpcResponse ExecuteResponse(RpcRequest request, DateTime receivedUtc, DateTime? startedUtc = null)
     {
-        var started = _utcNow();
+        var started = startedUtc ?? _utcNow();
+        var clockStart = _utcNow();
         RpcResponse response;
         try
         {
@@ -37,9 +44,9 @@ public sealed class RequestExecutor
         }
         string outcome = response.IsSuccess ? "ok" : WireNames.ForEnum(response.Error!.Code);
         _log.Info($"request {request.Id} {request.Method} deadline {request.DeadlineMs} ms, " +
-                  $"waited {(started - receivedUtc).TotalMilliseconds:0} ms, ran {(_utcNow() - started).TotalMilliseconds:0} ms: {outcome}");
+                  $"waited {(started - receivedUtc).TotalMilliseconds:0} ms, ran {(_utcNow() - clockStart).TotalMilliseconds:0} ms: {outcome}");
         if (_log.IsDebugEnabled) _log.Debug($"request {request.Id} params {Json.Write(request.Params)}");
-        return RpcCodec.FormatResponse(response);
+        return response;
     }
 
     RpcResponse ExecuteCore(RpcRequest request, DateTime receivedUtc, DateTime startedUtc)
@@ -53,8 +60,8 @@ public sealed class RequestExecutor
         var deadline = receivedUtc.AddMilliseconds(request.DeadlineMs);
         if (startedUtc >= deadline)
         {
-            return Fail(request, new SwAgentError(ErrorCode.Timeout,
-                $"{request.Method} was not started: its {request.DeadlineMs} ms deadline passed while SOLIDWORKS was busy with earlier requests; retry with a longer deadline",
+            return Fail(request, new SwAgentError(ErrorCode.Busy,
+                $"{request.Method} was not started: its {request.DeadlineMs} ms deadline passed while SOLIDWORKS was busy with earlier requests; it is safe to retry, with a longer deadline",
                 new JsonObject { ["started"] = false, ["waited_ms"] = (long)(startedUtc - receivedUtc).TotalMilliseconds }));
         }
 

@@ -168,7 +168,7 @@ public class DispatcherTests
     }
 
     [Fact]
-    public void A_request_whose_deadline_passes_in_the_queue_is_answered_timeout_without_running()
+    public void A_request_whose_deadline_passes_in_the_queue_is_answered_busy_without_running()
     {
         using var ui = new UiThread();
         int otherRuns = 0;
@@ -188,7 +188,7 @@ public class DispatcherTests
         Assert.True(reply.Next().IsSuccess);
         var late = reply.Next();
         Assert.Equal(2L, late.Id);
-        Assert.Equal(ErrorCode.Timeout, late.Error!.Code);
+        Assert.Equal(ErrorCode.Busy, late.Error!.Code);
         Assert.True(late.Error.Details!["started"] is false);
         Assert.True((long)late.Error.Details["waited_ms"]! >= 50);
         Assert.Equal(0, otherRuns);

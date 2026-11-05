@@ -47,15 +47,33 @@ public class RequestExecutorTests
     }
 
     [Fact]
-    public void A_request_past_its_deadline_is_not_started()
+    public void A_request_past_its_deadline_is_not_started_and_is_busy()
     {
         int runs = 0;
         var registry = TestOps.Registry(echo: (r, c) => { runs++; return new EchoResult { Text = r.Text }; });
         var response = Run(registry, Echo("late", 1000), received: Now.AddSeconds(-5));
-        Assert.Equal(ErrorCode.Timeout, response.Error!.Code);
+        Assert.Equal(ErrorCode.Busy, response.Error!.Code);
         Assert.True(response.Error.Details!["started"] is false);
         Assert.Equal(5000L, response.Error.Details["waited_ms"]);
         Assert.Equal(0, runs);
+    }
+
+    [Fact]
+    public void Execute_response_returns_the_typed_response()
+    {
+        var executor = new RequestExecutor(TestOps.Registry(), new MemoryLog(), () => Now);
+        var response = executor.ExecuteResponse(Echo("hi"), Now);
+        Assert.True(response.IsSuccess);
+        Assert.Equal(1L, response.Id);
+    }
+
+    [Fact]
+    public void A_given_start_time_decides_whether_the_deadline_had_passed()
+    {
+        // The clock says 5 s late, but the ledger started it 10 ms after receipt: it runs.
+        var executor = new RequestExecutor(TestOps.Registry(), new MemoryLog(), () => Now.AddSeconds(5));
+        var response = executor.ExecuteResponse(Echo("hi", 1000), Now, startedUtc: Now.AddMilliseconds(10));
+        Assert.True(response.IsSuccess);
     }
 
     [Fact]
