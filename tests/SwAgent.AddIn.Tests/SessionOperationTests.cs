@@ -62,6 +62,11 @@ sealed class FakeSolidWorks : ISolidWorksApplication
 
     public ISwDocument? ActiveDoc() => CurrentDoc ?? (Docs.Count > 0 ? Docs[0] : null);
 
+    /// <summary>The title of a command (PropertyManager) the user has open, or null.</summary>
+    public string? OpenCommandTitle { get; set; }
+
+    public string? OpenCommand() => OpenCommandTitle;
+
     /// <summary>What DefaultPartTemplate returns.</summary>
     public string? DefaultTemplate { get; set; }
 

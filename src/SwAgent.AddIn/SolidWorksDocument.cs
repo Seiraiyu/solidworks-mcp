@@ -28,6 +28,8 @@ internal sealed class SolidWorksDocument : ISwDocument
 
     public bool ReadOnly => Doc.IsOpenedReadOnly();
 
+    public string? EditingSketch() => Doc.GetActiveSketch2() is ISketch sketch ? ((sketch as IFeature)?.Name ?? "a sketch") : null;
+
     public void Activate()
     {
         int errors = 0;

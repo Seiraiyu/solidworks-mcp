@@ -42,6 +42,9 @@ public interface ISwDocument
     /// <summary>The origin feature, or null.</summary>
     object? Origin();
 
+    /// <summary>The name of the sketch the user has open for editing in this document, or null when none is (IModelDoc2.GetActiveSketch2).</summary>
+    string? EditingSketch();
+
     /// <summary>True when the document is open read-only.</summary>
     bool ReadOnly { get; }
 

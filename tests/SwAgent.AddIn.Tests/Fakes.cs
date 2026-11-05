@@ -157,6 +157,18 @@ sealed class FakeDocument : ISwDocument
 
     public IReadOnlyList<FeatureRecord> Features() => Tree.ToList();
 
+    /// <summary>Removes a feature added with <see cref="AddFeature"/>, as deleting it in SOLIDWORKS would.</summary>
+    public void RemoveFeature(FakeEntity feature)
+    {
+        Entities.Remove(feature);
+        Tree.RemoveAll(f => ReferenceEquals(f.Feature, feature));
+    }
+
+    /// <summary>The sketch the user has open for editing, or null.</summary>
+    public string? EditingSketchName { get; set; }
+
+    public string? EditingSketch() => EditingSketchName;
+
     /// <summary>Adds a top-level feature (with an entity for its reference) and returns its entity.</summary>
     public FakeEntity AddFeature(string name, string type, ReferenceKind kind = ReferenceKind.Feature, string? parent = null, bool suppressed = false, int errorCode = 0, bool warning = false)
     {
