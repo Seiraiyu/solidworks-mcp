@@ -111,3 +111,30 @@ public sealed class DiagScratchBlockOperation : Operation<DiagScratchBlockReques
         }
     }
 }
+
+/// <summary>Live testing only: what the model-change precondition reads, without changing anything, so the parts suite only probes with a change once the user's sketch or command is seen.</summary>
+public sealed class DiagEditingOperation : Operation<DiagEditingRequest, DiagEditingResult>
+{
+    readonly AddInServices _services;
+
+    public DiagEditingOperation(AddInServices services)
+    {
+        _services = services;
+    }
+
+    protected override DiagEditingResult Run(DiagEditingRequest request, IOperationContext context)
+    {
+        if (!_services.Runtime.DiagnosticsEnabled)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                @"diagnostic operations are off; set HKCU\Software\solidworks-mcp\Diagnostics (DWORD) to 1 and reload the add-in to use them");
+        }
+        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "diag.editing");
+        return new DiagEditingResult { Sketch = doc.EditingSketch(), Command = _services.SolidWorks.OpenCommand() };
+    }
+
+    /// <summary>Nothing to check: it only reads.</summary>
+    protected override void Verify(DiagEditingRequest request, DiagEditingResult result, IOperationContext context)
+    {
+    }
+}

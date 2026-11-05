@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "description": "What the user has open.",
+  "properties": {
+    "sketch": {
+      "type": "string",
+      "description": "The sketch the user is editing in the part; absent when none."
+    },
+    "command": {
+      "type": "string",
+      "description": "The title of the command (PropertyManager) the user has open; absent when none."
+    }
+  },
+  "additionalProperties": false
+}

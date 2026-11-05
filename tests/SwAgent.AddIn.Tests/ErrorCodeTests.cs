@@ -261,4 +261,19 @@ public class ErrorCodeTests : DocumentTestBase
         }
         Assert.Equal(code, Fails(() => Run(new ModelDimensionsOperation(Services), request)).Code);
     }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    public void Diag_editing_reaches_every_listed_code(ErrorCode code)
+    {
+        var services = new AddInServices(Sw, "0.1.0-test", new SwAgent.AddIn.Core.AgentRuntime("0.1.0-test", 1, SwAgent.AddIn.Core.NullLog.Instance, diagnosticsEnabled: true));
+        if (code == ErrorCode.WrongDocumentType) Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+        else
+        {
+            Part();
+            services = Services;
+        }
+        Assert.Equal(code, Fails(() => Run(new DiagEditingOperation(services), new DiagEditingRequest())).Code);
+    }
 }

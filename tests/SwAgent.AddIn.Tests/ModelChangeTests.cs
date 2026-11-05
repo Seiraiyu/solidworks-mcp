@@ -151,3 +151,29 @@ public class ModelChangeTests : DocumentTestBase
         Assert.Equal(ErrorCode.WrongDocumentType, Fails(() => Change(new TestChangeRequest())).Code);
     }
 }
+
+public class DiagEditingTests : DocumentTestBase
+{
+    [Fact]
+    public void Reports_what_the_precondition_reads_without_changing_anything()
+    {
+        var doc = Sw.Track(FakeDocument.Part("Part1"));
+        var services = new AddInServices(Sw, "0.1.0-test", new SwAgent.AddIn.Core.AgentRuntime("0.1.0-test", 1, SwAgent.AddIn.Core.NullLog.Instance, diagnosticsEnabled: true));
+        var op = new SwAgent.AddIn.Operations.DiagEditingOperation(services);
+        var idle = Run(op, new DiagEditingRequest());
+        Assert.Null(idle.Sketch);
+        Assert.Null(idle.Command);
+        doc.EditingSketchName = "Sketch2";
+        Sw.OpenCommandTitle = "Boss-Extrude";
+        var busy = Run(op, new DiagEditingRequest());
+        Assert.Equal("Sketch2", busy.Sketch);
+        Assert.Equal("Boss-Extrude", busy.Command);
+    }
+
+    [Fact]
+    public void Is_refused_unless_diagnostics_are_on()
+    {
+        Sw.Track(FakeDocument.Part("Part1"));
+        Assert.Equal(ErrorCode.InvalidArgument, Fails(() => Run(new SwAgent.AddIn.Operations.DiagEditingOperation(Services), new DiagEditingRequest())).Code);
+    }
+}
