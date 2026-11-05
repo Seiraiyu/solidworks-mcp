@@ -95,4 +95,56 @@ sealed class FakeDocument : ISwDocument
     public object? StandardPlane(int index) => Entities.Where(e => e.Kind == ReferenceKind.Plane).ElementAtOrDefault(index);
 
     public object? Origin() => Entities.FirstOrDefault(e => e.Kind == ReferenceKind.Point && e.Info.Name == "Ursprung");
+
+    public bool ReadOnly { get; set; }
+
+    /// <summary>Set by FakeSolidWorks.Track: makes this the active document.</summary>
+    public Action? Activated { get; set; }
+
+    public int Activations { get; private set; }
+
+    public void Activate()
+    {
+        Activations++;
+        Activated?.Invoke();
+    }
+
+    /// <summary>When set, the next save reports this instead of saving.</summary>
+    public SaveOutcome? FailNextSave { get; set; }
+
+    /// <summary>When true, a save reports success but writes nothing (SOLIDWORKS' silent SaveAs failure).</summary>
+    public bool SaveWritesNothing { get; set; }
+
+    public List<string> Saves { get; } = new List<string>();
+
+    public SaveOutcome Save()
+    {
+        if (Document.Path == null) throw new InvalidOperationException("a document never saved cannot be saved in place");
+        return Write(Document.Path);
+    }
+
+    public SaveOutcome SaveAs(string path)
+    {
+        var outcome = Write(path);
+        if (outcome.Saved)
+        {
+            Document.Path = path;
+            Document.Title = System.IO.Path.GetFileName(path);
+        }
+        return outcome;
+    }
+
+    SaveOutcome Write(string path)
+    {
+        Saves.Add(path);
+        if (FailNextSave != null)
+        {
+            var failed = FailNextSave;
+            FailNextSave = null;
+            return failed;
+        }
+        if (!SaveWritesNothing) System.IO.File.WriteAllText(path, "part");
+        Document.Dirty = false;
+        return new SaveOutcome(true, 0, 0);
+    }
 }

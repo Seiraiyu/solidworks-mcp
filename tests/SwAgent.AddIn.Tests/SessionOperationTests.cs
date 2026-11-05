@@ -48,6 +48,63 @@ sealed class FakeSolidWorks : ISolidWorksApplication
     public System.Collections.Generic.IReadOnlyList<ISwDocument> Documents() => Docs;
 
     public ISwDocument? ActiveDoc() => CurrentDoc ?? (Docs.Count > 0 ? Docs[0] : null);
+
+    /// <summary>What DefaultPartTemplate returns.</summary>
+    public string? DefaultTemplate { get; set; }
+
+    /// <summary>The templates NewDocument was given, in order.</summary>
+    public System.Collections.Generic.List<string> NewFrom { get; } = new System.Collections.Generic.List<string>();
+
+    /// <summary>When false, NewDocument makes a document without the template's planes (a template that is not a part's).</summary>
+    public bool NewHasPlanes { get; set; } = true;
+
+    public string? DefaultPartTemplate() => DefaultTemplate;
+
+    public ISwDocument NewDocument(string template)
+    {
+        NewFrom.Add(template);
+        var doc = NewHasPlanes ? FakeDocument.Part("Part" + (NewFrom.Count + 1)) : new FakeDocument("Part" + (NewFrom.Count + 1));
+        Track(doc);
+        doc.Document.Dirty = false;
+        CurrentDoc = doc;
+        return doc;
+    }
+
+    /// <summary>The next Open: the document it returns (null for a failure) and SOLIDWORKS' flags.</summary>
+    public System.Func<string, OpenOutcome>? OpenWith { get; set; }
+
+    public System.Collections.Generic.List<(string Path, DocumentType Type, bool ReadOnly)> Opened { get; } = new System.Collections.Generic.List<(string, DocumentType, bool)>();
+
+    public OpenOutcome OpenDocument(string path, DocumentType type, bool readOnly)
+    {
+        Opened.Add((path, type, readOnly));
+        var outcome = OpenWith?.Invoke(path)
+            ?? new OpenOutcome(new FakeDocument(System.IO.Path.GetFileName(path), path, type) { ReadOnly = readOnly }, 0, 0);
+        if (outcome.Document is FakeDocument doc)
+        {
+            Track(doc);
+            CurrentDoc = doc;
+        }
+        return outcome;
+    }
+
+    public System.Collections.Generic.List<string> ClosedTitles { get; } = new System.Collections.Generic.List<string>();
+
+    public void Close(ISwDocument document)
+    {
+        var doc = (FakeDocument)document;
+        ClosedTitles.Add(doc.Document.Title);
+        Docs.Remove(doc);
+        if (ReferenceEquals(CurrentDoc, doc)) CurrentDoc = null;
+    }
+
+    /// <summary>Adds a document the operations can see, wired so Activate makes it the active one.</summary>
+    public FakeDocument Track(FakeDocument doc)
+    {
+        if (!Docs.Contains(doc)) Docs.Add(doc);
+        doc.Activated = () => CurrentDoc = doc;
+        return doc;
+    }
 }
 
 sealed class TestContext : IOperationContext

@@ -1,0 +1,61 @@
+{
+  "type": "object",
+  "description": "The document opened.",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty"
+      ],
+      "additionalProperties": false,
+      "description": "The document."
+    },
+    "already_open": {
+      "type": "boolean",
+      "description": "True when it was already open; it was made active and not opened again."
+    },
+    "read_only": {
+      "type": "boolean",
+      "description": "True when it is open read-only."
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What SOLIDWORKS warned about while opening it (swFileLoadWarning_e names), for example swFileLoadWarning_ModelOutOfDate."
+    }
+  },
+  "required": [
+    "document",
+    "already_open",
+    "read_only",
+    "warnings"
+  ],
+  "additionalProperties": false
+}

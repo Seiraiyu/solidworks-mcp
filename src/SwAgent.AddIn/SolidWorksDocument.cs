@@ -16,12 +16,38 @@ internal sealed class SolidWorksDocument : ISwDocument
     const double Mm = 1000.0;
     const double Mm2 = 1e6;
 
-    public SolidWorksDocument(IModelDoc2 doc)
+    readonly ISldWorks _sw;
+
+    public SolidWorksDocument(ISldWorks sw, IModelDoc2 doc)
     {
+        _sw = sw;
         Doc = doc;
     }
 
     public IModelDoc2 Doc { get; }
+
+    public bool ReadOnly => Doc.IsOpenedReadOnly();
+
+    public void Activate()
+    {
+        int errors = 0;
+        _sw.ActivateDoc3(Doc.GetTitle(), false, (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, ref errors);
+    }
+
+    public SaveOutcome Save()
+    {
+        int errors = 0, warnings = 0;
+        bool saved = Doc.Save3((int)swSaveAsOptions_e.swSaveAsOptions_Silent, ref errors, ref warnings);
+        return new SaveOutcome(saved, errors, warnings);
+    }
+
+    public SaveOutcome SaveAs(string path)
+    {
+        int errors = 0, warnings = 0;
+        bool saved = Doc.Extension.SaveAs3(path, (int)swSaveAsVersion_e.swSaveAsCurrentVersion,
+            (int)swSaveAsOptions_e.swSaveAsOptions_Silent, null, null, ref errors, ref warnings);
+        return new SaveOutcome(saved, errors, warnings);
+    }
 
     public DocumentInfo Info() => SolidWorksApplication.Describe(Doc);
 

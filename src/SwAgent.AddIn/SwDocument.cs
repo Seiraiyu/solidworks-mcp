@@ -41,4 +41,46 @@ public interface ISwDocument
 
     /// <summary>The origin feature, or null.</summary>
     object? Origin();
+
+    /// <summary>True when the document is open read-only.</summary>
+    bool ReadOnly { get; }
+
+    /// <summary>Makes it the active document, without rebuilding it.</summary>
+    void Activate();
+
+    /// <summary>Saves it where it is, silently. SOLIDWORKS' swFileSaveError_e and swFileSaveWarning_e flags.</summary>
+    SaveOutcome Save();
+
+    /// <summary>Saves it to <paramref name="path"/> in the current version, silently; it is then that file.</summary>
+    SaveOutcome SaveAs(string path);
+}
+
+/// <summary>What a save reported: whether SOLIDWORKS said it succeeded, and its error and warning flags.</summary>
+public sealed class SaveOutcome
+{
+    public SaveOutcome(bool saved, int errors, int warnings)
+    {
+        Saved = saved;
+        Errors = errors;
+        Warnings = warnings;
+    }
+
+    public bool Saved { get; }
+    public int Errors { get; }
+    public int Warnings { get; }
+}
+
+/// <summary>What opening a file reported: the document (null when it did not open), and SOLIDWORKS' error and warning flags.</summary>
+public sealed class OpenOutcome
+{
+    public OpenOutcome(ISwDocument? document, int errors, int warnings)
+    {
+        Document = document;
+        Errors = errors;
+        Warnings = warnings;
+    }
+
+    public ISwDocument? Document { get; }
+    public int Errors { get; }
+    public int Warnings { get; }
 }

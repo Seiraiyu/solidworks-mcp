@@ -31,6 +31,18 @@ public interface ISolidWorksApplication
 
     /// <summary>The active document, or null when none is open.</summary>
     ISwDocument? ActiveDoc();
+
+    /// <summary>The user's default part template (Tools > Options > Default Templates), or null when none is set.</summary>
+    string? DefaultPartTemplate();
+
+    /// <summary>A new document from <paramref name="template"/>, made active; api_error when SOLIDWORKS makes none.</summary>
+    ISwDocument NewDocument(string template);
+
+    /// <summary>Opens <paramref name="path"/> silently as a document of <paramref name="type"/>.</summary>
+    OpenOutcome OpenDocument(string path, DocumentType type, bool readOnly);
+
+    /// <summary>Closes <paramref name="document"/> without saving it.</summary>
+    void Close(ISwDocument document);
 }
 
 /// <summary>The real SOLIDWORKS, through the ISldWorks it handed the add-in in ConnectToSW.</summary>
@@ -68,12 +80,39 @@ internal sealed class SolidWorksApplication : ISolidWorksApplication
         if (!(_sw.GetDocuments() is object[] docs)) return list;
         foreach (var o in docs)
         {
-            if (o is IModelDoc2 doc) list.Add(new SolidWorksDocument(doc));
+            if (o is IModelDoc2 doc) list.Add(new SolidWorksDocument(_sw, doc));
         }
         return list;
     }
 
-    public ISwDocument? ActiveDoc() => _sw.ActiveDoc is IModelDoc2 doc ? new SolidWorksDocument(doc) : null;
+    public ISwDocument? ActiveDoc() => _sw.ActiveDoc is IModelDoc2 doc ? new SolidWorksDocument(_sw, doc) : null;
+
+    public string? DefaultPartTemplate()
+    {
+        string template = _sw.GetUserPreferenceStringValue((int)swUserPreferenceStringValue_e.swDefaultTemplatePart);
+        return string.IsNullOrEmpty(template) ? null : template;
+    }
+
+    public ISwDocument NewDocument(string template) =>
+        _sw.NewDocument(template, 0, 0, 0) is IModelDoc2 doc
+            ? new SolidWorksDocument(_sw, doc)
+            : throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS did not create a document from the template {template}");
+
+    public OpenOutcome OpenDocument(string path, DocumentType type, bool readOnly)
+    {
+        int errors = 0, warnings = 0;
+        int swType = type switch
+        {
+            DocumentType.Assembly => (int)swDocumentTypes_e.swDocASSEMBLY,
+            DocumentType.Drawing => (int)swDocumentTypes_e.swDocDRAWING,
+            _ => (int)swDocumentTypes_e.swDocPART,
+        };
+        int options = (int)swOpenDocOptions_e.swOpenDocOptions_Silent | (readOnly ? (int)swOpenDocOptions_e.swOpenDocOptions_ReadOnly : 0);
+        var doc = _sw.OpenDoc6(path, swType, options, "", ref errors, ref warnings);
+        return new OpenOutcome(doc == null ? null : new SolidWorksDocument(_sw, doc), errors, warnings);
+    }
+
+    public void Close(ISwDocument document) => _sw.CloseDoc(((SolidWorksDocument)document).Doc.GetTitle());
 
     public DocumentInfo CreateScratchPart(string path)
     {

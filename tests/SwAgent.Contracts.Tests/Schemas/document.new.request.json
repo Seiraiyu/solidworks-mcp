@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "description": "Creates a part from the user's default part template (or a named template) and makes it the active document. With path, saves it there at once. The part is the agent's own, so document.close may close it.",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "part",
+        "assembly",
+        "drawing"
+      ],
+      "description": "What to create; only part in this version. Default part."
+    },
+    "template": {
+      "type": "string",
+      "description": "Full path of a part template (.PRTDOT); the user's default part template when absent."
+    },
+    "path": {
+      "type": "string",
+      "description": "Full path of a .SLDPRT file that does not exist yet, in an existing folder: the new part is saved there at once."
+    }
+  },
+  "additionalProperties": false
+}
