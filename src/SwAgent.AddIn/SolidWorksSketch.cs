@@ -119,14 +119,24 @@ internal sealed class SolidWorksSketchEditor : ISketchEditor
         return point ?? throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS gave no {part} point for a sketch segment");
     }
 
-    /// <summary>The relation SOLIDWORKS added, taken as the last in its list (it lists relations in the order they were made), or null when none was.</summary>
+    /// <summary>
+    /// The relation SOLIDWORKS added, taken as the last in its list (it lists relations in the order they were made), or
+    /// null when none was. SOLIDWORKS adds no coincident relation between two points: it merges them (sgMERGEPOINTS, a
+    /// Merge relation), so a coincident relation between points SOLIDWORKS refuses is made that way (3.B live run).
+    /// </summary>
     public object? Relate(SketchRelationType type, IReadOnlyList<object> entities)
+    {
+        bool points = entities.All(e => e is ISketchPoint || e is IVertex || e is SketchOrigin);
+        return Constrain(ConstraintName(type, points), entities)
+            ?? (type == SketchRelationType.Coincident && points ? Constrain("sgMERGEPOINTS", entities) : null);
+    }
+
+    object? Constrain(string constraint, IReadOnlyList<object> entities)
     {
         var relations = Active.RelationManager;
         int before = relations.GetRelationsCount((int)swSketchRelationFilterType_e.swAll);
         Select(entities);
-        bool points = entities.All(e => e is ISketchPoint || e is IVertex || e is SketchOrigin);
-        _doc.SketchAddConstraints(ConstraintName(type, points));
+        _doc.SketchAddConstraints(constraint);
         _doc.ClearSelection2(true);
         if (relations.GetRelationsCount((int)swSketchRelationFilterType_e.swAll) <= before) return null;
         return relations.GetRelations((int)swSketchRelationFilterType_e.swAll) is object[] all && all.Length > 0 ? all[all.Length - 1] : null;

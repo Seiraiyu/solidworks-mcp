@@ -38,6 +38,15 @@ public class SketchCreateTests : DocumentTestBase
 
     SketchCreateResult Create(SketchCreateRequest request) => Run(new SketchCreateOperation(Services), request);
 
+    /// <summary>SOLIDWORKS relates two points at one place by merging them (swConstraintType_MERGEPOINTS, 3.B live run): sketch.read calls that coincident.</summary>
+    [Theory]
+    [InlineData(42, "coincident")]
+    [InlineData(9, "coincident")]
+    [InlineData(4, "horizontal")]
+    [InlineData(25, "horizontal")]
+    public void Relation_types_read_as_the_names_sketch_create_takes(int constraint, string name) =>
+        Assert.Equal(name, SolidWorksCodes.RelationName(constraint));
+
     [Fact]
     public void Draws_the_whole_sketch_on_the_front_plane_and_closes_it()
     {

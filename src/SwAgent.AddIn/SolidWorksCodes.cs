@@ -46,6 +46,8 @@ public static class SolidWorksCodes
         }
         if (constraint == (int)swConstraintType_e.swConstraintType_HORIZPOINTS) return "horizontal";
         if (constraint == (int)swConstraintType_e.swConstraintType_VERTPOINTS) return "vertical";
+        // Two points at one place are made coincident by merging them (3.B live run).
+        if (constraint == (int)swConstraintType_e.swConstraintType_MERGEPOINTS) return "coincident";
         string? name = Enum.GetName(typeof(swConstraintType_e), constraint);
         return name == null ? $"unknown_{constraint}" : name.Substring("swConstraintType_".Length).ToLowerInvariant();
     }
