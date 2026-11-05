@@ -11,4 +11,9 @@ sealed partial class FakeDocument
 
     /// <summary>Opening a sketch for editing fails as SOLIDWORKS refusing a call would (api_error).</summary>
     public bool EditSketchFails { get; set; }
+
+    int _dimensionReads;
+
+    /// <summary>Every read of the dimensions after the first finds one more (someone dimensioning while they are read).</summary>
+    public bool DimensionsChangeAfterRead { get; set; }
 }

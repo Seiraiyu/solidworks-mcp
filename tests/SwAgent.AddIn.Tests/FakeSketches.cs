@@ -71,6 +71,9 @@ sealed class FakeDimension
     public DimensionKind Kind { get; }
     public double Value { get; set; }
     public bool Driving { get; set; } = true;
+
+    /// <summary>The feature a feature's own dimension belongs to; null for a sketch's.</summary>
+    public string? Feature { get; set; }
 }
 
 /// <summary>Draws into a <see cref="FakeSketch"/>; every segment and point is a <see cref="FakeEntity"/> of the document, so references to it work.</summary>

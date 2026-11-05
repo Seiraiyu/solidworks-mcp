@@ -1,0 +1,85 @@
+{
+  "type": "object",
+  "description": "A part's dimensions.",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty"
+      ],
+      "additionalProperties": false,
+      "description": "The part."
+    },
+    "dimensions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A dimension.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Its full name, for example width@Sketch3 or D1@Boss-Extrude1; dimension.set takes it."
+          },
+          "value": {
+            "type": "number",
+            "description": "Its value: mm, or degrees when unit is deg."
+          },
+          "unit": {
+            "type": "string",
+            "description": "mm or deg."
+          },
+          "driving": {
+            "type": "boolean",
+            "description": "True when it drives the geometry; false when it only reports it (driven)."
+          },
+          "feature": {
+            "type": "string",
+            "description": "The feature or sketch it belongs to."
+          },
+          "reference": {
+            "type": "string",
+            "description": "Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one."
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "unit",
+          "driving"
+        ],
+        "additionalProperties": false
+      },
+      "description": "The dimensions, in tree order."
+    }
+  },
+  "required": [
+    "document",
+    "dimensions"
+  ],
+  "additionalProperties": false
+}

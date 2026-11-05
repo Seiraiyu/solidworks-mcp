@@ -144,9 +144,14 @@ sealed partial class FakeDocument : ISwDocument
     /// <summary>Each Rebuild call's force flag.</summary>
     public List<bool> Rebuilds { get; } = new List<bool>();
 
+    /// <summary>Rebuild errors the next rebuild adds to <see cref="Problems"/>.</summary>
+    public List<RebuildItem> ProblemsAfterRebuild { get; } = new List<RebuildItem>();
+
     public bool Rebuild(bool force)
     {
         Rebuilds.Add(force);
+        Problems.AddRange(ProblemsAfterRebuild);
+        ProblemsAfterRebuild.Clear();
         return RebuildSucceeds;
     }
 
@@ -224,6 +229,39 @@ sealed partial class FakeDocument : ISwDocument
         var e = (FakeEntity)feature;
         RemoveFeature(e);
         Sketches.RemoveAll(s => ReferenceEquals(s.Feature, e));
+    }
+
+    /// <summary>Features' own dimensions (a boss's depth), added with <see cref="AddFeatureDimension"/>.</summary>
+    public List<FakeDimension> FeatureDimensions { get; } = new List<FakeDimension>();
+
+    /// <summary>SetDimension does nothing (a value SOLIDWORKS does not take).</summary>
+    public bool DimensionsIgnoreSet { get; set; }
+
+    public FakeDimension AddFeatureDimension(FakeEntity feature, string fullName, double value, bool angle, bool driving = true)
+    {
+        var entity = Add(ReferenceKind.Dimension, new EntityInfo { Name = fullName, Geometry = GeometryType.Other });
+        var d = new FakeDimension(entity, fullName, angle ? DimensionKind.Angle : DimensionKind.Linear, value) { Driving = driving, Feature = feature.Info.Name };
+        FeatureDimensions.Add(d);
+        return d;
+    }
+
+    public IReadOnlyList<DimensionRecord> Dimensions(object? feature)
+    {
+        var list = new List<DimensionRecord>();
+        foreach (var f in Tree.Where(t => feature == null || ReferenceEquals(t.Feature, feature)))
+        {
+            var sketch = Sketches.FirstOrDefault(s => ReferenceEquals(s.Feature, f.Feature));
+            var dims = sketch != null ? sketch.Dimensions : FeatureDimensions.Where(d => d.Feature == f.Name).ToList();
+            list.AddRange(dims.Select(d => new DimensionRecord(d.Entity, d.FullName, d.Value, d.Kind == DimensionKind.Angle, d.Driving, f.Name)));
+        }
+        if (DimensionsChangeAfterRead && ++_dimensionReads > 1) list.Add(new DimensionRecord(new object(), "D9@Extra", 1, false, true, "Extra"));
+        return list;
+    }
+
+    public void SetDimension(object dimension, double value)
+    {
+        if (DimensionsIgnoreSet) return;
+        Sketches.SelectMany(s => s.Dimensions).Concat(FeatureDimensions).Single(d => ReferenceEquals(d.Entity, dimension)).Value = value;
     }
 
     /// <summary>The sketch the user has open for editing, or null.</summary>

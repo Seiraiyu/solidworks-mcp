@@ -105,6 +105,12 @@ public interface ISwDocument
     /// <summary>Everything in a sketch: its segments, points, relations and dimensions, solve state, and where its plane is.</summary>
     SketchContents ReadSketch(object sketch);
 
+    /// <summary>Every dimension of <paramref name="feature"/> (a feature or sketch), or of every feature in tree order when null.</summary>
+    System.Collections.Generic.IReadOnlyList<DimensionRecord> Dimensions(object? feature);
+
+    /// <summary>Sets a dimension (a <see cref="DimensionRecord.Dimension"/>) in the active configuration: mm, or degrees for an angle. Does not rebuild.</summary>
+    void SetDimension(object dimension, double value);
+
     /// <summary>Deletes a feature (a sketch an operation made), and what it absorbed; throws when SOLIDWORKS does not.</summary>
     void DeleteFeature(object feature);
 }

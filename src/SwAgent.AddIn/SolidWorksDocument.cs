@@ -352,6 +352,22 @@ internal sealed class SolidWorksDocument : ISwDocument
 
     public SketchContents ReadSketch(object sketch) => SolidWorksSketchReader.Read((IFeature)sketch);
 
+    public IReadOnlyList<DimensionRecord> Dimensions(object? feature)
+    {
+        var features = feature != null ? new[] { (IFeature)feature } : Features().Select(f => (IFeature)f.Feature);
+        return features.SelectMany(SolidWorksSketchReader.Dimensions).ToList();
+    }
+
+    public void SetDimension(object dimension, double value)
+    {
+        var display = (IDisplayDimension)dimension;
+        var d = (IDimension)display.GetDimension2(0);
+        bool angle = display.Type2 == (int)swDimensionType_e.swAngularDimension;
+        int status = d.SetSystemValue3(angle ? value * Math.PI / 180 : value / Mm, (int)swSetValueInConfiguration_e.swSetValue_InThisConfiguration, null);
+        if (status != (int)swSetValueReturnStatus_e.swSetValue_Successful)
+            throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not set {d.FullName} ({Enum.GetName(typeof(swSetValueReturnStatus_e), status) ?? status.ToString()})");
+    }
+
     public void DeleteFeature(object feature)
     {
         Doc.ClearSelection2(true);

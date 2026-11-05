@@ -187,4 +187,78 @@ public class ErrorCodeTests : DocumentTestBase
         Assert.Equal(2, doc.Sketches[0].Segments.Count);
         Assert.Equal(new[] { false }, doc.Rebuilds);
     }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    public void Dimension_set_reaches_every_listed_code(ErrorCode code)
+    {
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Fails(() => Run(new DimensionSetOperation(Services), new DimensionSetRequest { Dimension = "D1@Sketch1", Value = 12 })).Code);
+            return;
+        }
+        var doc = Part();
+        Create(Circle());
+        var request = new DimensionSetRequest { Dimension = "D1@Sketch1", Value = 12 };
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Dimension = "D7@Sketch1";
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                var dimension = doc.Sketches[0].Dimensions[0].Entity;
+                request.Dimension = Services.References.Describe(doc, dimension).Reference!;
+                doc.Entities.Remove(dimension);
+                break;
+            case ErrorCode.Busy:
+                Sw.OpenCommandTitle = "Fillet";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.RebuildSucceeds = false;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.DimensionsIgnoreSet = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Run(new DimensionSetOperation(Services), request)).Code);
+        Assert.Equal(10, doc.Sketches[0].Dimensions[0].Value);
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    public void Model_dimensions_reaches_every_listed_code(ErrorCode code)
+    {
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Fails(() => Run(new ModelDimensionsOperation(Services), new ModelDimensionsRequest())).Code);
+            return;
+        }
+        var doc = Part();
+        var made = Create(Circle());
+        var request = new ModelDimensionsRequest();
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Feature = "front";
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                request.Feature = made.Sketch.Reference!;
+                doc.DeleteFeature(doc.Sketches[0].Feature);
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.DimensionsChangeAfterRead = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Run(new ModelDimensionsOperation(Services), request)).Code);
+    }
 }
