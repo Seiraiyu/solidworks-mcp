@@ -106,6 +106,18 @@ public class ClientTests
         Assert.Equal(1L, e.Error.Details!["holder_process_id"]);
     }
 
+    /// <summary>The busy line can close the pipe while hello is still being written; that write is aborted, and must still read busy.</summary>
+    [Fact]
+    public async Task A_busy_addin_refuses_every_connection_even_when_it_closes_mid_write()
+    {
+        for (int i = 0; i < 200; i++)
+        {
+            using var addin = new FakeAddin(busy: true);
+            var e = await Assert.ThrowsAsync<SwAgentException>(() => SwAgentClient.ConnectAsync(addin.Options()));
+            Assert.Equal(ErrorCode.Busy, e.Code);
+        }
+    }
+
     [Fact]
     public async Task Notifications_go_to_the_handler_not_to_a_call()
     {

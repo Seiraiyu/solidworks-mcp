@@ -115,7 +115,9 @@ public sealed class AddinConnection : IDisposable
         {
             await WriteLineAsync(line, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception e) when (e is IOException || e is ObjectDisposedException)
+        catch (Exception e) when (e is IOException || e is ObjectDisposedException
+            // A write still in flight when the reader closes the pipe (the add-in said busy) is aborted, not failed.
+            || (e is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
             // The add-in may have said why before it closed (busy): let the reader deliver that first.
             _pending.TryRemove(id, out _);
@@ -179,8 +181,9 @@ public sealed class AddinConnection : IDisposable
                 if (line.Length > 0) reason = Route(line);
             }
         }
-        catch (Exception e) when (e is IOException || e is ObjectDisposedException)
+        catch (Exception e) when (e is IOException || e is ObjectDisposedException || e is OperationCanceledException)
         {
+            // OperationCanceledException: a read in flight when Close disposed the pipe is aborted.
             _log.LogDebug("reading from \\\\.\\pipe\\{Pipe} stopped: {Message}", _pipeName, e.Message);
         }
         Close(reason ?? Disconnected("the add-in closed the connection"));
