@@ -39,6 +39,9 @@ public interface ISolidWorksApplication
     /// <summary>The active document, or null when none is open.</summary>
     ISwDocument? ActiveDoc();
 
+    /// <summary>The title of the command (PropertyManager) the user has open, or null when none is (ISldWorks.GetRunningCommandInfo; a plain read).</summary>
+    string? OpenCommand();
+
     /// <summary>The user's default part template (Tools > Options > Default Templates), or null when none is set.</summary>
     string? DefaultPartTemplate();
 
@@ -93,6 +96,15 @@ internal sealed class SolidWorksApplication : ISolidWorksApplication
     }
 
     public ISwDocument? ActiveDoc() => _sw.ActiveDoc is IModelDoc2 doc ? new SolidWorksDocument(_sw, doc) : null;
+
+    public string? OpenCommand()
+    {
+        int command;
+        string title;
+        bool uiActive;
+        _sw.GetRunningCommandInfo(out command, out title, out uiActive);
+        return string.IsNullOrEmpty(title) ? null : title;
+    }
 
     public string? DefaultPartTemplate()
     {

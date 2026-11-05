@@ -45,6 +45,15 @@ public class AddinOperationsTests
         Assert.Empty(state.PreferencesNotApplied);
         Assert.Empty(state.Documents);
         Assert.Null(state.DocumentsAsOf);
+        Assert.False(state.DiagnosticsEnabled);
+    }
+
+    [Fact]
+    public void State_says_whether_diagnostics_are_on_in_this_load()
+    {
+        var runtime = new AgentRuntime("1.2.3", 4242, new MemoryLog(), () => T0, diagnosticsEnabled: true);
+        var state = (AddinStateResult)((IOperation)new AddinStateOperation(runtime)).Run(new AddinStateRequest(), new Ctx());
+        Assert.True(state.DiagnosticsEnabled);
     }
 
     [Fact]

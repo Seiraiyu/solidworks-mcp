@@ -15,6 +15,8 @@ It offers these tools:
 - Documents: `sw_document_new` (a part from your default template, saved at once when given a path), `sw_document_open`, `sw_document_save`, `sw_document_save_as`, `sw_document_close` and `sw_document_rebuild`.
 - Inspection of parts: `sw_model_tree`, `sw_model_mass`, `sw_model_bounding_box`, `sw_model_rebuild_status` and `sw_model_find`.
 - `sw_selection_get` reads what is selected in a part.
+- Sketches: `sw_sketch_create` draws a whole sketch in one call (lines, centerlines, arcs, circles, rectangles, polygons, slots, splines and points, then relations, then named driving dimensions), `sw_sketch_read` reads one back and `sw_sketch_modify` adds to or removes from one.
+- Dimensions: `sw_model_dimensions` lists them and `sw_dimension_set` changes a driving one.
 
 There is one tool per add-in operation, named `sw_` and the operation with underscores (`document.save_as` is `sw_document_save_as`).
 
@@ -22,7 +24,19 @@ Lengths are millimetres and angles degrees everywhere.
 
 ### References
 
-Faces, edges, vertices, features and planes are named by references: strings such as `r1.face.AQAAAB…`, given in results (`sw_model_find`, `sw_model_tree`, `sw_selection_get`). The part after `r1.` says what kind of thing it names; the rest is opaque. A reference survives rebuilds, saving under a new name, and closing and opening the part again. When the thing it named is gone (deleted, suppressed, or in another part), the operation answers `reference_unresolved` with what the thing was, and never picks something nearby instead. Feature names (`Boss-Extrude1`) work too, and `front`, `top`, `right` and `origin` name the template's own planes and origin in any language.
+Faces, edges, vertices, features, planes, sketches, sketch entities and dimensions are named by references: strings such as `r1.face.AQAAAB…`, given in results (`sw_model_find`, `sw_model_tree`, `sw_selection_get`, `sw_sketch_create`). The part after `r1.` says what kind of thing it names; the rest is opaque. A reference survives rebuilds, saving under a new name, and closing and opening the part again. When the thing it named is gone (deleted, suppressed, or in another part), the operation answers `reference_unresolved` with what the thing was, and never picks something nearby instead. Feature names (`Boss-Extrude1`) work too, and `front`, `top`, `right` and `origin` name the template's own planes and origin in any language.
+
+### Changing a part
+
+Every tool that changes a part (`sw_sketch_create`, `sw_sketch_modify`, `sw_dimension_set`) works the same way:
+
+- It does not start while you are editing a sketch in the part or have a command's PropertyManager open: it answers `busy` with `user_editing` and changes nothing. It never closes your sketch or command. A command open anywhere in SOLIDWORKS counts, not only one in that part: SOLIDWORKS reports the open command for the whole application.
+- It checks its own result against what was asked (a sketch holds what was drawn, every dimension reads back at its value, nothing new fails to rebuild), and if anything is wrong it takes the change back, so the part is as it was. If taking it back fails too, it says so (`rollback_failed`) and leaves the part open with its changes for you to look at.
+- It returns the evidence: what it made and edited, the part's rebuild errors, and its volume and body count before and after.
+
+### Sketches
+
+`sw_sketch_create` draws, relates and dimensions a whole sketch and closes it in one call, so SOLIDWORKS is never left editing a sketch between calls. Each entity has the agent's own short id; relations and dimensions name entities by id, with `.start`, `.end` or `.center` for their points (`l1.end`), a rectangle's sides as `.bottom`, `.right`, `.top` and `.left`, `origin` for the sketch's origin, or a reference to one of the part's edges or vertices. Coordinates are millimetres in the sketch's own plane; the result says where that plane is in the part. An under-defined sketch is allowed and reported; an over-defined one is taken back.
 
 ### Closing documents
 
@@ -62,7 +76,7 @@ The build needs no SOLIDWORKS: the interop assemblies it compiles against are in
 
 Every case is skipped unless `SWMCP_LIVE=1`, so a plain `dotnet test` and CI never touch SOLIDWORKS.
 
-Run it against a SOLIDWORKS started from the 3DEXPERIENCE tab, with no documents open and the add-in not yet loaded:
+Run it with SOLIDWORKS closed, or started from the 3DEXPERIENCE tab with no documents open:
 
 ```powershell
 $env:SWMCP_LIVE = "1"
@@ -70,9 +84,14 @@ dotnet test tests/SwAgent.Live.Tests -c Release --filter "FullyQualifiedName~SwA
 Remove-Item env:SWMCP_LIVE
 ```
 
-The run sets `HKCU\Software\solidworks-mcp\Diagnostics` to 1, which turns on the add-in's diagnostic operations, and deletes it at the end. It writes to `%LOCALAPPDATA%\solidworks-mcp\live-runs\<run>\`:
+A run looks after the two switches the add-in's diagnostic operations depend on, so it does not matter how SOLIDWORKS was last started:
 
-- `progress.log`, which you follow while it runs. A line starting `ACTION` asks for something only you can do: start SOLIDWORKS from the 3DEXPERIENCE tab, or open Tools > Options. A line starting `STOP` ends the run.
+- It sets `HKCU\Software\solidworks-mcp\Diagnostics` to 1 when it starts and deletes it at the end. The add-in reads it when it loads.
+- `swmcp addin register` makes SOLIDWORKS load the add-in as it starts (`HKCU\Software\SolidWorks\AddInsStartup`), before a run can turn diagnostics on. If SOLIDWORKS is not running, the run turns that off before it asks for SOLIDWORKS to be started, so the add-in loads on the run's first call with diagnostics on, and puts it back as it was at the end. If SOLIDWORKS is running with the add-in loaded without diagnostics, the run asks you (`ACTION`) to close it, waits for it to exit, and then asks for it to be started again.
+
+It writes to `%LOCALAPPDATA%\solidworks-mcp\live-runs\<run>\`:
+
+- `progress.log`, which you follow while it runs. A line starting `ACTION` asks for something only you can do: close SOLIDWORKS, start it from the 3DEXPERIENCE tab, open Tools > Options, edit a sketch or open a PropertyManager. A line starting `STOP` ends the run.
 - `client.log`.
 - `report.md`, with the SOLIDWORKS revision, the versions, and a result per case.
 
@@ -80,7 +99,7 @@ The suite ends SOLIDWORKS twice. Each time it first reads the open documents aga
 
 ### Parts suite
 
-`PartsSuite` checks documents, references, inspection and selection against exact geometry: a 40 x 20 x 10 mm block must measure 8000 mm³, its top face must be the one face whose normal is +Z, and a reference to it must survive a rebuild, a save as and a close and reopen. It never ends SOLIDWORKS. It needs the add-in loaded with diagnostics on, as the fault suite does, and stops if any document it did not create is open:
+`PartsSuite` checks documents, references, inspection, selection, sketches and dimensions against exact geometry: a 40 x 20 x 10 mm block must measure 8000 mm³, its top face must be the one face whose normal is +Z, a reference to it must survive a rebuild, a save as and a close and reopen, a fully dimensioned plate sketch must read back fully defined, setting the block's depth to 15 mm must make it 12000 mm³, and a change that over-defines a sketch must leave it as it was. Two cases ask you to edit a sketch and to open a PropertyManager by hand, and are skipped after 3 minutes if nobody does. It never ends SOLIDWORKS. It needs the add-in loaded with diagnostics on, as the fault suite does (it looks after that the same way), and stops if any document it did not create is open:
 
 ```powershell
 $env:SWMCP_LIVE = "1"
@@ -167,7 +186,7 @@ swmcp call session.status
 & "$app\swmcp.exe" call addin.state
 ```
 
-A call that names no `--deadline-ms` gets its operation family's default (10 s for `session.*`, 5 s for `addin.*`, 60 s for `document.*`, 30 s for `model.*` and `selection.*`). Any deadline must be between 1 ms and one hour.
+A call that names no `--deadline-ms` gets its operation family's default (10 s for `session.*`, 5 s for `addin.*`, 60 s for `document.*`, 30 s for `model.*`, `selection.*`, `sketch.*` and `dimension.*`). Any deadline must be between 1 ms and one hour.
 
 A request whose deadline passes before SOLIDWORKS can start it is answered `busy` (it never ran; retrying is safe). One that started but ran past its deadline is answered `timeout`; it keeps running, and its outcome is raised as an `operation.completed` event.
 

@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "description": "Lists a part's dimensions, or one feature's or sketch's: each one's full name, value in mm or degrees, whether it drives or is driven, the feature it belongs to, and its reference. dimension.set changes a driving one. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "feature": {
+      "type": "string",
+      "description": "Only this feature's or sketch's: its name or reference. Every dimension in the part, in tree order, when absent."
+    }
+  },
+  "additionalProperties": false
+}

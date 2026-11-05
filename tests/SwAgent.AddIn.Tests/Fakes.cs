@@ -30,7 +30,7 @@ sealed class FakeEntity
 }
 
 /// <summary>A document for operation tests: a title, path and type, and entities the reference code can name.</summary>
-sealed class FakeDocument : ISwDocument
+sealed partial class FakeDocument : ISwDocument
 {
     public FakeDocument(string title, string? path = null, DocumentType type = DocumentType.Part)
     {
@@ -144,9 +144,14 @@ sealed class FakeDocument : ISwDocument
     /// <summary>Each Rebuild call's force flag.</summary>
     public List<bool> Rebuilds { get; } = new List<bool>();
 
+    /// <summary>Rebuild errors the next rebuild adds to <see cref="Problems"/>.</summary>
+    public List<RebuildItem> ProblemsAfterRebuild { get; } = new List<RebuildItem>();
+
     public bool Rebuild(bool force)
     {
         Rebuilds.Add(force);
+        Problems.AddRange(ProblemsAfterRebuild);
+        ProblemsAfterRebuild.Clear();
         return RebuildSucceeds;
     }
 
@@ -156,6 +161,116 @@ sealed class FakeDocument : ISwDocument
     public List<FeatureRecord> Tree { get; } = new List<FeatureRecord>();
 
     public IReadOnlyList<FeatureRecord> Features() => Tree.ToList();
+
+    /// <summary>Removes a feature added with <see cref="AddFeature"/>, as deleting it in SOLIDWORKS would.</summary>
+    public void RemoveFeature(FakeEntity feature)
+    {
+        Entities.Remove(feature);
+        Tree.RemoveAll(f => ReferenceEquals(f.Feature, feature));
+    }
+
+    /// <summary>Renames a feature added with <see cref="AddFeature"/>.</summary>
+    public void RenameFeature(FakeEntity feature, string name)
+    {
+        feature.Info.Name = name;
+        int i = Tree.FindIndex(f => ReferenceEquals(f.Feature, feature));
+        var old = Tree[i];
+        Tree[i] = new FeatureRecord(feature, name, old.Type, old.Parent, old.Suppressed, old.ErrorCode, old.Warning);
+    }
+
+    /// <summary>Every sketch NewSketch opened, and the editor for each.</summary>
+    public List<FakeSketch> Sketches { get; } = new List<FakeSketch>();
+    public List<FakeSketchEditor> Editors { get; } = new List<FakeSketchEditor>();
+
+    /// <summary>A relation of this type is not added (SOLIDWORKS refusing it).</summary>
+    public SketchRelationType? SketchRefuses { get; set; }
+
+    /// <summary>A relation of this type is refused with the editor's own reason (what SOLIDWORKS selected and why).</summary>
+    public SketchRelationType? SketchRefusesSaying { get; set; }
+
+    /// <summary>No dimension is added.</summary>
+    public bool SketchRefusesDimensions { get; set; }
+
+    /// <summary>Dimensions are added as driven.</summary>
+    public bool SketchDimensionsDriven { get; set; }
+
+    /// <summary>Dimensions read back this much off what they were set to.</summary>
+    public double SketchDimensionError { get; set; }
+
+    /// <summary>Adding a dimension over-defines the sketch.</summary>
+    public bool SketchOverDefines { get; set; }
+
+    /// <summary>Circles are drawn but not in the sketch read back.</summary>
+    public bool SketchLosesCircles { get; set; }
+
+    /// <summary>DeleteFeature fails (a rollback that fails).</summary>
+    public bool DeleteFails { get; set; }
+
+    public ISketchEditor NewSketch(object planeOrFace)
+    {
+        var feature = AddFeature("Sketch" + (Sketches.Count + 1), "ProfileFeature", ReferenceKind.Sketch);
+        var sketch = new FakeSketch(this, feature, planeOrFace);
+        Sketches.Add(sketch);
+        var editor = new FakeSketchEditor(sketch);
+        Editors.Add(editor);
+        return editor;
+    }
+
+    public ISketchEditor EditSketch(object sketch)
+    {
+        if (EditSketchFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not open the sketch for editing");
+        var editor = new FakeSketchEditor(Sketches.Single(s => ReferenceEquals(s.Feature, sketch)));
+        Editors.Add(editor);
+        return editor;
+    }
+
+    public SketchContents ReadSketch(object sketch) => Sketches.Single(s => ReferenceEquals(s.Feature, sketch)).Read();
+
+    public void DeleteFeature(object feature)
+    {
+        if (DeleteFails) throw new InvalidOperationException("SOLIDWORKS did not delete it");
+        var e = (FakeEntity)feature;
+        RemoveFeature(e);
+        Sketches.RemoveAll(s => ReferenceEquals(s.Feature, e));
+    }
+
+    /// <summary>Features' own dimensions (a boss's depth), added with <see cref="AddFeatureDimension"/>.</summary>
+    public List<FakeDimension> FeatureDimensions { get; } = new List<FakeDimension>();
+
+    /// <summary>SetDimension does nothing (a value SOLIDWORKS does not take).</summary>
+    public bool DimensionsIgnoreSet { get; set; }
+
+    public FakeDimension AddFeatureDimension(FakeEntity feature, string fullName, double value, bool angle, bool driving = true)
+    {
+        var entity = Add(ReferenceKind.Dimension, new EntityInfo { Name = fullName, Geometry = GeometryType.Other });
+        var d = new FakeDimension(entity, fullName, angle ? DimensionKind.Angle : DimensionKind.Linear, value) { Driving = driving, Feature = feature.Info.Name };
+        FeatureDimensions.Add(d);
+        return d;
+    }
+
+    public IReadOnlyList<DimensionRecord> Dimensions(object? feature)
+    {
+        var list = new List<DimensionRecord>();
+        foreach (var f in Tree.Where(t => feature == null || ReferenceEquals(t.Feature, feature)))
+        {
+            var sketch = Sketches.FirstOrDefault(s => ReferenceEquals(s.Feature, f.Feature));
+            var dims = sketch != null ? sketch.Dimensions : FeatureDimensions.Where(d => d.Feature == f.Name).ToList();
+            list.AddRange(dims.Select(d => new DimensionRecord(d.Entity, d.FullName, d.Value, d.Kind == DimensionKind.Angle, d.Driving, f.Name)));
+        }
+        if (DimensionsChangeAfterRead && ++_dimensionReads > 1) list.Add(new DimensionRecord(new object(), "D9@Extra", 1, false, true, "Extra"));
+        return list;
+    }
+
+    public void SetDimension(object dimension, double value)
+    {
+        if (DimensionsIgnoreSet) return;
+        Sketches.SelectMany(s => s.Dimensions).Concat(FeatureDimensions).Single(d => ReferenceEquals(d.Entity, dimension)).Value = value;
+    }
+
+    /// <summary>The sketch the user has open for editing, or null.</summary>
+    public string? EditingSketchName { get; set; }
+
+    public string? EditingSketch() => EditingSketchName;
 
     /// <summary>Adds a top-level feature (with an entity for its reference) and returns its entity.</summary>
     public FakeEntity AddFeature(string name, string type, ReferenceKind kind = ReferenceKind.Feature, string? parent = null, bool suppressed = false, int errorCode = 0, bool warning = false)

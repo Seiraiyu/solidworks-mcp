@@ -62,6 +62,11 @@ sealed class FakeSolidWorks : ISolidWorksApplication
 
     public ISwDocument? ActiveDoc() => CurrentDoc ?? (Docs.Count > 0 ? Docs[0] : null);
 
+    /// <summary>The title of a command (PropertyManager) the user has open, or null.</summary>
+    public string? OpenCommandTitle { get; set; }
+
+    public string? OpenCommand() => OpenCommandTitle;
+
     /// <summary>What DefaultPartTemplate returns.</summary>
     public string? DefaultTemplate { get; set; }
 
@@ -254,7 +259,7 @@ public class SessionOperationTests
         var request = new SessionHelloRequest { ProtocolVersion = Protocol.Version };
         var result = op.Run(request, new TestContext());
         op.Verify(request, result, new TestContext());
-        Assert.Equal(3, guard.NotTaken.Count);
+        Assert.Equal(AutomationPreferences.All.Count, guard.NotTaken.Count);
         guard.Restore("test");
     }
 }

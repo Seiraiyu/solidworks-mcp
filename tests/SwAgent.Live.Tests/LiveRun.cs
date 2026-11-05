@@ -26,11 +26,14 @@ public abstract class LiveRun : IDisposable
     readonly List<CaseResult> _results = new List<CaseResult>();
     readonly DateTime _started = DateTime.Now;
     readonly ILogger _log = new FileLogger(null);
+    readonly AddinStartup _startup = new AddinStartup(Registry.CurrentUser);
+    readonly string _suite;
     Supervisor? _supervisor;
 
     /// <param name="name">The test class's run, for example fault-suite; part of the run id.</param>
     protected LiveRun(string name)
     {
+        _suite = name.Replace('-', ' ');
         Id = $"{_started:yyyyMMdd-HHmmss-fff}-{name}";
         Directory = Path.Combine(RunsRoot, Id);
         Guard = new OwnerGuard(Path.Combine(LiveScratch.Root, Id), SystemSolidWorksProcesses.Instance);
@@ -175,6 +178,83 @@ public abstract class LiveRun : IDisposable
         }
     }
 
+    /// <summary>
+    /// Makes SOLIDWORKS ready for the run and returns its process id. The run owns the add-in's startup switch and
+    /// Diagnostics (Diagnostics is already on: the constructor set it), so a run never depends on how SOLIDWORKS was
+    /// last started. One SOLIDWORKS whose add-in is not loaded yet, or is loaded with diagnostics on, is ready. One whose
+    /// add-in was loaded without diagnostics must be closed first: the run asks for that (ACTION; ending SOLIDWORKS is
+    /// the owner's) and waits. With no SOLIDWORKS running, the run turns the add-in's startup switch off (put back when
+    /// the run ends), asks for SOLIDWORKS to be started from the 3DEXPERIENCE tab, and waits for its window without
+    /// loading the add-in: the run's first call loads it, with diagnostics on.
+    /// </summary>
+    public async Task<int> PrepareSolidWorksAsync()
+    {
+        while (true)
+        {
+            var ids = SystemProcessList.Instance.SolidWorksProcessIds();
+            bool loaded = ids.Count == 1 && SystemPipeDirectory.Instance.Exists(Protocol.PipeName(ids[0]));
+            var state = loaded ? await AddinStateAsync().ConfigureAwait(false) : null;
+            switch (ReadinessCheck.Decide(ids.Count, loaded, state?.DiagnosticsEnabled == true))
+            {
+                case Readiness.Ready:
+                    return ids[0];
+                case Readiness.TooMany:
+                    throw Stop($"{ids.Count} SOLIDWORKS processes are running; a run needs exactly one");
+                case Readiness.CloseFirst:
+                    if (state!.Documents.Count > 0)
+                    {
+                        throw Stop($"the add-in in SOLIDWORKS {ids[0]} was loaded without diagnostics, and documents are open " +
+                            $"({string.Join(", ", state.Documents.Select(d => d.Path ?? d.Title))}); nothing was asked or changed");
+                    }
+                    ReplaceSupervisor();
+                    Say($"ACTION: close SOLIDWORKS {ids[0]} now (File > Exit; no documents are open): its add-in was loaded without diagnostics. " +
+                        "The run waits up to 15 min for it to exit, then asks for it to be started again.");
+                    await WaitForExitAsync(ids[0], TimeSpan.FromMinutes(15)).ConfigureAwait(false);
+                    continue;
+                default:
+                    _startup.TurnOff();
+                    Say(@"the add-in's startup switch (HKCU\Software\SolidWorks\AddInsStartup) is off for this run and is put back at the end, " +
+                        "so SOLIDWORKS starts without the add-in and the run's first call loads it with diagnostics on");
+                    return await WaitForSolidWorksWindowAsync(TimeSpan.FromMinutes(10)).ConfigureAwait(false);
+            }
+        }
+    }
+
+    async Task WaitForExitAsync(int pid, TimeSpan timeout)
+    {
+        var clock = Stopwatch.StartNew();
+        while (SystemProcessList.Instance.SolidWorksProcessIds().Contains(pid))
+        {
+            if (clock.Elapsed > timeout) throw Stop($"SOLIDWORKS {pid} did not exit within {timeout.TotalMinutes:0} min");
+            await Task.Delay(2000).ConfigureAwait(false);
+        }
+        Say($"SOLIDWORKS {pid} exited");
+    }
+
+    /// <summary>Asks for SOLIDWORKS to be started from the 3DEXPERIENCE tab and waits for its main window, without calling the add-in.</summary>
+    async Task<int> WaitForSolidWorksWindowAsync(TimeSpan timeout)
+    {
+        Say($"ACTION: start SOLIDWORKS from the 3DEXPERIENCE tab now (waiting up to {timeout.TotalMinutes:0} min). On a sign-in or update prompt, stop the run and report.");
+        var clock = Stopwatch.StartNew();
+        while (true)
+        {
+            var ids = SystemProcessList.Instance.SolidWorksProcessIds();
+            if (ids.Count > 1) throw Stop($"{ids.Count} SOLIDWORKS processes are running; a run needs exactly one");
+            if (ids.Count == 1)
+            {
+                using var process = Process.GetProcessById(ids[0]);
+                if (process.MainWindowTitle.StartsWith("SOLIDWORKS", StringComparison.Ordinal))
+                {
+                    Say($"SOLIDWORKS {ids[0]} is up: '{process.MainWindowTitle}'");
+                    return ids[0];
+                }
+            }
+            if (clock.Elapsed > timeout)
+                throw Stop($"SOLIDWORKS showed no main window within {timeout.TotalMinutes:0} min (a 3DEXPERIENCE sign-in or update prompt is the owner's to answer)");
+            await Task.Delay(2000).ConfigureAwait(false);
+        }
+    }
+
     /// <summary>The one SOLIDWORKS process the add-in now speaks for; stops the run if the documents open are not all this run's.</summary>
     public async Task<AddinStateResult> RequireOnlyOwnDocumentsAsync()
     {
@@ -214,12 +294,23 @@ public abstract class LiveRun : IDisposable
         {
             try
             {
-                CloseOwnDocuments();
-                _supervisor?.Dispose();
+                if (_startup.Changed)
+                {
+                    _startup.Restore();
+                    Say($"the add-in's startup switch put back to {(_startup.Original?.ToString() ?? "absent")}");
+                }
             }
             finally
             {
-                WriteReport();
+                try
+                {
+                    CloseOwnDocuments();
+                    _supervisor?.Dispose();
+                }
+                finally
+                {
+                    WriteReport();
+                }
             }
         }
     }
@@ -263,6 +354,7 @@ public abstract class LiveRun : IDisposable
         var header = new ReportHeader
         {
             RunId = Id,
+            Suite = _suite,
             Machine = Environment.MachineName,
             SwRevision = SwRevision,
             AddinVersion = AddinVersion,

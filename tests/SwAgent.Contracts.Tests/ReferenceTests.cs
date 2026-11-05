@@ -86,4 +86,49 @@ public class ReferenceTests
         Assert.Equal("Teil1 – Ø", back.DocumentKey);
         Assert.Equal(300, back.PersistId.Length);
     }
+
+    /// <summary>A persistent id shaped like SOLIDWORKS' own: long, and mostly zeros and repeated words (3.A live run: 1047 characters).</summary>
+    static byte[] LikeSolidWorks() => Enumerable.Range(0, 620).Select(i => (byte)(i % 16 == 0 ? i / 16 : i % 4 == 0 ? 0xFF : 0)).ToArray();
+
+    [Fact]
+    public void A_long_reference_is_compressed_and_still_round_trips()
+    {
+        var data = new ReferenceData(ReferenceKind.Face, @"C:\Users\someone\AppData\Local\solidworks-mcp\live-scratch\run\references.SLDPRT", LikeSolidWorks(), "plane face of Boss-Extrude1, 800 mm²");
+        string text = References.Encode(data);
+        Assert.StartsWith("r1.face.", text);
+        Assert.True(text.Length < 400, $"{text.Length} characters");
+        var back = References.Decode(text, "f");
+        Assert.Equal(data.PersistId, back.PersistId);
+        Assert.Equal(data.DocumentKey, back.DocumentKey);
+        Assert.Equal(data.Description, back.Description);
+    }
+
+    [Fact]
+    public void A_reference_made_before_compression_still_decodes()
+    {
+        // Payload version 1, as 3.A issued it: the version byte and three length-prefixed blocks, uncompressed.
+        var raw = new System.IO.MemoryStream();
+        using (var w = new System.IO.BinaryWriter(raw, System.Text.Encoding.UTF8, leaveOpen: true))
+        {
+            w.Write((byte)1);
+            foreach (var block in new[] { System.Text.Encoding.UTF8.GetBytes("Part1"), new byte[] { 9, 8, 7 }, System.Text.Encoding.UTF8.GetBytes("a face") })
+            {
+                w.Write(block.Length);
+                w.Write(block);
+            }
+        }
+        string text = "r1.face." + Convert.ToBase64String(raw.ToArray()).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var back = References.Decode(text, "f");
+        Assert.Equal("Part1", back.DocumentKey);
+        Assert.Equal(new byte[] { 9, 8, 7 }, back.PersistId);
+        Assert.Equal("a face", back.Description);
+    }
+
+    [Fact]
+    public void A_compressed_reference_cut_short_or_padded_is_refused()
+    {
+        string text = References.Encode(new ReferenceData(ReferenceKind.Face, "Part1", LikeSolidWorks(), "a face"));
+        Assert.Equal(ErrorCode.InvalidArgument, Assert.Throws<SwAgentException>(() => References.Decode(text.Substring(0, text.Length - 4), "f")).Code);
+        Assert.Equal(ErrorCode.InvalidArgument, Assert.Throws<SwAgentException>(() => References.Decode(text + "AAAA", "f")).Code);
+    }
 }

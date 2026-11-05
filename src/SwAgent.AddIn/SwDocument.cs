@@ -42,6 +42,9 @@ public interface ISwDocument
     /// <summary>The origin feature, or null.</summary>
     object? Origin();
 
+    /// <summary>The name of the sketch the user has open for editing in this document, or null when none is (IModelDoc2.GetActiveSketch2).</summary>
+    string? EditingSketch();
+
     /// <summary>True when the document is open read-only.</summary>
     bool ReadOnly { get; }
 
@@ -60,7 +63,7 @@ public interface ISwDocument
     /// <summary>The features with a rebuild error or warning (SOLIDWORKS' What's Wrong list), in tree order.</summary>
     System.Collections.Generic.IReadOnlyList<RebuildItem> WhatsWrong();
 
-    /// <summary>Every feature in tree order, each followed by its sub-features.</summary>
+    /// <summary>Every feature in tree order from the first reference plane, each followed by its sub-features (see <see cref="FeatureTree"/>).</summary>
     System.Collections.Generic.IReadOnlyList<FeatureRecord> Features();
 
     /// <summary>How many solid bodies the part has.</summary>
@@ -92,6 +95,24 @@ public interface ISwDocument
 
     /// <summary>Selects <paramref name="entity"/>, adding to the selection when <paramref name="append"/>; false when SOLIDWORKS refuses.</summary>
     bool Select(object entity, bool append);
+
+    /// <summary>Opens a new sketch on a plane or planar face for drawing (an operation's own; <see cref="ISketchEditor.Close"/> ends it).</summary>
+    ISketchEditor NewSketch(object planeOrFace);
+
+    /// <summary>Opens an existing sketch for drawing (an operation's own; <see cref="ISketchEditor.Close"/> ends it).</summary>
+    ISketchEditor EditSketch(object sketch);
+
+    /// <summary>Everything in a sketch: its segments, points, relations and dimensions, solve state, and where its plane is.</summary>
+    SketchContents ReadSketch(object sketch);
+
+    /// <summary>Every dimension of <paramref name="feature"/> (a feature or sketch), or of every feature in tree order when null.</summary>
+    System.Collections.Generic.IReadOnlyList<DimensionRecord> Dimensions(object? feature);
+
+    /// <summary>Sets a dimension (a <see cref="DimensionRecord.Dimension"/>) in the active configuration: mm, or degrees for an angle. Does not rebuild.</summary>
+    void SetDimension(object dimension, double value);
+
+    /// <summary>Deletes a feature (a sketch an operation made), and what it absorbed; throws when SOLIDWORKS does not.</summary>
+    void DeleteFeature(object feature);
 }
 
 /// <summary>One selected object as SOLIDWORKS reports it.</summary>

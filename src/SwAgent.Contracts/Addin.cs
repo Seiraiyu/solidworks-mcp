@@ -60,6 +60,9 @@ public sealed class AddinStateResult
 
     [Description("True while the dialog watch thread is alive.")]
     public bool DialogWatchAlive { get; set; }
+
+    [Description("True when diagnostic operations (diag.*) are on in this add-in load: HKCU\\Software\\solidworks-mcp\\Diagnostics was 1 when SOLIDWORKS loaded it.")]
+    public bool DiagnosticsEnabled { get; set; }
 }
 
 [Description("The request on the UI thread.")]

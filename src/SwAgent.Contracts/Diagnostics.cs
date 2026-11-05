@@ -75,3 +75,21 @@ public sealed class DiagScratchBlockRequest
     [Description("Size along Z, mm, more than 0 and at most 1000.")]
     public double ZMm { get; set; }
 }
+
+[Operation("diag.editing", typeof(DiagEditingResult), Internal = true, ReadOnly = true)]
+[Description("Fault testing only: what the user has open that makes model changes wait, read exactly as their precondition reads it (the sketch being edited in the part, the command whose PropertyManager is open). Changes nothing. Refused unless diagnostics are on.")]
+public sealed class DiagEditingRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+}
+
+[Description("What the user has open.")]
+public sealed class DiagEditingResult
+{
+    [Description("The sketch the user is editing in the part; absent when none.")]
+    public string? Sketch { get; set; }
+
+    [Description("The title of the command (PropertyManager) the user has open; absent when none.")]
+    public string? Command { get; set; }
+}

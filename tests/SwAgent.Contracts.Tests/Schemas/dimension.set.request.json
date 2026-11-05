@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "description": "Sets a driving dimension, of a sketch or a feature, to a value in mm (degrees for an angle), named by its full name (width@Sketch3, D1@Boss-Extrude1) or its reference; then rebuilds the part. Checked: the value reads back and no feature has a new rebuild error; otherwise the old value is put back. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "dimension": {
+      "type": "string",
+      "description": "The dimension: its full name as model.dimensions or sketch.read gave it (case does not matter), or its reference."
+    },
+    "value": {
+      "type": "number",
+      "description": "Its new value: mm, more than 0; or degrees for an angle, more than 0 and less than 360."
+    }
+  },
+  "required": [
+    "dimension",
+    "value"
+  ],
+  "additionalProperties": false
+}

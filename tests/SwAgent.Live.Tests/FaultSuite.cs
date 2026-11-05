@@ -48,21 +48,10 @@ public sealed partial class FaultSuite : IClassFixture<FaultSuiteRun>
     [SkippableFact, Step(1)]
     public Task The_first_call_loads_the_addin() => _run.CaseAsync(1, "the first call loads the add-in", async () =>
     {
-        var ids = SystemProcessList.Instance.SolidWorksProcessIds();
-        if (ids.Count > 1) throw _run.Stop($"{ids.Count} SOLIDWORKS processes are running; the suite needs exactly one");
-        if (ids.Count == 0)
-        {
-            var (ready, seen) = await _run.WaitForSolidWorksAsync(TimeSpan.FromMinutes(10));
-            ids = new[] { ready.ProcessId!.Value };
-            _run.Say($"SOLIDWORKS started: {string.Join(" -> ", seen)}");
-        }
-        int pid = ids[0];
+        int pid = await _run.PrepareSolidWorksAsync();
         bool pipeBefore = SystemPipeDirectory.Instance.Exists(Protocol.PipeName(pid));
-        if (pipeBefore && !Sw.IsConnected)
-        {
-            throw _run.Stop($"the add-in is already loaded in SOLIDWORKS {pid}, so diagnostics are off in it; " +
-                "close SOLIDWORKS with hold-and-check.ps1 -Close (no documents open), start it again from the 3DEXPERIENCE tab, and rerun");
-        }
+        if (pipeBefore)
+            throw new SkipException($"the add-in is already loaded in SOLIDWORKS {pid} (with diagnostics on), so its first load cannot be timed in this run");
         using (var process = Process.GetProcessById(pid))
         {
             if (process.MainWindowTitle.Contains(" - [", StringComparison.Ordinal))
