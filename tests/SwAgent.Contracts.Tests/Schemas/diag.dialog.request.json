@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "description": "Fault testing only: shows a modal message box owned by SOLIDWORKS' main window and waits until it is answered. Refused unless diagnostics are on.",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "The message box title."
+    },
+    "text": {
+      "type": "string",
+      "description": "The message box text."
+    },
+    "buttons": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "ok_cancel",
+        "yes_no"
+      ],
+      "description": "Which buttons it shows: ok, ok_cancel or yes_no."
+    }
+  },
+  "required": [
+    "title",
+    "text",
+    "buttons"
+  ],
+  "additionalProperties": false
+}

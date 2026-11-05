@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "description": "How the message box was answered.",
+  "properties": {
+    "pressed": {
+      "type": "string",
+      "description": "The button that closed it: ok, cancel, yes or no."
+    }
+  },
+  "required": [
+    "pressed"
+  ],
+  "additionalProperties": false
+}
