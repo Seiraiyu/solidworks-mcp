@@ -11,4 +11,5 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\SwAgent.Mcp\SwAgent.Mcp.csproj" />
   </ItemGroup>
+  <Import Project="..\..\build\AddInPayload.targets" />
 </Project>

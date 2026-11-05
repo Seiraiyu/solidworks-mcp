@@ -8,4 +8,5 @@
   <ItemGroup>
     <ProjectReference Include="..\SwAgent.Client\SwAgent.Client.csproj" />
   </ItemGroup>
+  <Import Project="..\..\build\AddInPayload.targets" />
 </Project>
