@@ -25,6 +25,12 @@ public interface ISolidWorksApplication
     /// <paramref name="path"/> and then marked as having unsaved changes. Left open.
     /// </summary>
     DocumentInfo CreateScratchPart(string path);
+
+    /// <summary>Every open document, hidden ones included, as documents the operations can act on.</summary>
+    IReadOnlyList<ISwDocument> Documents();
+
+    /// <summary>The active document, or null when none is open.</summary>
+    ISwDocument? ActiveDoc();
 }
 
 /// <summary>The real SOLIDWORKS, through the ISldWorks it handed the add-in in ConnectToSW.</summary>
@@ -55,6 +61,19 @@ internal sealed class SolidWorksApplication : ISolidWorksApplication
         }
         return list;
     }
+
+    public IReadOnlyList<ISwDocument> Documents()
+    {
+        var list = new List<ISwDocument>();
+        if (!(_sw.GetDocuments() is object[] docs)) return list;
+        foreach (var o in docs)
+        {
+            if (o is IModelDoc2 doc) list.Add(new SolidWorksDocument(doc));
+        }
+        return list;
+    }
+
+    public ISwDocument? ActiveDoc() => _sw.ActiveDoc is IModelDoc2 doc ? new SolidWorksDocument(doc) : null;
 
     public DocumentInfo CreateScratchPart(string path)
     {

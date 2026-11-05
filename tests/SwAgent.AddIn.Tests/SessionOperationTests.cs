@@ -39,6 +39,15 @@ sealed class FakeSolidWorks : ISolidWorksApplication
         ScratchParts.Add(path);
         return new DocumentInfo { Title = System.IO.Path.GetFileName(path), Path = path, Type = DocumentType.Part, Dirty = ScratchPartDirty };
     }
+
+    /// <summary>The documents the document-level operations see; the first is active unless <see cref="CurrentDoc"/> says otherwise.</summary>
+    public System.Collections.Generic.List<FakeDocument> Docs { get; } = new System.Collections.Generic.List<FakeDocument>();
+
+    public FakeDocument? CurrentDoc { get; set; }
+
+    public System.Collections.Generic.IReadOnlyList<ISwDocument> Documents() => Docs;
+
+    public ISwDocument? ActiveDoc() => CurrentDoc ?? (Docs.Count > 0 ? Docs[0] : null);
 }
 
 sealed class TestContext : IOperationContext

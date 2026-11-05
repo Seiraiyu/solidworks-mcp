@@ -1,0 +1,323 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using SolidWorks.Interop.sldworks;
+using SolidWorks.Interop.swconst;
+using SwAgent.Contracts;
+
+namespace SwAgent.AddIn;
+
+/// <summary>
+/// The real document, through SOLIDWORKS' IModelDoc2. UI thread only. Converts SOLIDWORKS' metres to millimetres at
+/// this boundary and nowhere else. Covered by the parts live suite, not by unit tests.
+/// </summary>
+internal sealed class SolidWorksDocument : ISwDocument
+{
+    const double Mm = 1000.0;
+    const double Mm2 = 1e6;
+
+    public SolidWorksDocument(IModelDoc2 doc)
+    {
+        Doc = doc;
+    }
+
+    public IModelDoc2 Doc { get; }
+
+    public DocumentInfo Info() => SolidWorksApplication.Describe(Doc);
+
+    public byte[]? PersistId(object entity) => Doc.Extension.GetPersistReference3(entity) as byte[];
+
+    public object? Resolve(byte[] persistId, out PersistState state)
+    {
+        int error;
+        object? entity = Doc.Extension.GetObjectByPersistReference3(persistId, out error);
+        state = error switch
+        {
+            (int)swPersistReferencedObjectStates_e.swPersistReferencedObject_Ok => PersistState.Ok,
+            (int)swPersistReferencedObjectStates_e.swPersistReferencedObject_Suppressed => PersistState.Suppressed,
+            (int)swPersistReferencedObjectStates_e.swPersistReferencedObject_Deleted => PersistState.Deleted,
+            _ => PersistState.Invalid,
+        };
+        return entity;
+    }
+
+    public ReferenceKind? KindOf(object entity) => entity switch
+    {
+        IFeature f => FeatureKind(f.GetTypeName2()),
+        IFace2 _ => ReferenceKind.Face,
+        IEdge _ => ReferenceKind.Edge,
+        IVertex _ => ReferenceKind.Vertex,
+        _ => null,
+    };
+
+    /// <summary>The kind a feature of this type (IFeature.GetTypeName2) is named as.</summary>
+    internal static ReferenceKind FeatureKind(string typeName) => typeName switch
+    {
+        "RefPlane" => ReferenceKind.Plane,
+        "RefAxis" => ReferenceKind.Axis,
+        "RefPoint" => ReferenceKind.Point,
+        "OriginProfileFeature" => ReferenceKind.Point,
+        "ProfileFeature" => ReferenceKind.Sketch,
+        "3DProfileFeature" => ReferenceKind.Sketch,
+        _ => ReferenceKind.Feature,
+    };
+
+    public EntityInfo Describe(object entity) => entity switch
+    {
+        IFeature f => DescribeFeature(f),
+        IFace2 face => DescribeFace(face),
+        IEdge edge => DescribeEdge(edge),
+        IVertex vertex => DescribeVertex(vertex),
+        _ => throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS returned a {entity.GetType().Name}, which the add-in cannot describe"),
+    };
+
+    public object? FeatureByName(string name)
+    {
+        foreach (var f in AllFeatures())
+        {
+            if (string.Equals(f.Name, name, StringComparison.Ordinal)) return f;
+        }
+        return null;
+    }
+
+    public object? StandardPlane(int index)
+    {
+        int seen = 0;
+        foreach (var f in TopFeatures())
+        {
+            if (f.GetTypeName2() != "RefPlane") continue;
+            if (seen++ == index) return f;
+        }
+        return null;
+    }
+
+    public object? Origin()
+    {
+        foreach (var f in TopFeatures())
+        {
+            if (f.GetTypeName2() == "OriginProfileFeature") return f;
+        }
+        return null;
+    }
+
+    /// <summary>The top-level features in tree order.</summary>
+    internal IEnumerable<IFeature> TopFeatures()
+    {
+        for (var f = Doc.FirstFeature() as IFeature; f != null; f = f.GetNextFeature() as IFeature) yield return f;
+    }
+
+    /// <summary>Every feature in tree order, each followed by its sub-features (sketches under the feature that uses them).</summary>
+    internal IEnumerable<IFeature> AllFeatures()
+    {
+        foreach (var top in TopFeatures())
+        {
+            yield return top;
+            for (var sub = top.GetFirstSubFeature() as IFeature; sub != null; sub = sub.GetNextSubFeature() as IFeature) yield return sub;
+        }
+    }
+
+    static EntityInfo DescribeFeature(IFeature f)
+    {
+        string type = f.GetTypeName2();
+        var info = new EntityInfo { Kind = FeatureKind(type), Name = f.Name, Geometry = GeometryType.Other };
+        switch (f.GetSpecificFeature2())
+        {
+            case IRefPlane plane when type == "RefPlane":
+            {
+                var t = (double[])plane.Transform.ArrayData;
+                info.Geometry = GeometryType.Plane;
+                info.Normal = Unit(t[6], t[7], t[8]);
+                info.Origin = new Point3(t[9] * Mm, t[10] * Mm, t[11] * Mm);
+                break;
+            }
+            case IRefAxis axis:
+            {
+                var p = (double[])axis.GetRefAxisParams();
+                info.Geometry = GeometryType.Line;
+                info.Origin = new Point3(p[0] * Mm, p[1] * Mm, p[2] * Mm);
+                info.Axis = Unit(p[3] - p[0], p[4] - p[1], p[5] - p[2]);
+                break;
+            }
+            case IRefPoint point:
+            {
+                var p = (double[])point.GetRefPoint().ArrayData;
+                info.Geometry = GeometryType.Point;
+                info.Origin = new Point3(p[0] * Mm, p[1] * Mm, p[2] * Mm);
+                break;
+            }
+        }
+        if (type == "OriginProfileFeature")
+        {
+            info.Geometry = GeometryType.Point;
+            info.Origin = new Point3(0, 0, 0);
+        }
+        return info;
+    }
+
+    static EntityInfo DescribeFace(IFace2 face)
+    {
+        var info = new EntityInfo
+        {
+            Kind = ReferenceKind.Face,
+            Feature = (face.GetFeature() as IFeature)?.Name,
+            AreaMm2 = face.GetArea() * Mm2,
+            Box = Box((double[])face.GetBox()),
+            Geometry = GeometryType.Other,
+        };
+        var surface = (ISurface)face.GetSurface();
+        switch (surface.Identity())
+        {
+            case (int)swSurfaceTypes_e.PLANE_TYPE:
+            {
+                var n = (double[])face.Normal;
+                info.Geometry = GeometryType.Plane;
+                info.Normal = Unit(n[0], n[1], n[2]);
+                info.Origin = Centre(info.Box!);
+                break;
+            }
+            case (int)swSurfaceTypes_e.CYLINDER_TYPE:
+            {
+                var p = (double[])surface.CylinderParams;
+                info.Geometry = GeometryType.Cylinder;
+                info.Origin = new Point3(p[0] * Mm, p[1] * Mm, p[2] * Mm);
+                info.Axis = Unit(p[3], p[4], p[5]);
+                info.RadiusMm = p[6] * Mm;
+                break;
+            }
+            case (int)swSurfaceTypes_e.CONE_TYPE:
+            {
+                var p = (double[])surface.ConeParams;
+                info.Geometry = GeometryType.Cone;
+                info.Origin = new Point3(p[0] * Mm, p[1] * Mm, p[2] * Mm);
+                info.Axis = Unit(p[3], p[4], p[5]);
+                info.RadiusMm = p[6] * Mm;
+                break;
+            }
+            case (int)swSurfaceTypes_e.SPHERE_TYPE:
+            {
+                var p = (double[])surface.SphereParams;
+                info.Geometry = GeometryType.Sphere;
+                info.Origin = new Point3(p[0] * Mm, p[1] * Mm, p[2] * Mm);
+                info.RadiusMm = p[3] * Mm;
+                break;
+            }
+            case (int)swSurfaceTypes_e.TORUS_TYPE:
+            {
+                var p = (double[])surface.TorusParams;
+                info.Geometry = GeometryType.Torus;
+                info.Origin = new Point3(p[0] * Mm, p[1] * Mm, p[2] * Mm);
+                info.Axis = Unit(p[3], p[4], p[5]);
+                info.RadiusMm = p[6] * Mm;
+                break;
+            }
+            case (int)swSurfaceTypes_e.BSURF_TYPE:
+                info.Geometry = GeometryType.Spline;
+                break;
+        }
+        return info;
+    }
+
+    static EntityInfo DescribeEdge(IEdge edge)
+    {
+        var curve = (ICurve)edge.GetCurve();
+        var range = edge.GetCurveParams3();
+        var features = FeaturesOfEdge(edge);
+        var info = new EntityInfo
+        {
+            Kind = ReferenceKind.Edge,
+            Feature = features.FirstOrDefault(),
+            Features = features,
+            LengthMm = curve.GetLength3(range.UMinValue, range.UMaxValue) * Mm,
+            Geometry = GeometryType.Other,
+        };
+        switch (curve.Identity())
+        {
+            case (int)swCurveTypes_e.LINE_TYPE:
+            {
+                var p = (double[])curve.LineParams;
+                info.Geometry = GeometryType.Line;
+                info.Axis = Unit(p[3], p[4], p[5]);
+                info.Origin = Midpoint(edge);
+                break;
+            }
+            case (int)swCurveTypes_e.CIRCLE_TYPE:
+            {
+                var p = (double[])curve.CircleParams;
+                info.Geometry = GeometryType.Circle;
+                info.Origin = new Point3(p[0] * Mm, p[1] * Mm, p[2] * Mm);
+                info.Axis = Unit(p[3], p[4], p[5]);
+                info.RadiusMm = p[6] * Mm;
+                break;
+            }
+            case (int)swCurveTypes_e.ELLIPSE_TYPE:
+                info.Geometry = GeometryType.Ellipse;
+                break;
+            case (int)swCurveTypes_e.BCURVE_TYPE:
+            case (int)swCurveTypes_e.SPCURVE_TYPE:
+                info.Geometry = GeometryType.Spline;
+                break;
+        }
+        return info;
+    }
+
+    static EntityInfo DescribeVertex(IVertex vertex)
+    {
+        var p = (double[])vertex.GetPoint();
+        var features = new List<string>();
+        if (vertex.GetEdges() is object[] edges)
+        {
+            foreach (var edge in edges.OfType<IEdge>())
+            {
+                foreach (var name in FeaturesOfEdge(edge))
+                {
+                    if (!features.Contains(name)) features.Add(name);
+                }
+            }
+        }
+        return new EntityInfo
+        {
+            Kind = ReferenceKind.Vertex,
+            Feature = features.FirstOrDefault(),
+            Features = features,
+            Geometry = GeometryType.Point,
+            Origin = new Point3(p[0] * Mm, p[1] * Mm, p[2] * Mm),
+        };
+    }
+
+    /// <summary>The features that made an edge: the feature of every face it bounds, each once, in SOLIDWORKS' order.</summary>
+    static List<string> FeaturesOfEdge(IEdge edge)
+    {
+        var names = new List<string>();
+        if (!(edge.GetTwoAdjacentFaces2() is object[] faces)) return names;
+        foreach (var face in faces.OfType<IFace2>())
+        {
+            if (face.GetFeature() is IFeature f && !names.Contains(f.Name)) names.Add(f.Name);
+        }
+        return names;
+    }
+
+    static Point3? Midpoint(IEdge edge)
+    {
+        if (!(edge.GetStartVertex() is IVertex start) || !(edge.GetEndVertex() is IVertex end)) return null;
+        var a = (double[])start.GetPoint();
+        var b = (double[])end.GetPoint();
+        return new Point3((a[0] + b[0]) / 2 * Mm, (a[1] + b[1]) / 2 * Mm, (a[2] + b[2]) / 2 * Mm);
+    }
+
+    internal static Box3 Box(double[] b) => new Box3
+    {
+        Min = new Point3(Math.Min(b[0], b[3]) * Mm, Math.Min(b[1], b[4]) * Mm, Math.Min(b[2], b[5]) * Mm),
+        Max = new Point3(Math.Max(b[0], b[3]) * Mm, Math.Max(b[1], b[4]) * Mm, Math.Max(b[2], b[5]) * Mm),
+    };
+
+    static Point3 Centre(Box3 box) => new Point3((box.Min.X + box.Max.X) / 2, (box.Min.Y + box.Max.Y) / 2, (box.Min.Z + box.Max.Z) / 2);
+
+    internal static Vector3 Unit(double x, double y, double z)
+    {
+        double length = Math.Sqrt(x * x + y * y + z * z);
+        return length == 0 ? new Vector3(0, 0, 0) : new Vector3(Clean(x / length), Clean(y / length), Clean(z / length));
+    }
+
+    /// <summary>Rounds away floating-point dust (1e-17 becomes 0) so directions read cleanly.</summary>
+    static double Clean(double v) => Math.Abs(v) < 1e-12 ? 0 : v;
+}
