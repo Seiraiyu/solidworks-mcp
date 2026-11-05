@@ -23,6 +23,10 @@ sealed class FakeSolidWorks : ISolidWorksApplication
     }
 
     public int OpenDocumentCount() => Count;
+
+    public System.Collections.Generic.List<DocumentInfo> Open { get; set; } = new System.Collections.Generic.List<DocumentInfo>();
+
+    public System.Collections.Generic.IReadOnlyList<DocumentInfo> OpenDocuments() => Open;
 }
 
 sealed class TestContext : IOperationContext

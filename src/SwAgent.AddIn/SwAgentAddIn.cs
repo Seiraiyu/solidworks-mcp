@@ -23,6 +23,7 @@ public sealed class SwAgentAddIn : ISwAddin
     ISldWorks? _sw;
     FileLog? _log;
     AgentHost? _host;
+    SolidWorksEventBridge? _events;
 
     /// <summary>The informational version: the package version and, from a CI or git build, the commit.</summary>
     public static string Version =>
@@ -41,8 +42,11 @@ public sealed class SwAgentAddIn : ISwAddin
             var runtime = new AgentRuntime(Version, pid, _log, diagnosticsEnabled: DiagnosticsSetting.Enabled(Microsoft.Win32.Registry.CurrentUser));
             if (runtime.DiagnosticsEnabled) _log.Warn("diagnostic operations are ON (HKCU\\Software\\solidworks-mcp\\Diagnostics = 1)");
             var services = new AddInServices(app, Version, runtime);
+            runtime.Documents = new DocumentTracker(app.OpenDocuments, runtime.Events, _log);
             var registry = CreateRegistry(services);
             _host = AgentHost.Start(Protocol.PipeName(pid), registry, runtime);
+            _events = new SolidWorksEventBridge(_sw, runtime.Documents, _log);
+            _events.Start();
             _log.Info("add-in loaded");
             return true;
         }
@@ -85,6 +89,15 @@ public sealed class SwAgentAddIn : ISwAddin
 
     void Teardown()
     {
+        try
+        {
+            _events?.Dispose();
+        }
+        catch (Exception e)
+        {
+            _log?.Error("unsubscribing SOLIDWORKS events failed", e);
+        }
+        _events = null;
         var host = _host;
         _host = null;
         try
