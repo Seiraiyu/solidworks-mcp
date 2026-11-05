@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using SwAgent.AddIn.Core.Pipe;
 using SwAgent.Contracts.Rpc;
 
@@ -103,7 +104,18 @@ public sealed class AgentHost : IDisposable
         }
         if (registry.TryGet(request.Method, out var op) && op is IPipeOperation)
         {
-            reply.Send(RpcCodec.FormatResponse(executor.ExecuteResponse(request, received)));
+            // Off the reader thread, so a pipe operation that waits (dialog.respond) never holds up the next line.
+            Task.Run(() =>
+            {
+                try
+                {
+                    reply.Send(RpcCodec.FormatResponse(executor.ExecuteResponse(request, received)));
+                }
+                catch (Exception e)
+                {
+                    runtime.Log.Error($"request {request.Id} {request.Method}: answering on the pipe failed", e);
+                }
+            });
             return;
         }
         dispatcher.Enqueue(request, received, reply);

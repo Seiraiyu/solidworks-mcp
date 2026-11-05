@@ -352,3 +352,29 @@ sealed class OwnerWindow : IWin32Window
 
     public static IntPtr Create(UiThread ui) => ui.Invoke(() => new Form().Handle);
 }
+
+[Operation("test.wait", typeof(EchoResult), Thread = OperationThread.Pipe)]
+public sealed class WaitRequest
+{
+}
+
+/// <summary>A pipe-thread operation that blocks until its gate opens.</summary>
+public sealed class WaitOperation : PipeOperation<WaitRequest, EchoResult>
+{
+    readonly ManualResetEventSlim _gate;
+
+    public WaitOperation(ManualResetEventSlim gate)
+    {
+        _gate = gate;
+    }
+
+    protected override EchoResult Run(WaitRequest request, IOperationContext context)
+    {
+        _gate.Wait(TimeSpan.FromSeconds(20));
+        return new EchoResult { Text = "waited" };
+    }
+
+    protected override void Verify(WaitRequest request, EchoResult result, IOperationContext context)
+    {
+    }
+}

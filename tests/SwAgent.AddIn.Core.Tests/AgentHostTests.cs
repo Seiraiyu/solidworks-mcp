@@ -182,4 +182,24 @@ public class AgentHostTests
         Assert.Equal(ui.ThreadId, disconnectThread);
         ui.Invoke(host.Dispose);
     }
+
+    [Fact]
+    public async Task A_pipe_operation_that_waits_does_not_hold_up_the_next_line()
+    {
+        using var ui = new UiThread();
+        string name = PipeNames.Unique();
+        var gate = new ManualResetEventSlim(false);
+        var registry = OperationRegistry.Create(OperationCatalog.FromTypes(new[] { typeof(EchoRequest), typeof(PeekRequest), typeof(WaitRequest) }),
+            new IOperation[] { new EchoOperation(), new PeekOperation(), new WaitOperation(gate) });
+        var host = ui.Invoke(() => AgentHost.Start(name, registry, new AgentRuntime("t", 1, new MemoryLog())));
+        using (var client = new RawClient(name))
+        {
+            await client.SendAsync(RpcCodec.FormatRequest(new RpcRequest(1, "test.wait", new JsonObject(), 30000)));
+            await client.SendAsync(RpcCodec.FormatRequest(new RpcRequest(2, "test.peek", new JsonObject(), 5000)));
+            Assert.Equal(2L, RpcCodec.ParseResponse((await client.ReadLineAsync())!).Id);
+            gate.Set();
+            Assert.Equal(1L, RpcCodec.ParseResponse((await client.ReadLineAsync())!).Id);
+        }
+        ui.Invoke(host.Dispose);
+    }
 }
