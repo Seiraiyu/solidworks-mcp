@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "description": "Live testing only: creates a part from the default part template holding one block, x by y by z mm, from the origin along +X, +Y and +Z (a rectangle on the first plane extruded along its normal), and saves it as a new file in the live suite's scratch directory. Refused unless diagnostics are on.",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "The new part's full path: a .SLDPRT file under %LOCALAPPDATA%/solidworks-mcp/live-scratch that does not exist yet."
+    },
+    "x_mm": {
+      "type": "number",
+      "description": "Size along X, mm, more than 0 and at most 1000."
+    },
+    "y_mm": {
+      "type": "number",
+      "description": "Size along Y, mm, more than 0 and at most 1000."
+    },
+    "z_mm": {
+      "type": "number",
+      "description": "Size along Z, mm, more than 0 and at most 1000."
+    }
+  },
+  "required": [
+    "path",
+    "x_mm",
+    "y_mm",
+    "z_mm"
+  ],
+  "additionalProperties": false
+}

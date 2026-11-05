@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using SolidWorks.Interop.sldworks;
 using SolidWorks.Interop.swconst;
 using SwAgent.Contracts;
@@ -25,6 +26,12 @@ public interface ISolidWorksApplication
     /// <paramref name="path"/> and then marked as having unsaved changes. Left open.
     /// </summary>
     DocumentInfo CreateScratchPart(string path);
+
+    /// <summary>
+    /// Live testing only (diag.scratch_block): a new part from the default part template holding one block from the
+    /// origin, <paramref name="xMm"/> by <paramref name="yMm"/> by <paramref name="zMm"/>, saved to <paramref name="path"/>. Left open.
+    /// </summary>
+    DocumentInfo CreateScratchBlock(string path, double xMm, double yMm, double zMm);
 
     /// <summary>Every open document, hidden ones included, as documents the operations can act on.</summary>
     IReadOnlyList<ISwDocument> Documents();
@@ -135,6 +142,56 @@ internal sealed class SolidWorksApplication : ISolidWorksApplication
         }
         doc.SetSaveFlag();
         return Describe(doc);
+    }
+
+    public DocumentInfo CreateScratchBlock(string path, double xMm, double yMm, double zMm)
+    {
+        string template = DefaultPartTemplate() ?? "";
+        if (!System.IO.File.Exists(template))
+        {
+            throw new SwAgentException(ErrorCode.ApiError,
+                $"SOLIDWORKS has no usable default part template ('{template}'); set one in Tools > Options > Default Templates");
+        }
+        if (!(_sw.NewDocument(template, 0, 0, 0) is IModelDoc2 doc))
+            throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS did not create a part from the template {template}");
+        var part = new SolidWorksDocument(_sw, doc);
+        try
+        {
+            if (!(part.StandardPlane(0) is IFeature front) || !front.Select2(false, 0))
+                throw new SwAgentException(ErrorCode.ApiError, "the new part's first plane could not be selected");
+            var sketches = doc.SketchManager;
+            sketches.InsertSketch(true);
+            bool addToDb = sketches.AddToDB;
+            sketches.AddToDB = true;
+            try
+            {
+                if (sketches.CreateCornerRectangle(0, 0, 0, xMm / 1000, yMm / 1000, 0) == null)
+                    throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not draw the block's rectangle");
+            }
+            finally
+            {
+                sketches.AddToDB = addToDb;
+            }
+            sketches.InsertSketch(true);
+            doc.ClearSelection2(true);
+            var sketch = part.TopFeatures().Last(f => f.GetTypeName2() == "ProfileFeature");
+            if (!sketch.Select2(false, 0)) throw new SwAgentException(ErrorCode.ApiError, "the block's sketch could not be selected");
+            var extrude = doc.FeatureManager.FeatureExtrusion3(true, false, false,
+                (int)swEndConditions_e.swEndCondBlind, (int)swEndConditions_e.swEndCondBlind, zMm / 1000, 0,
+                false, false, false, false, 0, 0, false, false, false, false, true, true, true,
+                (int)swStartConditions_e.swStartSketchPlane, 0, false);
+            doc.ClearSelection2(true);
+            if (extrude == null) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not extrude the block");
+            int errors = 0, warnings = 0;
+            if (!doc.Extension.SaveAs3(path, (int)swSaveAsVersion_e.swSaveAsCurrentVersion, (int)swSaveAsOptions_e.swSaveAsOptions_Silent, null, null, ref errors, ref warnings))
+                throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS could not save the block to {path} (errors {errors}, warnings {warnings})");
+            return Describe(doc);
+        }
+        catch
+        {
+            _sw.CloseDoc(doc.GetTitle());
+            throw;
+        }
     }
 
     internal static DocumentInfo Describe(IModelDoc2 doc)

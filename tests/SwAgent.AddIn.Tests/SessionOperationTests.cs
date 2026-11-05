@@ -40,6 +40,19 @@ sealed class FakeSolidWorks : ISolidWorksApplication
         return new DocumentInfo { Title = System.IO.Path.GetFileName(path), Path = path, Type = DocumentType.Part, Dirty = ScratchPartDirty };
     }
 
+    /// <summary>The blocks CreateScratchBlock was asked for; each becomes a tracked part with one body of that volume.</summary>
+    public System.Collections.Generic.List<(string Path, double X, double Y, double Z)> ScratchBlocks { get; } = new System.Collections.Generic.List<(string, double, double, double)>();
+
+    public DocumentInfo CreateScratchBlock(string path, double xMm, double yMm, double zMm)
+    {
+        ScratchBlocks.Add((path, xMm, yMm, zMm));
+        var doc = Track(FakeDocument.Part(System.IO.Path.GetFileName(path), path));
+        doc.Bodies = 1;
+        doc.MassProperties = new ModelMassResult { VolumeMm3 = xMm * yMm * zMm, DensityKgM3 = 1000, MassG = xMm * yMm * zMm * 1e-3 };
+        System.IO.File.WriteAllText(path, "block");
+        return doc.Info();
+    }
+
     /// <summary>The documents the document-level operations see; the first is active unless <see cref="CurrentDoc"/> says otherwise.</summary>
     public System.Collections.Generic.List<FakeDocument> Docs { get; } = new System.Collections.Generic.List<FakeDocument>();
 

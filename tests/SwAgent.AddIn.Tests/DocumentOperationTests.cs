@@ -572,6 +572,7 @@ abstract class DelegatingSolidWorks : ISolidWorksApplication
     public int OpenDocumentCount() => Inner.OpenDocumentCount();
     public System.Collections.Generic.IReadOnlyList<DocumentInfo> OpenDocuments() => Inner.OpenDocuments();
     public DocumentInfo CreateScratchPart(string path) => Inner.CreateScratchPart(path);
+    public DocumentInfo CreateScratchBlock(string path, double xMm, double yMm, double zMm) => Inner.CreateScratchBlock(path, xMm, yMm, zMm);
     public System.Collections.Generic.IReadOnlyList<ISwDocument> Documents() => Inner.Documents();
     public ISwDocument? ActiveDoc() => Inner.ActiveDoc();
     public string? DefaultPartTemplate() => Inner.DefaultPartTemplate();

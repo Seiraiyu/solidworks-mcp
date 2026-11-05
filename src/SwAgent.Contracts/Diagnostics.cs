@@ -57,3 +57,21 @@ public sealed class DiagScratchPartRequest
     [Description("The new part's full path: a .SLDPRT file under %LOCALAPPDATA%/solidworks-mcp/live-scratch that does not exist yet.")]
     public string Path { get; set; } = "";
 }
+
+[Operation("diag.scratch_block", typeof(DocumentInfo), Internal = true)]
+[Description("Live testing only: creates a part from the default part template holding one block, x by y by z mm, from the origin along +X, +Y and +Z (a rectangle on the first plane extruded along its normal), and saves it as a new file in the live suite's scratch directory. Refused unless diagnostics are on.")]
+public sealed class DiagScratchBlockRequest
+{
+    [Required]
+    [Description("The new part's full path: a .SLDPRT file under %LOCALAPPDATA%/solidworks-mcp/live-scratch that does not exist yet.")]
+    public string Path { get; set; } = "";
+
+    [Description("Size along X, mm, more than 0 and at most 1000.")]
+    public double XMm { get; set; }
+
+    [Description("Size along Y, mm, more than 0 and at most 1000.")]
+    public double YMm { get; set; }
+
+    [Description("Size along Z, mm, more than 0 and at most 1000.")]
+    public double ZMm { get; set; }
+}
