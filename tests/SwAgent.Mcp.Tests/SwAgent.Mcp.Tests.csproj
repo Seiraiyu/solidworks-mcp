@@ -9,6 +9,6 @@
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\SwAgent.Client\SwAgent.Client.csproj" />
+    <ProjectReference Include="..\..\src\SwAgent.Mcp\SwAgent.Mcp.csproj" />
   </ItemGroup>
 </Project>
