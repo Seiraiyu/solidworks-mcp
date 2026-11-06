@@ -49,6 +49,10 @@ internal sealed partial class SolidWorksDocument
             bool draft = s.DraftDeg > 0, draft2 = second != null && second.DraftDeg > 0;
             double angle = s.DraftDeg * Rad, angle2 = second == null ? angle : second.DraftDeg * Rad;
             const int start = (int)swStartConditions_e.swStartSketchPlane;
+            // FeatureCut4 and FeatureCutThin2 cut against the sketch's normal when Dir is false, where FeatureExtrusion3
+            // extrudes along it (3.C live run: a cut from the front plane into a block on +Z made nothing, a boss went +Z).
+            // The contract's reverse means against the normal for both, so a cut flips Dir.
+            bool cutDir = !s.Reverse;
             var fm = Doc.FeatureManager;
             if (s.Thin != null)
             {
@@ -61,13 +65,13 @@ internal sealed partial class SolidWorksDocument
                 };
                 double t1 = s.Thin.ThicknessMm / Mm, t2 = (s.Thin.Side == ThinSide.TwoSides ? s.Thin.Thickness2Mm : s.Thin.ThicknessMm) / Mm;
                 return s.Cut
-                    ? fm.FeatureCutThin2(sd, false, s.Reverse, end, end2, depth, depth2, draft, draft2, s.DraftOutward, s.DraftOutward, angle, angle2,
+                    ? fm.FeatureCutThin2(sd, false, cutDir, end, end2, depth, depth2, draft, draft2, s.DraftOutward, s.DraftOutward, angle, angle2,
                         false, false, false, false, t1, t2, 0, type, 0, false, 0, true, true, start, 0, false)
                     : fm.FeatureExtrusionThin2(sd, false, s.Reverse, end, end2, depth, depth2, draft, draft2, s.DraftOutward, s.DraftOutward, angle, angle2,
                         false, false, false, false, s.Merge, t1, t2, 0, type, 0, false, 0, true, true, start, 0, false);
             }
             return s.Cut
-                ? fm.FeatureCut4(sd, false, s.Reverse, end, end2, depth, depth2, draft, draft2, s.DraftOutward, s.DraftOutward, angle, angle2,
+                ? fm.FeatureCut4(sd, false, cutDir, end, end2, depth, depth2, draft, draft2, s.DraftOutward, s.DraftOutward, angle, angle2,
                     false, false, false, false, false, true, true, true, true, false, start, 0, false, false)
                 : fm.FeatureExtrusion3(sd, false, s.Reverse, end, end2, depth, depth2, draft, draft2, s.DraftOutward, s.DraftOutward, angle, angle2,
                     false, false, false, false, s.Merge, true, true, start, 0, false);
