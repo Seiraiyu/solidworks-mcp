@@ -27,6 +27,12 @@ public abstract class ModelChangeOperation<TRequest, TResult> : Operation<TReque
 
     protected AddInServices Services { get; }
 
+    /// <summary>The part's solid bodies, measured before the change, for Check.</summary>
+    protected int BodiesBefore { get; private set; }
+
+    /// <summary>The part's volume (mm³), measured before the change, for Check.</summary>
+    protected double VolumeBefore { get; private set; }
+
     /// <summary>The request's document field: the part's title or path, or null for the active document.</summary>
     protected abstract string? DocumentOf(TRequest request);
 
@@ -43,6 +49,8 @@ public abstract class ModelChangeOperation<TRequest, TResult> : Operation<TReque
         ModelChangeGuard.Require(Services.SolidWorks, doc, Name);
         int bodiesBefore = doc.SolidBodyCount();
         double volumeBefore = Volume(doc, bodiesBefore);
+        BodiesBefore = bodiesBefore;
+        VolumeBefore = volumeBefore;
         var errorsBefore = new HashSet<string>(doc.WhatsWrong().Where(i => !i.Warning).Select(i => i.Feature), StringComparer.Ordinal);
         var tx = new ModelTransaction();
         TResult result;
@@ -88,7 +96,8 @@ public abstract class ModelChangeOperation<TRequest, TResult> : Operation<TReque
         }
     }
 
-    static double Volume(ISwDocument doc, int bodies) => bodies == 0 ? 0 : doc.Mass()?.VolumeMm3 ?? 0;
+    /// <summary>The part's solid volume now, mm³: 0 with no solid body.</summary>
+    protected static double Volume(ISwDocument doc, int bodies) => bodies == 0 ? 0 : doc.Mass()?.VolumeMm3 ?? 0;
 
     static ModelChange Evidence(ISwDocument doc, ModelTransaction tx, int bodiesBefore, double volumeBefore)
     {

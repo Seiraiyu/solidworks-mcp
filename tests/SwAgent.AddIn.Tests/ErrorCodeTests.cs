@@ -276,4 +276,59 @@ public class ErrorCodeTests : DocumentTestBase
         }
         Assert.Equal(code, Fails(() => Run(new DiagEditingOperation(services), new DiagEditingRequest())).Code);
     }
+
+    /// <summary>A part with Sketch1, a 40 x 20 rectangle, to build features from.</summary>
+    FakeDocument Profiled()
+    {
+        var doc = Part();
+        Create(new SketchCreateRequest { On = "front", Rectangles = new List<SketchRectangle> { new SketchRectangle { Id = "r", Corner1 = P(0, 0), Corner2 = P(40, 20) } } });
+        return doc;
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_extrude_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureExtrudeRequest { Sketch = "Sketch1", DepthMm = 10 };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Fails(() => Run(new FeatureExtrudeOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Profiled();
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.DepthMm = null;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                var face = doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Plane });
+                request.End = ExtrudeEnd.UpToSurface;
+                request.DepthMm = null;
+                request.UpTo = Services.References.Describe(doc, face).Reference!;
+                face.State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                Sw.OpenCommandTitle = "Boss-Extrude";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.FeatureVolumeError = 1;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Run(new FeatureExtrudeOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "Extrusion");
+    }
 }

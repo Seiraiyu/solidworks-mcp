@@ -1,0 +1,114 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using SolidWorks.Interop.sldworks;
+using SolidWorks.Interop.swconst;
+using SwAgent.Contracts;
+
+namespace SwAgent.AddIn;
+
+/// <summary>
+/// Features, through IFeatureManager (design 371, Features). UI thread only. Each call selects what SOLIDWORKS' feature
+/// API needs, with the marks it reads, makes the feature and clears the selection. Millimetres and degrees become
+/// metres and radians here and nowhere else. Covered by the parts live suite, not by unit tests.
+/// </summary>
+internal sealed partial class SolidWorksDocument
+{
+    const double Rad = Math.PI / 180;
+
+    public void Delete(object feature, bool children, bool absorbed)
+    {
+        var f = (IFeature)feature;
+        Doc.ClearSelection2(true);
+        if (!f.Select2(false, 0)) throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS did not select {f.Name} to delete it");
+        int options = (children ? (int)swDeleteSelectionOptions_e.swDelete_Children : 0) | (absorbed ? (int)swDeleteSelectionOptions_e.swDelete_Absorbed : 0);
+        bool deleted = Doc.Extension.DeleteSelection2(options);
+        Doc.ClearSelection2(true);
+        if (!deleted) throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS did not delete {f.Name}");
+    }
+
+    /// <summary>
+    /// FeatureExtrusion3 or FeatureCut4 (FeatureExtrusionThin2 or FeatureCutThin2 for a thin wall), with the sketch
+    /// selected (mark 0), the first direction's up-to entity with mark 1 and the second's with mark 2 (measured by the
+    /// parts live suite). One direction unless a second is given (Sd false, its end in T2, D2, Dchk2 and Dang2).
+    /// </summary>
+    public object? Extrude(object sketch, ExtrudeSpec s)
+    {
+        Doc.ClearSelection2(true);
+        try
+        {
+            Pick(sketch, append: false, mark: 0);
+            if (s.UpTo != null) Pick(s.UpTo, append: true, mark: 1);
+            var second = s.Direction2;
+            if (second?.UpTo != null) Pick(second.UpTo, append: true, mark: 2);
+            bool sd = second == null;
+            int end = EndCondition(s.End);
+            int end2 = second == null ? (int)swEndConditions_e.swEndCondBlind : EndCondition(second.End);
+            double depth = s.DepthMm / Mm;
+            double depth2 = second == null ? depth : second.DepthMm / Mm;
+            bool draft = s.DraftDeg > 0, draft2 = second != null && second.DraftDeg > 0;
+            double angle = s.DraftDeg * Rad, angle2 = second == null ? angle : second.DraftDeg * Rad;
+            const int start = (int)swStartConditions_e.swStartSketchPlane;
+            var fm = Doc.FeatureManager;
+            if (s.Thin != null)
+            {
+                int type = s.Thin.Side switch
+                {
+                    ThinSide.OtherSide => (int)swThinWallType_e.swThinWallOppDirection,
+                    ThinSide.MidPlane => (int)swThinWallType_e.swThinWallMidPlane,
+                    ThinSide.TwoSides => (int)swThinWallType_e.swThinWallTwoDirection,
+                    _ => (int)swThinWallType_e.swThinWallOneDirection,
+                };
+                double t1 = s.Thin.ThicknessMm / Mm, t2 = (s.Thin.Side == ThinSide.TwoSides ? s.Thin.Thickness2Mm : s.Thin.ThicknessMm) / Mm;
+                return s.Cut
+                    ? fm.FeatureCutThin2(sd, false, s.Reverse, end, end2, depth, depth2, draft, draft2, s.DraftOutward, s.DraftOutward, angle, angle2,
+                        false, false, false, false, t1, t2, 0, type, 0, false, 0, true, true, start, 0, false)
+                    : fm.FeatureExtrusionThin2(sd, false, s.Reverse, end, end2, depth, depth2, draft, draft2, s.DraftOutward, s.DraftOutward, angle, angle2,
+                        false, false, false, false, s.Merge, t1, t2, 0, type, 0, false, 0, true, true, start, 0, false);
+            }
+            return s.Cut
+                ? fm.FeatureCut4(sd, false, s.Reverse, end, end2, depth, depth2, draft, draft2, s.DraftOutward, s.DraftOutward, angle, angle2,
+                    false, false, false, false, false, true, true, true, true, false, start, 0, false, false)
+                : fm.FeatureExtrusion3(sd, false, s.Reverse, end, end2, depth, depth2, draft, draft2, s.DraftOutward, s.DraftOutward, angle, angle2,
+                    false, false, false, false, s.Merge, true, true, start, 0, false);
+        }
+        finally
+        {
+            Doc.ClearSelection2(true);
+        }
+    }
+
+    static int EndCondition(ExtrudeEnd end) => end switch
+    {
+        ExtrudeEnd.ThroughAll => (int)swEndConditions_e.swEndCondThroughAll,
+        ExtrudeEnd.UpToNext => (int)swEndConditions_e.swEndCondUpToNext,
+        ExtrudeEnd.UpToVertex => (int)swEndConditions_e.swEndCondUpToVertex,
+        ExtrudeEnd.UpToSurface => (int)swEndConditions_e.swEndCondUpToSurface,
+        ExtrudeEnd.MidPlane => (int)swEndConditions_e.swEndCondMidPlane,
+        _ => (int)swEndConditions_e.swEndCondBlind,
+    };
+
+    public IReadOnlyList<object> FacesOf(object feature) =>
+        ((IFeature)feature).GetFaces() is object[] faces ? faces.Where(f => f != null).ToList() : new List<object>();
+
+    /// <summary>Selects a feature, plane, face, edge or vertex with <paramref name="mark"/>; ApiError when SOLIDWORKS refuses.</summary>
+    void Pick(object entity, bool append, int mark)
+    {
+        bool selected;
+        switch (entity)
+        {
+            case IFeature feature:
+                selected = feature.Select2(append, mark);
+                break;
+            case IEntity e:
+                var data = ((ISelectionMgr)Doc.SelectionManager).CreateSelectData();
+                data.Mark = mark;
+                selected = e.Select4(append, data);
+                break;
+            default:
+                selected = false;
+                break;
+        }
+        if (!selected) throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS did not select the {Describe(entity).Kind.ToString().ToLowerInvariant()} a feature needs");
+    }
+}

@@ -113,6 +113,18 @@ public interface ISwDocument
 
     /// <summary>Deletes a feature (a sketch an operation made), and what it absorbed; throws when SOLIDWORKS does not.</summary>
     void DeleteFeature(object feature);
+
+    /// <summary>
+    /// Deletes a feature, with its children (the features built on it) only when <paramref name="children"/>, and the
+    /// features it absorbed (its sketch) only when <paramref name="absorbed"/>; throws when SOLIDWORKS does not.
+    /// </summary>
+    void Delete(object feature, bool children, bool absorbed);
+
+    /// <summary>Extrudes <paramref name="sketch"/>; the new feature, or null when SOLIDWORKS made none. Selects what it needs and clears the selection.</summary>
+    object? Extrude(object sketch, ExtrudeSpec spec);
+
+    /// <summary>The faces <paramref name="feature"/> made.</summary>
+    System.Collections.Generic.IReadOnlyList<object> FacesOf(object feature);
 }
 
 /// <summary>One selected object as SOLIDWORKS reports it.</summary>
