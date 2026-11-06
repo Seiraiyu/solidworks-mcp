@@ -625,7 +625,8 @@ public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
         await _run.RequireOnlyOwnDocumentsAsync();
         string path = LiveScratchPath("features");
         var notes = new List<string>();
-        var top = Assert.Single((await Find(path, new ModelFindRequest { Kind = TopologyKind.Face, Direction = new Vector3(0, 0, 1) })).Entities);
+        // direction also matches a cylinder whose axis is parallel (model.find's contract), as the hole's bore is (3.C live run).
+        var top = Assert.Single((await Find(path, new ModelFindRequest { Kind = TopologyKind.Face, Geometry = GeometryType.Plane, Direction = new Vector3(0, 0, 1) })).Entities);
         var offset = await Call<RefgeomPlaneRequest, FeatureResult>(new RefgeomPlaneRequest { Document = path, Mode = PlaneMode.Offset, From = top.Reference!, DistanceMm = 15 });
         Near(25, offset.Feature.Origin!.Z, "the offset plane's Z");
         notes.Add($"{offset.Feature.Name} offset: {string.Join("; ", offset.Checks)}");
@@ -675,7 +676,7 @@ public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
         await _run.RequireOnlyOwnDocumentsAsync();
         var block = await Block("measuring");
         string path = block.Path!;
-        var top = Assert.Single((await Find(path, new ModelFindRequest { Kind = TopologyKind.Face, Direction = new Vector3(0, 0, 1) })).Entities);
+        var top = Assert.Single((await Find(path, new ModelFindRequest { Kind = TopologyKind.Face, Geometry = GeometryType.Plane, Direction = new Vector3(0, 0, 1) })).Entities);
         var bottom = Assert.Single((await Find(path, new ModelFindRequest { Kind = TopologyKind.Face, Direction = new Vector3(0, 0, -1) })).Entities);
         var faces = await Call<ModelMeasureRequest, ModelMeasureResult>(new ModelMeasureRequest { Document = path, A = top.Reference!, B = bottom.Reference! });
         Near(10, faces.DistanceMm, "top to bottom");
@@ -855,7 +856,15 @@ public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
             await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = d.Path, Discard = true, UsersDocument = true });
             closed++;
         }
-        Assert.Empty((await _run.AddinStateAsync()).Documents);
+        // addin.state can still list the last document for a moment after its close answered (3.C live run): read it
+        // again for up to 5 s before failing with what is still open.
+        var open = (await _run.AddinStateAsync()).Documents;
+        for (int i = 0; i < 10 && open.Count > 0; i++)
+        {
+            await Task.Delay(500);
+            open = (await _run.AddinStateAsync()).Documents;
+        }
+        Assert.True(open.Count == 0, $"still open after closing {closed}: {string.Join(", ", open.Select(d => d.Path ?? d.Title))}");
         return $"closed {closed} documents; none open";
     });
 
