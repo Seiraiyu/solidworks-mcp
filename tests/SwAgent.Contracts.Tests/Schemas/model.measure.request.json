@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "description": "Measures between two entities of a part: faces, edges, vertices, planes, axes or points, by reference or name. Gives the shortest distance and the two closest points (mm); the distance between centres where both have one (circles, spheres, vertices, points); and the angle between them where both have a direction (planar faces and planes by their normals, straight edges, axes, cylinders and cones by their axes), 0 to 90 degrees. Read twice: a measurement that changed between the two answers verification_failed. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "a": {
+      "type": "string",
+      "description": "The first entity: a reference, or a plane's, axis's or point's name (front, top, right and origin included)."
+    },
+    "b": {
+      "type": "string",
+      "description": "The second entity, as a."
+    }
+  },
+  "required": [
+    "a",
+    "b"
+  ],
+  "additionalProperties": false
+}

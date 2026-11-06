@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "description": "Deletes features, with the sketches they absorbed unless keep_absorbed. A feature that others are built on (its children, their children and so on) is refused unless children is delete, which deletes them all too. Checked: every feature named, and every feature built on it when deleted, is gone from the tree, and no feature has a new rebuild error. A deleted feature cannot be made again from its reference, so a check that fails after the delete answers operation_failed with rollback_failed, naming what is gone. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The features: their names (Fillet1) or references."
+    },
+    "children": {
+      "type": "string",
+      "enum": [
+        "refuse",
+        "delete"
+      ],
+      "description": "refuse (the default: a feature that others are built on is not deleted) or delete (they are deleted with it, at any depth)."
+    },
+    "keep_absorbed": {
+      "type": "boolean",
+      "description": "Keep the sketches the features absorbed, as top-level sketches. Default false: they are deleted with them."
+    }
+  },
+  "required": [
+    "features"
+  ],
+  "additionalProperties": false
+}

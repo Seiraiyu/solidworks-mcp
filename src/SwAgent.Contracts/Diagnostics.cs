@@ -93,3 +93,16 @@ public sealed class DiagEditingResult
     [Description("The title of the command (PropertyManager) the user has open; absent when none.")]
     public string? Command { get; set; }
 }
+[Operation("diag.edit_sketch", typeof(DiagEditingResult), Internal = true)]
+[Description("Fault testing only: opens a sketch for editing as the user would (Edit Sketch) and leaves it open (open true), or exits the sketch being edited (open false), so the fault suite can show a model change waiting for the user without anyone at SOLIDWORKS. Refused unless diagnostics are on.")]
+public sealed class DiagEditSketchRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("The sketch to open, by name or reference; for open true.")]
+    public string? Sketch { get; set; }
+
+    [Description("true to open the sketch for editing, false to exit the sketch being edited.")]
+    public bool Open { get; set; }
+}

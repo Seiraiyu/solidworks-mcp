@@ -1,0 +1,43 @@
+{
+  "type": "object",
+  "description": "Revolves a sketch's closed profile about an axis: a boss adds material, a cut removes it. Angles in degrees. The axis is a line or centerline in the sketch, a reference axis or a straight edge. Checked: the feature exists with its type, rebuilds without error, and the part's volume grew (boss) or shrank (cut); for a boss on a part with no body yet, about a line in its own sketch, the volume is exactly Pappus' (angle × the profile's area × its centroid's distance from the axis). Otherwise the feature is deleted and the part is as it was (rolled back); the sketch stays. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "sketch": {
+      "type": "string",
+      "description": "The sketch to revolve: its name or reference. Its closed loops are the profile, all on one side of the axis."
+    },
+    "axis": {
+      "type": "string",
+      "description": "The axis: the reference of a line or centerline in the sketch (sketch.create gave it), or a reference axis's name or reference, or a straight edge's reference."
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "boss",
+        "cut"
+      ],
+      "description": "boss (adds material) or cut (removes it). Default boss."
+    },
+    "angle_deg": {
+      "type": "number",
+      "description": "How far it turns, degrees: more than 0 and at most 360. Default 360."
+    },
+    "reverse": {
+      "type": "boolean",
+      "description": "Turn the other way. Default false."
+    },
+    "merge": {
+      "type": "boolean",
+      "description": "For a boss: merge it with the bodies it touches. Default true. Not for a cut."
+    }
+  },
+  "required": [
+    "sketch",
+    "axis"
+  ],
+  "additionalProperties": false
+}

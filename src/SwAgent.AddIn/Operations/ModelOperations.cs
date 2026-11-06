@@ -205,3 +205,64 @@ public sealed class ModelFindOperation : Operation<ModelFindRequest, ModelFindRe
     static SwAgentException Invalid(string field, string message) =>
         new SwAgentException(ErrorCode.InvalidArgument, message, new SwAgent.Contracts.Serialization.JsonObject { ["field"] = field });
 }
+
+public sealed class ModelMeasureOperation : Operation<ModelMeasureRequest, ModelMeasureResult>
+{
+    static readonly ReferenceKind[] Measurable = { ReferenceKind.Face, ReferenceKind.Edge, ReferenceKind.Vertex, ReferenceKind.Plane, ReferenceKind.Axis, ReferenceKind.Point };
+
+    readonly AddInServices _services;
+
+    public ModelMeasureOperation(AddInServices services)
+    {
+        _services = services;
+    }
+
+    protected override ModelMeasureResult Run(ModelMeasureRequest request, IOperationContext context)
+    {
+        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "model.measure");
+        return Measure(doc, request);
+    }
+
+    ModelMeasureResult Measure(ISwDocument doc, ModelMeasureRequest request)
+    {
+        var (a, _) = _services.References.Resolve(doc, request.A, "a", Measurable);
+        var (b, _) = _services.References.Resolve(doc, request.B, "b", Measurable);
+        var infoA = _services.References.Describe(doc, a);
+        var infoB = _services.References.Describe(doc, b);
+        double distance = doc.ClosestDistance(a, b, out var onA, out var onB);
+        var result = new ModelMeasureResult { Document = doc.Info(), A = infoA, B = infoB, DistanceMm = distance, PointA = onA, PointB = onB };
+        var ca = Measures.Centre(infoA);
+        var cb = Measures.Centre(infoB);
+        if (ca != null && cb != null) result.CenterDistanceMm = Math.Sqrt(Math.Pow(ca.X - cb.X, 2) + Math.Pow(ca.Y - cb.Y, 2) + Math.Pow(ca.Z - cb.Z, 2));
+        var da = Measures.Direction(infoA);
+        var db = Measures.Direction(infoB);
+        if (da != null && db != null) result.AngleDeg = FeatureChecks.AngleDeg(da, db);
+        return result;
+    }
+
+    /// <summary>Measured again, the distance is the same.</summary>
+    protected override void Verify(ModelMeasureRequest request, ModelMeasureResult result, IOperationContext context)
+    {
+        var doc = DocumentLocator.Find(_services.SolidWorks, DocumentKeys.Of(result.Document));
+        var again = Measure(doc, request);
+        if (Math.Abs(again.DistanceMm - result.DistanceMm) > 1e-9 * Math.Max(1, result.DistanceMm))
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"the distance read {result.DistanceMm} mm and then {again.DistanceMm} mm; the part changed while it was measured, so ask again",
+                new SwAgent.Contracts.Serialization.JsonObject { ["check"] = "distance", ["first"] = result.DistanceMm, ["second"] = again.DistanceMm });
+    }
+}
+
+/// <summary>What model.measure reads from a description: a centre, and a direction.</summary>
+public static class Measures
+{
+    /// <summary>The centre of a circle or sphere, or a vertex or point itself; null for anything else.</summary>
+    public static Point3? Centre(EntityInfo e) =>
+        e.Geometry == GeometryType.Circle || e.Geometry == GeometryType.Sphere || e.Geometry == GeometryType.Point ? e.Origin : null;
+
+    /// <summary>A plane's or planar face's normal, or the axis of a straight edge, axis, cylinder or cone; null for anything else.</summary>
+    public static Vector3? Direction(EntityInfo e) => e.Geometry switch
+    {
+        GeometryType.Plane => e.Normal,
+        GeometryType.Line or GeometryType.Cylinder or GeometryType.Cone => e.Axis,
+        _ => null,
+    };
+}

@@ -1,0 +1,118 @@
+{
+  "type": "object",
+  "description": "Extrudes a sketch's closed profile along the sketch's normal, optionally in a second direction too and as a thin wall: a boss adds material, a cut removes it. Lengths in mm, angles in degrees. Checked: the feature exists with its type, rebuilds without error, and the part's volume grew (boss) or shrank (cut); for a blind or mid-plane boss (blind both ways with direction2) without draft or thin wall on a part with no body yet, the volume is exactly the profile's area times the total depth. Otherwise the feature is deleted and the part is as it was (rolled back); the sketch stays. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "sketch": {
+      "type": "string",
+      "description": "The sketch to extrude: its name (Sketch3) or its reference. Its closed loops are the profile."
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "boss",
+        "cut"
+      ],
+      "description": "boss (adds material) or cut (removes it). Default boss."
+    },
+    "end": {
+      "type": "string",
+      "enum": [
+        "blind",
+        "through_all",
+        "up_to_next",
+        "up_to_vertex",
+        "up_to_surface",
+        "mid_plane"
+      ],
+      "description": "blind (depth_mm along the normal), mid_plane (depth_mm in total, half each side), through_all, up_to_next, up_to_vertex or up_to_surface (both name up_to). Default blind."
+    },
+    "depth_mm": {
+      "type": "number",
+      "description": "How far, mm, for blind and mid_plane; more than 0. Not given for the other ends."
+    },
+    "up_to": {
+      "type": "string",
+      "description": "For up_to_vertex, a vertex or point; for up_to_surface, a face or plane: its reference or name."
+    },
+    "reverse": {
+      "type": "boolean",
+      "description": "Extrude the other way, against the sketch's normal. Not with mid_plane. Default false."
+    },
+    "draft_deg": {
+      "type": "number",
+      "description": "A draft angle, degrees, more than 0 and less than 90; no draft when absent."
+    },
+    "draft_outward": {
+      "type": "boolean",
+      "description": "The draft widens the profile as it goes instead of narrowing it. Default false."
+    },
+    "merge": {
+      "type": "boolean",
+      "description": "For a boss: merge it with the bodies it touches. Default true. Not for a cut."
+    },
+    "direction2": {
+      "type": "object",
+      "properties": {
+        "end": {
+          "type": "string",
+          "enum": [
+            "blind",
+            "through_all",
+            "up_to_next",
+            "up_to_vertex",
+            "up_to_surface",
+            "mid_plane"
+          ],
+          "description": "blind (depth_mm), through_all, up_to_next, up_to_vertex or up_to_surface (both name up_to). Default blind. Not mid_plane."
+        },
+        "depth_mm": {
+          "type": "number",
+          "description": "How far, mm, for blind; more than 0. Not given for the other ends."
+        },
+        "up_to": {
+          "type": "string",
+          "description": "For up_to_vertex, a vertex or point; for up_to_surface, a face or plane: its reference or name."
+        },
+        "draft_deg": {
+          "type": "number",
+          "description": "A draft angle for this direction, degrees, more than 0 and less than 90; no draft when absent."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Extrude the other way from the sketch plane as well, with its own end. Not with mid_plane."
+    },
+    "thin": {
+      "type": "object",
+      "properties": {
+        "thickness_mm": {
+          "type": "number",
+          "description": "The wall's thickness, mm, more than 0."
+        },
+        "side": {
+          "type": "string",
+          "enum": [
+            "one_side",
+            "other_side",
+            "mid_plane",
+            "two_sides"
+          ],
+          "description": "one_side (the default), other_side, mid_plane (half each side of the outline) or two_sides (thickness_mm on one side, thickness2_mm on the other)."
+        },
+        "thickness2_mm": {
+          "type": "number",
+          "description": "For two_sides: the thickness on the other side, mm, more than 0."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Make a thin wall from the profile's outline instead of filling it."
+    }
+  },
+  "required": [
+    "sketch"
+  ],
+  "additionalProperties": false
+}

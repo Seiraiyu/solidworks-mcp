@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "description": "Rounds edges with a constant-radius fillet: the edges named, and every edge of the faces named; tangent edges are rounded with them. Radius in mm. Checked: the feature exists as a fillet, rebuilds without error, every edge named is gone (it no longer resolves), the fillet made at least one face per edge named, and the part's volume changed. Otherwise the fillet is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The edges to round: their references (model.find kind edge). Give edges, faces or both."
+    },
+    "faces": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Faces whose every edge is rounded: their references."
+    },
+    "radius_mm": {
+      "type": "number",
+      "description": "The radius, mm: more than 0."
+    }
+  },
+  "additionalProperties": false
+}

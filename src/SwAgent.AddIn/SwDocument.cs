@@ -113,6 +113,51 @@ public interface ISwDocument
 
     /// <summary>Deletes a feature (a sketch an operation made), and what it absorbed; throws when SOLIDWORKS does not.</summary>
     void DeleteFeature(object feature);
+
+    /// <summary>
+    /// Deletes a feature, with its children (the features built on it) only when <paramref name="children"/>, and the
+    /// features it absorbed (its sketch) only when <paramref name="absorbed"/>; throws when SOLIDWORKS does not.
+    /// </summary>
+    void Delete(object feature, bool children, bool absorbed);
+
+    /// <summary>Extrudes <paramref name="sketch"/>; the new feature, or null when SOLIDWORKS made none. Selects what it needs and clears the selection.</summary>
+    object? Extrude(object sketch, ExtrudeSpec spec);
+
+    /// <summary>Revolves <paramref name="sketch"/> about <see cref="RevolveSpec.Axis"/>; the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Revolve(object sketch, RevolveSpec spec);
+
+    /// <summary>A constant-radius fillet on these edges and faces; the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Fillet(System.Collections.Generic.IReadOnlyList<object> edgesAndFaces, double radiusMm);
+
+    /// <summary>A chamfer on these edges; the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Chamfer(System.Collections.Generic.IReadOnlyList<object> edges, ChamferSpec spec);
+
+    /// <summary>A reference plane; the new plane feature, or null when SOLIDWORKS made none.</summary>
+    object? Plane(PlaneSpec spec);
+
+    /// <summary>A reference axis on the spec's references; the new axis feature, or null when SOLIDWORKS made none.</summary>
+    object? Axis(RefSpec spec);
+
+    /// <summary>A reference point on the spec's references; the new point feature, or null when SOLIDWORKS made none.</summary>
+    object? Point(RefSpec spec);
+
+    /// <summary>Suppresses or unsuppresses a feature in the active configuration, without rebuilding; false when SOLIDWORKS refuses.</summary>
+    bool Suppress(object feature, bool suppressed);
+
+    /// <summary>The names of the features built on <paramref name="feature"/> (IFeature.GetChildren), in SOLIDWORKS' order.</summary>
+    System.Collections.Generic.IReadOnlyList<string> ChildrenOf(object feature);
+
+    /// <summary>The shortest distance between two entities, mm, and the closest point on each (IModelDoc2.ClosestDistance); ApiError when SOLIDWORKS cannot measure them.</summary>
+    double ClosestDistance(object a, object b, out Point3 onA, out Point3 onB);
+
+    /// <summary>Opens a sketch for editing as the user's Edit Sketch does, and leaves it open (diag.edit_sketch); false when SOLIDWORKS did not open it.</summary>
+    bool OpenForEditing(object sketch);
+
+    /// <summary>Exits the sketch being edited, if any, as the user's Exit Sketch does (diag.edit_sketch).</summary>
+    void ExitSketch();
+
+    /// <summary>The faces <paramref name="feature"/> made.</summary>
+    System.Collections.Generic.IReadOnlyList<object> FacesOf(object feature);
 }
 
 /// <summary>One selected object as SOLIDWORKS reports it.</summary>

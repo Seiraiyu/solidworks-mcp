@@ -11,7 +11,7 @@ namespace SwAgent.AddIn;
 /// The real document, through SOLIDWORKS' IModelDoc2. UI thread only. Converts SOLIDWORKS' metres to millimetres at
 /// this boundary and nowhere else. Covered by the parts live suite, not by unit tests.
 /// </summary>
-internal sealed class SolidWorksDocument : ISwDocument
+internal sealed partial class SolidWorksDocument : ISwDocument
 {
     const double Mm = 1000.0;
     const double Mm2 = 1e6;

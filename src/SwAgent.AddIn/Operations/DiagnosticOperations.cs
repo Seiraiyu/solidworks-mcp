@@ -138,3 +138,45 @@ public sealed class DiagEditingOperation : Operation<DiagEditingRequest, DiagEdi
     {
     }
 }
+
+/// <summary>
+/// Live testing only: a sketch open for editing as the user would leave it, so the fault suite proves a model change
+/// waits (busy, user_editing) with no one at SOLIDWORKS. Opening never sets the sketch manager's drawing options (it is
+/// not the add-in's own drawing), so nothing is left changed when it is exited.
+/// </summary>
+public sealed class DiagEditSketchOperation : Operation<DiagEditSketchRequest, DiagEditingResult>
+{
+    readonly AddInServices _services;
+
+    public DiagEditSketchOperation(AddInServices services)
+    {
+        _services = services;
+    }
+
+    protected override DiagEditingResult Run(DiagEditSketchRequest request, IOperationContext context)
+    {
+        if (!_services.Runtime.DiagnosticsEnabled)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                @"diagnostic operations are off; set HKCU\Software\solidworks-mcp\Diagnostics (DWORD) to 1 and reload the add-in to use them");
+        }
+        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "diag.edit_sketch");
+        if (request.Open)
+        {
+            if (request.Sketch == null) throw new SwAgentException(ErrorCode.InvalidArgument, "sketch: name the sketch to open", new JsonObject { ["field"] = "sketch" });
+            var (sketch, _) = _services.References.Resolve(doc, request.Sketch, "sketch", ReferenceKind.Sketch);
+            context.Log.Warn($"diag.edit_sketch: opening {request.Sketch} for editing as the user would");
+            if (!doc.OpenForEditing(sketch)) throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS did not open {request.Sketch} for editing");
+        }
+        else doc.ExitSketch();
+        return new DiagEditingResult { Sketch = doc.EditingSketch(), Command = _services.SolidWorks.OpenCommand() };
+    }
+
+    /// <summary>The sketch is open (or none is), read again.</summary>
+    protected override void Verify(DiagEditSketchRequest request, DiagEditingResult result, IOperationContext context)
+    {
+        bool open = result.Sketch != null;
+        if (open != request.Open)
+            throw new SwAgentException(ErrorCode.VerificationFailed, request.Open ? $"{request.Sketch} is not open for editing" : $"{result.Sketch} is still open for editing");
+    }
+}
