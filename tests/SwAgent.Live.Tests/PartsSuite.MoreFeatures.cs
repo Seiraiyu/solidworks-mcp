@@ -132,7 +132,8 @@ public sealed partial class PartsSuite
     public Task A_draft_tilts_a_side_by_its_angle() => _run.CaseAsync(25, "feature.draft: the block's x = 40 side drafted 5° about the front plane, 87.489 mm³ either way", async () =>
     {
         await _run.RequireOnlyOwnDocumentsAsync();
-        var block = await Block("draft");
+        // Not "draft": case 21 made draft.SLDPRT for its drafted extrude (3.D live run, round 1).
+        var block = await Block("draft-side");
         string path = block.Path!;
         var side = await At(path, TopologyKind.Face, new Point3(40, 10, 5));
         var draft = await Call<FeatureDraftRequest, FeatureResult>(new FeatureDraftRequest { Document = path, NeutralPlane = "front", Faces = new List<string> { side.Reference! }, AngleDeg = 5 });
