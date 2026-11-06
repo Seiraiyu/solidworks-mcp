@@ -691,4 +691,40 @@ public class ErrorCodeTests : DocumentTestBase
         Assert.Equal(code, Fails(() => Run(new FeatureDeleteOperation(Services), request)).Code);
         if (code != ErrorCode.OperationFailed) Assert.Contains(doc.Tree, f => f.Name == "Boss-Extrude1");
     }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Model_measure_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new ModelMeasureRequest { A = "front", B = "top" };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Fails(() => Run(new ModelMeasureOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Part();
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.B = "Ebene unten";
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                var face = doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Plane });
+                request.B = Services.References.Describe(doc, face).Reference!;
+                face.State = PersistState.Deleted;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.MeasureDrift = 1;
+                break;
+            case ErrorCode.ApiError:
+                doc.MeasureFails = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Run(new ModelMeasureOperation(Services), request)).Code);
+    }
 }

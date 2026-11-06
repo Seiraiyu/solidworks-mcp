@@ -263,6 +263,23 @@ sealed partial class FakeDocument
         return true;
     }
 
+    /// <summary>ClosestDistance throws api_error (SOLIDWORKS unable to measure).</summary>
+    public bool MeasureFails { get; set; }
+
+    /// <summary>Each ClosestDistance call reads this much more than the last (the part changing while it is measured).</summary>
+    public double MeasureDrift { get; set; }
+
+    int _measures;
+
+    /// <summary>The distance between the two entities' origins, which are the closest points.</summary>
+    public double ClosestDistance(object a, object b, out Point3 onA, out Point3 onB)
+    {
+        if (MeasureFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS could not measure between them");
+        onA = ((FakeEntity)a).Info.Origin ?? new Point3(0, 0, 0);
+        onB = ((FakeEntity)b).Info.Origin ?? new Point3(0, 0, 0);
+        return Math.Sqrt(Math.Pow(onA.X - onB.X, 2) + Math.Pow(onA.Y - onB.Y, 2) + Math.Pow(onA.Z - onB.Z, 2)) + MeasureDrift * _measures++;
+    }
+
     public IReadOnlyList<object> FacesOf(object feature) =>
         _facesOf.TryGetValue((FakeEntity)feature, out var faces) ? faces.Where(Entities.Contains).Cast<object>().ToList() : new List<object>();
 

@@ -147,6 +147,9 @@ public interface ISwDocument
     /// <summary>The names of the features built on <paramref name="feature"/> (IFeature.GetChildren), in SOLIDWORKS' order.</summary>
     System.Collections.Generic.IReadOnlyList<string> ChildrenOf(object feature);
 
+    /// <summary>The shortest distance between two entities, mm, and the closest point on each (IModelDoc2.ClosestDistance); ApiError when SOLIDWORKS cannot measure them.</summary>
+    double ClosestDistance(object a, object b, out Point3 onA, out Point3 onB);
+
     /// <summary>The faces <paramref name="feature"/> made.</summary>
     System.Collections.Generic.IReadOnlyList<object> FacesOf(object feature);
 }

@@ -244,6 +244,19 @@ internal sealed partial class SolidWorksDocument
     public IReadOnlyList<string> ChildrenOf(object feature) =>
         ((IFeature)feature).GetChildren() is object[] children ? children.OfType<IFeature>().Select(c => c.Name).ToList() : new List<string>();
 
+    /// <summary>ClosestDistance on the entities, a plane, axis or point feature measured by its own geometry (IRefPlane, IRefAxis, IRefPoint).</summary>
+    public double ClosestDistance(object a, object b, out Point3 onA, out Point3 onB)
+    {
+        object Geometry(object e) => e is IFeature f && f.GetSpecificFeature2() is object specific && f.GetTypeName2() != "OriginProfileFeature" ? specific : e;
+        object p1, p2;
+        double d = Doc.ClosestDistance(Geometry(a), Geometry(b), out p1, out p2);
+        if (d < 0 || !(p1 is double[] x) || !(p2 is double[] y))
+            throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS could not measure between the {Describe(a).Kind.ToString().ToLowerInvariant()} and the {Describe(b).Kind.ToString().ToLowerInvariant()}");
+        onA = new Point3(x[0] * Mm, x[1] * Mm, x[2] * Mm);
+        onB = new Point3(y[0] * Mm, y[1] * Mm, y[2] * Mm);
+        return d * Mm;
+    }
+
     public IReadOnlyList<object> FacesOf(object feature) =>
         ((IFeature)feature).GetFaces() is object[] faces ? faces.Where(f => f != null).ToList() : new List<object>();
 
