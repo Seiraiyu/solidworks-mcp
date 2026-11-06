@@ -609,4 +609,45 @@ public class ErrorCodeTests : DocumentTestBase
         Assert.Equal(code, Fails(() => Run(new RefgeomPointOperation(Services), request)).Code);
         Assert.DoesNotContain(doc.Tree, f => f.Name == "Point1");
     }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    public void Feature_suppress_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureSuppressRequest { Features = new List<string> { "Boss-Extrude1" } };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Fails(() => Run(new FeatureSuppressOperation(Services), request)).Code);
+            return;
+        }
+        var (doc, _) = Blocked();
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Features = new List<string> { "Boss-Extrude9" };
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                var boss = doc.Entities.Single(e => e.Info.Name == "Boss-Extrude1");
+                request.Features = new List<string> { Services.References.Describe(doc, boss).Reference! };
+                boss.State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch1";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.SuppressRefused = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.SuppressIgnored = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Run(new FeatureSuppressOperation(Services), request)).Code);
+        Assert.False(doc.Tree.Single(f => f.Name == "Boss-Extrude1").Suppressed);
+    }
 }

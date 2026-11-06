@@ -141,6 +141,9 @@ public interface ISwDocument
     /// <summary>A reference point on the spec's references; the new point feature, or null when SOLIDWORKS made none.</summary>
     object? Point(RefSpec spec);
 
+    /// <summary>Suppresses or unsuppresses a feature in the active configuration, without rebuilding; false when SOLIDWORKS refuses.</summary>
+    bool Suppress(object feature, bool suppressed);
+
     /// <summary>The faces <paramref name="feature"/> made.</summary>
     System.Collections.Generic.IReadOnlyList<object> FacesOf(object feature);
 }

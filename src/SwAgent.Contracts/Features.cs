@@ -164,6 +164,36 @@ public sealed class FeatureChamferRequest
     [Description("A second distance, mm, along the other face, for a distance-distance chamfer. Not with angle_deg.")]
     public double? Distance2Mm { get; set; }
 }
+[Operation("feature.suppress", typeof(FeatureSuppressResult))]
+[Description("Suppresses features in the active configuration (suppressed: true, the default), or unsuppresses them (false); features built on a suppressed feature are suppressed with it, as SOLIDWORKS does. Then rebuilds. Checked: each feature named reads suppressed (or not) after the rebuild, and no feature has a new rebuild error; otherwise each is put back as it was. A feature already as asked is left alone and reported. Name a suppressed feature by its name to unsuppress it: references to what it made do not resolve while it is suppressed. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class FeatureSuppressRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The features: their names (Boss-Extrude2) or references.")]
+    public List<string> Features { get; set; } = new List<string>();
+
+    [Description("true to suppress, false to unsuppress. Default true.")]
+    public bool? Suppressed { get; set; }
+}
+
+[Description("Features suppressed or unsuppressed, and the part after it.")]
+public sealed class FeatureSuppressResult : IModelChangeResult
+{
+    [Required]
+    [Description("The evidence: each feature's suppression before and after, and the part rebuilt.")]
+    public ModelChange Change { get; set; } = new ModelChange();
+
+    [Required]
+    [Description("The features named, as they are now.")]
+    public List<EntityInfo> Features { get; set; } = new List<EntityInfo>();
+
+    [Required]
+    [Description("Features named that were already as asked, and left alone.")]
+    public List<string> Unchanged { get; set; } = new List<string>();
+}
 [Description("A feature made, with references to it and the faces it made, and the part after it.")]
 public sealed class FeatureResult : IModelChangeResult
 {

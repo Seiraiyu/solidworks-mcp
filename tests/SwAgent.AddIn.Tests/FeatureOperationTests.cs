@@ -485,3 +485,76 @@ public class FeatureChamferTests : FeatureTestBase
         Assert.DoesNotContain(doc.Tree, f => f.Name == "Chamfer1");
     }
 }
+public class FeatureSuppressTests : FeatureTestBase
+{
+    FeatureSuppressResult Suppress(FeatureSuppressRequest request) => Run(new FeatureSuppressOperation(Services), request);
+
+    [Fact]
+    public void Suppresses_and_unsuppresses_by_name_and_reports_the_change()
+    {
+        var doc = Part();
+        Block();
+        Hole();
+        var cut = Extrude(new FeatureExtrudeRequest { Sketch = "Sketch2", Mode = FeatureMode.Cut, End = ExtrudeEnd.ThroughAll });
+        var off = Suppress(new FeatureSuppressRequest { Features = new List<string> { cut.Feature.Reference! } });
+        Assert.Equal("Cut-Extrude1", off.Features.Single().Name);
+        var changed = off.Change.Changed.Single();
+        Assert.Equal(("suppressed", "unsuppressed", "suppressed"), (changed.Property, changed.Before, changed.After));
+        Assert.Equal(8000, off.Change.VolumeAfterMm3, 6);
+        Assert.True(doc.Tree.Single(f => f.Name == "Cut-Extrude1").Suppressed);
+        var on = Suppress(new FeatureSuppressRequest { Features = new List<string> { "Cut-Extrude1" }, Suppressed = false });
+        Assert.Equal(8000 - Math.PI * 250, on.Change.VolumeAfterMm3, 6);
+        Assert.Equal(new[] { false, false }, doc.Rebuilds);
+    }
+
+    [Fact]
+    public void A_feature_already_as_asked_is_left_alone()
+    {
+        var doc = Part();
+        Block();
+        var result = Suppress(new FeatureSuppressRequest { Features = new List<string> { "Boss-Extrude1" }, Suppressed = false });
+        Assert.Equal(new[] { "Boss-Extrude1" }, result.Unchanged);
+        Assert.Empty(result.Change.Changed);
+        Assert.Empty(doc.Suppressions);
+    }
+
+    [Theory]
+    [InlineData("none", "features")]
+    [InlineData("twice", "/features/1")]
+    [InlineData("a_face", "/features/0")]
+    public void A_request_naming_nothing_or_naming_it_wrongly_is_refused(string wrong, string field)
+    {
+        var doc = Part();
+        Block();
+        var request = new FeatureSuppressRequest { Features = new List<string> { "Boss-Extrude1" } };
+        switch (wrong)
+        {
+            case "none": request.Features.Clear(); break;
+            case "twice": request.Features.Add("Boss-Extrude1"); break;
+            case "a_face": request.Features = new List<string> { Face(doc) }; break;
+        }
+        Assert.Equal(field, Fails(() => Suppress(request)).Error.Details!["field"]);
+        Assert.Empty(doc.Suppressions);
+    }
+
+    [Fact]
+    public void A_feature_that_does_not_take_the_suppression_is_put_back()
+    {
+        var doc = Part();
+        Block();
+        doc.SuppressIgnored = true;
+        var e = Fails(() => Suppress(new FeatureSuppressRequest { Features = new List<string> { "Boss-Extrude1" } }));
+        Assert.Equal("suppressed", e.Error.Details!["check"]);
+        Assert.Equal(new[] { ("Boss-Extrude1", true), ("Boss-Extrude1", false) }, doc.Suppressions);
+    }
+
+    [Fact]
+    public void SOLIDWORKS_refusing_is_operation_failed_and_nothing_stays_changed()
+    {
+        var doc = Part();
+        Block();
+        doc.SuppressRefused = true;
+        Assert.Equal(ErrorCode.OperationFailed, Fails(() => Suppress(new FeatureSuppressRequest { Features = new List<string> { "Boss-Extrude1" } })).Code);
+        Assert.False(doc.Tree.Single(f => f.Name == "Boss-Extrude1").Suppressed);
+    }
+}

@@ -240,6 +240,29 @@ sealed partial class FakeDocument
         return feature;
     }
 
+    /// <summary>Suppress returns false (SOLIDWORKS refusing).</summary>
+    public bool SuppressRefused { get; set; }
+
+    /// <summary>Suppress returns true and changes nothing.</summary>
+    public bool SuppressIgnored { get; set; }
+
+    public List<(string Name, bool Suppressed)> Suppressions { get; } = new List<(string, bool)>();
+
+    /// <summary>Marks the feature suppressed or not in the tree, and takes its volume out of the part or puts it back.</summary>
+    public bool Suppress(object feature, bool suppressed)
+    {
+        var f = (FakeEntity)feature;
+        Suppressions.Add((f.Info.Name ?? "?", suppressed));
+        if (SuppressRefused) return false;
+        if (SuppressIgnored) return true;
+        int i = Tree.FindIndex(t => ReferenceEquals(t.Feature, f));
+        var old = Tree[i];
+        if (old.Suppressed == suppressed) return true;
+        Tree[i] = new FeatureRecord(f, old.Name, old.Type, old.Parent, suppressed, old.ErrorCode, old.Warning);
+        if (_volumeOf.TryGetValue(f, out double v)) MassProperties!.VolumeMm3 += suppressed ? -v : v;
+        return true;
+    }
+
     public IReadOnlyList<object> FacesOf(object feature) =>
         _facesOf.TryGetValue((FakeEntity)feature, out var faces) ? faces.Where(Entities.Contains).Cast<object>().ToList() : new List<object>();
 

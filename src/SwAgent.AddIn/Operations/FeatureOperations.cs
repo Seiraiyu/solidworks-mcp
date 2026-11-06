@@ -246,6 +246,59 @@ public sealed class FeatureChamferOperation : ModelChangeOperation<FeatureChamfe
     }
 }
 
+public sealed class FeatureSuppressOperation : ModelChangeOperation<FeatureSuppressRequest, FeatureSuppressResult>
+{
+    public FeatureSuppressOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(FeatureSuppressRequest request) => request.Document;
+
+    protected override FeatureSuppressResult Change(ISwDocument doc, FeatureSuppressRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        bool want = request.Suppressed ?? true;
+        var features = FeatureFacts.Features(Services.References, doc, request.Features);
+        var result = new FeatureSuppressResult();
+        foreach (var (feature, name) in features)
+        {
+            bool now = FeatureFacts.IsSuppressed(doc, name);
+            if (now == want)
+            {
+                result.Unchanged.Add(name);
+                continue;
+            }
+            tx.Edited(new ChangedItem { Name = name, Property = "suppressed", Before = Text(now), After = Text(want) }, () =>
+            {
+                doc.Suppress(feature, now);
+                doc.Rebuild(false);
+            });
+            if (!doc.Suppress(feature, want))
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not {(want ? "suppress" : "unsuppress")} {name}");
+        }
+        if (!doc.Rebuild(false)) throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS could not rebuild {doc.Info().Title} after {(want ? "suppressing" : "unsuppressing")} {string.Join(", ", features.Select(f => f.Name))}");
+        result.Features = features.Select(f => Services.References.Describe(doc, f.Feature)).ToList();
+        return result;
+    }
+
+    /// <summary>Each feature named reads as asked in the tree.</summary>
+    protected override void Check(ISwDocument doc, FeatureSuppressRequest request, FeatureSuppressResult result)
+    {
+        bool want = request.Suppressed ?? true;
+        foreach (var f in result.Features)
+        {
+            string name = f.Name ?? "";
+            if (FeatureFacts.IsSuppressed(doc, name) != want)
+            {
+                throw new SwAgentException(ErrorCode.VerificationFailed, $"{name} is {(want ? "not suppressed" : "still suppressed")} after the rebuild",
+                    new JsonObject { ["check"] = "suppressed", ["feature"] = name, ["expected"] = want });
+            }
+        }
+    }
+
+    static string Text(bool suppressed) => suppressed ? "suppressed" : "unsuppressed";
+}
+
 /// <summary>What every feature operation shares: request checks, the feature recorded in the transaction, the result filled, and the common checks.</summary>
 public static class FeatureFacts
 {
@@ -301,6 +354,25 @@ public static class FeatureFacts
         }
         result.Checks.Add($"the {edges.Count} edges named are gone, and the {what} made {result.Faces.Count} faces");
     }
+
+    /// <summary>The features named (any kind of feature: features, sketches, planes, axes, points), each once, with their names; fields /features/i.</summary>
+    public static List<(object Feature, string Name)> Features(ReferenceService references, ISwDocument doc, IReadOnlyList<string> texts)
+    {
+        if (texts.Count == 0) throw Invalid("features", "name at least one feature");
+        var list = new List<(object, string)>();
+        for (int i = 0; i < texts.Count; i++)
+        {
+            string at = $"/features/{i}";
+            var (entity, _) = references.Resolve(doc, texts[i], at, ReferenceKind.Feature, ReferenceKind.Sketch, ReferenceKind.Plane, ReferenceKind.Axis, ReferenceKind.Point);
+            string name = doc.Describe(entity).Name ?? "?";
+            if (list.Any(f => f.Item2 == name)) throw Invalid(at, $"{at} names {name} again");
+            list.Add((entity, name));
+        }
+        return list;
+    }
+
+    /// <summary>Whether the tree reads the feature named as suppressed (false when it is not in the tree).</summary>
+    public static bool IsSuppressed(ISwDocument doc, string name) => doc.Features().FirstOrDefault(f => f.Name == name)?.Suppressed ?? false;
 
     /// <summary>The sketch's contents, which must hold something that is not construction geometry.</summary>
     public static SketchContents Profile(ISwDocument doc, object sketch, string field, string what)

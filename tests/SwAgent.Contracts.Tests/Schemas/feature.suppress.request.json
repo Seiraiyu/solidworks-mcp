@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "description": "Suppresses features in the active configuration (suppressed: true, the default), or unsuppresses them (false); features built on a suppressed feature are suppressed with it, as SOLIDWORKS does. Then rebuilds. Checked: each feature named reads suppressed (or not) after the rebuild, and no feature has a new rebuild error; otherwise each is put back as it was. A feature already as asked is left alone and reported. Name a suppressed feature by its name to unsuppress it: references to what it made do not resolve while it is suppressed. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The features: their names (Boss-Extrude2) or references."
+    },
+    "suppressed": {
+      "type": "boolean",
+      "description": "true to suppress, false to unsuppress. Default true."
+    }
+  },
+  "required": [
+    "features"
+  ],
+  "additionalProperties": false
+}
