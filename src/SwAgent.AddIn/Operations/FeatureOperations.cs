@@ -529,6 +529,26 @@ public static class FeatureFacts
         result.Checks.Add(FormattableString.Invariant($"the volume {way}: {before:0.###} -> {after:0.###} mm³"));
     }
 
+    /// <summary>The part has a solid body after the feature (design 371: a sweep or loft leaves "a body").</summary>
+    public static void HasBody(int bodies, string what)
+    {
+        if (bodies > 0) return;
+        throw new SwAgentException(ErrorCode.VerificationFailed, $"the part has no solid body after the {what}",
+            new JsonObject { ["check"] = "body", ["expected"] = "at least 1", ["measured"] = bodies });
+    }
+
+    /// <summary>The model-space vector from start to end of the sketch's one drawn segment, when that is a line; null otherwise.</summary>
+    public static (Vector3 Direction, double LengthMm)? OnlyLine(SketchContents c)
+    {
+        var drawn = c.Segments.Where(s => !s.Construction).ToList();
+        if (drawn.Count != 1 || drawn[0].Kind != SketchSegmentKind.Line || drawn[0].Start == null || drawn[0].End == null) return null;
+        double dx = drawn[0].End!.X - drawn[0].Start!.X, dy = drawn[0].End!.Y - drawn[0].Start!.Y;
+        var d = new Vector3(dx * c.XAxis.X + dy * c.YAxis.X, dx * c.XAxis.Y + dy * c.YAxis.Y, dx * c.XAxis.Z + dy * c.YAxis.Z);
+        return (d, Math.Sqrt(dx * dx + dy * dy));
+    }
+
+    public static double Dot(Vector3 a, Vector3 b) => a.X * b.X + a.Y * b.Y + a.Z * b.Z;
+
     /// <summary>The feature made at least one face.</summary>
     public static void MadeFaces(FeatureResult result, string what)
     {

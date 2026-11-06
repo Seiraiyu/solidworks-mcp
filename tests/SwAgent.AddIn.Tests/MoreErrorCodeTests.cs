@@ -1,0 +1,63 @@
+using System.Collections.Generic;
+using System.Linq;
+using SwAgent.AddIn.Operations;
+using SwAgent.Contracts;
+using Xunit;
+
+namespace SwAgent.AddIn.Tests;
+
+/// <summary>
+/// Every error code each 3.D operation lists in the plan's code table is reachable (design 371, Error handling), one
+/// case per code, as ErrorCodeTests does for 3.A to 3.C. The dispatcher's own busy (not started), timeout and
+/// dialog_open, which every operation can answer, are proven by phase 2's tests.
+/// </summary>
+public class MoreErrorCodeTests : FeatureTestBase
+{
+    static SwAgentException Reach(System.Action action) => Fails(action);
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_sweep_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureSweepRequest { Profile = "Sketch1", Path = "Sketch2" };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new FeatureSweepOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Part();
+        Sketch(new SketchGeometry { Lines = new List<SketchLine> { new SketchLine { Id = "path", Start = P(0, 0), End = P(0, -30) } } }, on: "top");
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Path = "Sketch1";
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                var edge = doc.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, LengthMm = 10 });
+                request.Path = Services.References.Describe(doc, edge).Reference!;
+                edge.State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch2";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.FeatureVolumeError = 1;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureSweepOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "Sweep");
+    }
+}

@@ -93,3 +93,17 @@ public sealed class RefSpec
     /// <summary>For a point along a curve, mm.</summary>
     public double DistanceMm { get; set; }
 }
+
+/// <summary>A sweep as ISwDocument.Sweep makes it: the path and guides resolved to SOLIDWORKS' objects.</summary>
+public sealed class SweepSpec
+{
+    public bool Cut { get; set; }
+
+    /// <summary>A sketch, or a model edge.</summary>
+    public object Path { get; set; } = new object();
+
+    /// <summary>Guide curve sketches, in order.</summary>
+    public System.Collections.Generic.List<object> Guides { get; } = new System.Collections.Generic.List<object>();
+
+    public bool Merge { get; set; } = true;
+}
