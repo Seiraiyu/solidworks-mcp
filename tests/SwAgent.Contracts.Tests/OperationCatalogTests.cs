@@ -190,6 +190,7 @@ static class Samples
         if (t == typeof(double)) return 1.5;
         if (t.IsEnum) return Enum.GetValues(t).Cast<object>().Last();
         if (t == typeof(JsonObject)) return new JsonObject { ["k"] = "v" };
+        if (t == typeof(object)) return new List<object?> { 1L, "two", new JsonObject { ["ref"] = "r1.face.AA" } };
         if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(List<>))
         {
             var list = (IList)Activator.CreateInstance(t)!;
