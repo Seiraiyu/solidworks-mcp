@@ -17,6 +17,9 @@ It offers these tools:
 - `sw_selection_get` reads what is selected in a part.
 - Sketches: `sw_sketch_create` draws a whole sketch in one call (lines, centerlines, arcs, circles, rectangles, polygons, slots, splines and points, then relations, then named driving dimensions), `sw_sketch_read` reads one back and `sw_sketch_modify` adds to or removes from one.
 - Dimensions: `sw_model_dimensions` lists them and `sw_dimension_set` changes a driving one.
+- Features: `sw_feature_extrude` (a boss or a cut, blind, through all, up to next, up to a vertex or surface, or mid-plane, with an optional draft, second direction and thin wall), `sw_feature_revolve`, `sw_feature_fillet` (constant radius, on edges or faces), `sw_feature_chamfer` (distance and angle, or two distances), `sw_feature_suppress` and `sw_feature_delete`.
+- Reference geometry: `sw_refgeom_plane` (offset, angle, three points, parallel through a point, normal to a curve), `sw_refgeom_axis` and `sw_refgeom_point`.
+- `sw_model_measure` gives the distance, closest points, centre distance and angle between two faces, edges, vertices, planes, axes or points.
 
 There is one tool per add-in operation, named `sw_` and the operation with underscores (`document.save_as` is `sw_document_save_as`).
 
@@ -28,15 +31,26 @@ Faces, edges, vertices, features, planes, sketches, sketch entities and dimensio
 
 ### Changing a part
 
-Every tool that changes a part (`sw_sketch_create`, `sw_sketch_modify`, `sw_dimension_set`) works the same way:
+Every tool that changes a part (the sketch, dimension, feature and reference geometry tools) works the same way:
 
 - It does not start while you are editing a sketch in the part or have a command's PropertyManager open: it answers `busy` with `user_editing` and changes nothing. It never closes your sketch or command. A command open anywhere in SOLIDWORKS counts, not only one in that part: SOLIDWORKS reports the open command for the whole application.
-- It checks its own result against what was asked (a sketch holds what was drawn, every dimension reads back at its value, nothing new fails to rebuild), and if anything is wrong it takes the change back, so the part is as it was. If taking it back fails too, it says so (`rollback_failed`) and leaves the part open with its changes for you to look at.
+- It checks its own result against what was asked, by the part's geometry rather than SOLIDWORKS' return value (a sketch holds what was drawn, every dimension reads back at its value, nothing new fails to rebuild), and if anything is wrong it takes the change back, so the part is as it was. If taking it back fails too, it says so (`rollback_failed`) and leaves the part open with its changes for you to look at.
 - It returns the evidence: what it made and edited, the part's rebuild errors, and its volume and body count before and after.
 
 ### Sketches
 
 `sw_sketch_create` draws, relates and dimensions a whole sketch and closes it in one call, so SOLIDWORKS is never left editing a sketch between calls. Each entity has the agent's own short id; relations and dimensions name entities by id, with `.start`, `.end` or `.center` for their points (`l1.end`), a rectangle's sides as `.bottom`, `.right`, `.top` and `.left`, `origin` for the sketch's origin, or a reference to one of the part's edges or vertices. Coordinates are millimetres in the sketch's own plane; the result says where that plane is in the part. An under-defined sketch is allowed and reported; an over-defined one is taken back.
+
+### Features
+
+Each feature tool checks the geometry it made, as well as the checks every change makes:
+
+- Extrudes and revolves: the part's volume grows (boss) or shrinks (cut). A blind or mid-plane boss without draft on a part with no body yet must add exactly the profile's area times its depth, and a boss revolved about a line in its own sketch exactly Pappus' volume (angle × area × the centroid's distance from the axis). Profiles of lines and circles are measured; arcs and splines get the sign check only.
+- Fillets and chamfers: every edge named is gone afterwards (its reference no longer resolves), the feature made a face for each, and the volume changed.
+- Reference planes, axes and points: they are where the request put them (a plane's normal and offset, the angle to its plane, the points on it; an axis on its planes' line or its cylinder's axis; a point at a circle's centre or on its edges), and the volume is unchanged.
+- `sw_feature_suppress` checks each feature reads as asked after the rebuild, and puts them back otherwise. `sw_feature_delete` refuses a feature that others are built on (at any depth) unless `children: delete`, and a deleted feature cannot be made again, so a check that fails afterwards is `rollback_failed`.
+
+A feature SOLIDWORKS does not make (a fillet too big for its edge, a cut that misses the part) answers `operation_failed` with SOLIDWORKS' rebuild errors, and nothing is left of it. The sketch an extrude or revolve used is kept.
 
 ### Closing documents
 
@@ -72,7 +86,9 @@ The build needs no SOLIDWORKS: the interop assemblies it compiles against are in
 - the client dropping the pipe;
 - SOLIDWORKS killed mid-operation (`sw_crashed`);
 - SOLIDWORKS closed normally (`sw_not_running`);
-- reattaching after each restart.
+- reattaching after each restart;
+- a reference to a face that a dimension change removed (a pocket deepened through the block: `reference_unresolved`, nothing changed);
+- a change while a sketch is open for editing (`busy` with `user_editing`; the suite opens the sketch itself).
 
 Every case is skipped unless `SWMCP_LIVE=1`, so a plain `dotnet test` and CI never touch SOLIDWORKS.
 
@@ -99,7 +115,7 @@ The suite ends SOLIDWORKS twice. Each time it first reads the open documents aga
 
 ### Parts suite
 
-`PartsSuite` checks documents, references, inspection, selection, sketches and dimensions against exact geometry: a 40 x 20 x 10 mm block must measure 8000 mm³, its top face must be the one face whose normal is +Z, a reference to it must survive a rebuild, a save as and a close and reopen, a fully dimensioned plate sketch must read back fully defined, setting the block's depth to 15 mm must make it 12000 mm³, and a change that over-defines a sketch must leave it as it was. Two cases ask you to edit a sketch and to open a PropertyManager by hand, and are skipped after 3 minutes if nobody does. It never ends SOLIDWORKS. It needs the add-in loaded with diagnostics on, as the fault suite does (it looks after that the same way), and stops if any document it did not create is open:
+`PartsSuite` checks documents, references, inspection, selection, sketches, dimensions and features against exact geometry: a 40 x 20 x 10 mm block must measure 8000 mm³, its top face must be the one face whose normal is +Z, a reference to it must survive a rebuild, a save as and a close and reopen, a fully dimensioned plate sketch must read back fully defined, setting the block's depth to 15 mm must make it 12000 mm³, a change that over-defines a sketch must leave it as it was, a 5 mm radius hole through the block must take 785.398 mm³, a 2 mm fillet on a 10 mm edge 8.584 mm³ and a 2 mm chamfer 20 mm³, a tube revolved from a 10 x 30 profile must be 28274.334 mm³, extrudes up to next, mid-plane, reversed, both ways, drafted and thin-walled must make exactly the box and volume asked for, and a fillet too big for its edge or a cut that misses the part must leave it as it was. Two cases ask you to edit a sketch and to open a PropertyManager by hand, and are skipped after 3 minutes if nobody does. It never ends SOLIDWORKS. It needs the add-in loaded with diagnostics on, as the fault suite does (it looks after that the same way), and stops if any document it did not create is open:
 
 ```powershell
 $env:SWMCP_LIVE = "1"
