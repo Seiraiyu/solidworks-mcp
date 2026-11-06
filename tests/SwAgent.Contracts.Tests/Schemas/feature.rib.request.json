@@ -1,0 +1,47 @@
+{
+  "type": "object",
+  "description": "Makes a rib from an open sketch on a part that has a body: the sketch's lines are thickened into a wall that runs out until it meets the body. Lengths in mm, angles in degrees. Checked: the feature exists as a rib, rebuilds without error, the part's volume grew, and it made faces. Otherwise the rib is deleted and the part is as it was (rolled back); the sketch stays. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "sketch": {
+      "type": "string",
+      "description": "The rib's sketch: its name or reference. Usually one open line or chain, drawn on a plane through the body, its ends short of the body's walls."
+    },
+    "thickness_mm": {
+      "type": "number",
+      "description": "The rib's thickness, mm, more than 0."
+    },
+    "side": {
+      "type": "string",
+      "enum": [
+        "both",
+        "one_side",
+        "other_side"
+      ],
+      "description": "both (the default: half the thickness each side of the sketch), one_side or other_side."
+    },
+    "normal_to_sketch": {
+      "type": "boolean",
+      "description": "Run the rib out normal to the sketch's plane instead of in it (parallel to the sketch, the default)."
+    },
+    "flip_material": {
+      "type": "boolean",
+      "description": "Run the material the other way from the sketch, when SOLIDWORKS' choice of side does not reach the body. Default false."
+    },
+    "draft_deg": {
+      "type": "number",
+      "description": "A draft angle, degrees, more than 0 and less than 90; no draft when absent."
+    },
+    "draft_outward": {
+      "type": "boolean",
+      "description": "The draft widens the rib as it goes instead of narrowing it. Default false. Only with draft_deg."
+    }
+  },
+  "required": [
+    "sketch"
+  ],
+  "additionalProperties": false
+}

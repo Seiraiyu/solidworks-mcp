@@ -63,4 +63,34 @@ internal sealed partial class SolidWorksDocument
             Doc.ClearSelection2(true);
         }
     }
+
+    /// <summary>
+    /// InsertRib with the sketch selected (mark 0). It returns nothing, so the new rib is the Rib feature that was not in
+    /// the tree before.
+    /// </summary>
+    public object? Rib(object sketch, RibSpec s)
+    {
+        return NewFeature("Rib", () =>
+        {
+            Pick(sketch, append: false, mark: 0);
+            Doc.FeatureManager.InsertRib(s.Side == RibSide.Both, s.Side == RibSide.OtherSide, s.ThicknessMm / Mm, 0, s.FlipMaterial,
+                s.DraftDeg > 0, s.DraftOutward, s.DraftDeg * Rad, s.NormalToSketch, false);
+        });
+    }
+
+    /// <summary>Runs <paramref name="make"/> with the selection cleared before and after; the feature of SOLIDWORKS type <paramref name="type"/> it added, or null.</summary>
+    IFeature? NewFeature(string type, Action make)
+    {
+        var before = new HashSet<string>(AllFeatures().Where(f => f.GetTypeName2() == type).Select(f => f.Name), StringComparer.Ordinal);
+        Doc.ClearSelection2(true);
+        try
+        {
+            make();
+        }
+        finally
+        {
+            Doc.ClearSelection2(true);
+        }
+        return AllFeatures().FirstOrDefault(f => f.GetTypeName2() == type && !before.Contains(f.Name));
+    }
 }

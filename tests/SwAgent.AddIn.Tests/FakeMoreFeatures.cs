@@ -40,4 +40,16 @@ sealed partial class FakeDocument
         double area = spec.Profiles.Average(p => FeatureFacts.Region(ReadSketch(p))?.AreaMm2 ?? 100);
         return MakeFeature(spec.Cut ? "Cut-Loft" : "Loft", spec.Cut ? "BlendCut" : "Blend", (spec.Cut ? -1 : 1) * area * ThroughMm, 2 + spec.Profiles.Count * 4);
     }
+
+    public List<RibSpec> Ribs { get; } = new List<RibSpec>();
+
+    /// <summary>The sketch's drawn length times the thickness times ThroughMm (how far the fake's rib runs to the body).</summary>
+    public object? Rib(object sketch, RibSpec spec)
+    {
+        Ribs.Add(spec);
+        if (FeatureSelectFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the sketch a feature needs");
+        if (FeatureRefuses) return null;
+        double length = ReadSketch(sketch).Segments.Where(x => !x.Construction).Sum(x => x.LengthMm > 0 ? x.LengthMm : Length(x));
+        return MakeFeature("Rib", "Rib", length * spec.ThicknessMm * ThroughMm, 4);
+    }
 }

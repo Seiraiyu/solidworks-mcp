@@ -152,3 +152,60 @@ public class FeatureLoftTests : FeatureTestBase
         Assert.DoesNotContain(doc.Tree, f => f.Name == "Loft1");
     }
 }
+
+public class FeatureRibTests : FeatureTestBase
+{
+    internal FeatureResult Rib(FeatureRibRequest request) => Run(new FeatureRibOperation(Services), request);
+
+    /// <summary>A 30 mm line across the block, the next sketch.</summary>
+    internal SketchCreateResult Line() => Sketch(new SketchGeometry { Lines = new List<SketchLine> { new SketchLine { Id = "rib", Start = P(5, 10), End = P(35, 10) } } });
+
+    [Fact]
+    public void A_rib_on_a_block_grows_it_and_takes_its_options()
+    {
+        var doc = Part();
+        Block();
+        Line();
+        var rib = Rib(new FeatureRibRequest { Sketch = "Sketch2", ThicknessMm = 2, Side = RibSide.OneSide, NormalToSketch = true, FlipMaterial = true, DraftDeg = 3 });
+        Assert.Equal("Rib1", rib.Feature.Name);
+        Assert.Equal(8000 + 30 * 2 * 10, rib.Change.VolumeAfterMm3, 6);
+        var spec = doc.Ribs.Single();
+        Assert.Equal((2.0, RibSide.OneSide, true, true, 3.0, false), (spec.ThicknessMm, spec.Side, spec.NormalToSketch, spec.FlipMaterial, spec.DraftDeg, spec.DraftOutward));
+    }
+
+    [Fact]
+    public void A_rib_is_on_both_sides_and_parallel_to_its_sketch_by_default()
+    {
+        var doc = Part();
+        Block();
+        Line();
+        Rib(new FeatureRibRequest { Sketch = "Sketch2", ThicknessMm = 2 });
+        var spec = doc.Ribs.Single();
+        Assert.Equal((RibSide.Both, false, false, 0.0), (spec.Side, spec.NormalToSketch, spec.FlipMaterial, spec.DraftDeg));
+    }
+
+    [Fact]
+    public void Requests_that_cannot_make_a_rib_name_their_field()
+    {
+        Part();
+        Line();
+        Assert.Equal("sketch", Fails(() => Rib(new FeatureRibRequest { Sketch = "Sketch2", ThicknessMm = 2 })).Error.Details!["field"]);
+        Block();
+        Assert.Equal("thickness_mm", Fails(() => Rib(new FeatureRibRequest { Sketch = "Sketch2" })).Error.Details!["field"]);
+        Assert.Equal("draft_deg", Fails(() => Rib(new FeatureRibRequest { Sketch = "Sketch2", ThicknessMm = 2, DraftDeg = 90 })).Error.Details!["field"]);
+        Assert.Equal("draft_outward", Fails(() => Rib(new FeatureRibRequest { Sketch = "Sketch2", ThicknessMm = 2, DraftOutward = true })).Error.Details!["field"]);
+    }
+
+    [Fact]
+    public void A_rib_that_removes_material_is_rolled_back()
+    {
+        var doc = Part();
+        Block();
+        Line();
+        doc.FeatureVolumeError = -1000;
+        var e = Fails(() => Rib(new FeatureRibRequest { Sketch = "Sketch2", ThicknessMm = 2 }));
+        Assert.Equal("volume_change", e.Error.Details!["check"]);
+        Assert.DoesNotContain(doc.Tree, f => f.Name == "Rib1");
+        Assert.Equal(8000, doc.MassProperties!.VolumeMm3, 6);
+    }
+}

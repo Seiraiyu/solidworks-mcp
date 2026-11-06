@@ -132,6 +132,9 @@ public interface ISwDocument
     /// <summary>Lofts through <see cref="LoftSpec.Profiles"/> in order; the new feature, or null when SOLIDWORKS made none.</summary>
     object? Loft(LoftSpec spec);
 
+    /// <summary>A rib from an open sketch (<see cref="RibSpec"/>); the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Rib(object sketch, RibSpec spec);
+
     /// <summary>A constant-radius fillet on these edges and faces; the new feature, or null when SOLIDWORKS made none.</summary>
     object? Fillet(System.Collections.Generic.IReadOnlyList<object> edgesAndFaces, double radiusMm);
 

@@ -111,3 +111,48 @@ public sealed class FeatureLoftOperation : ModelChangeOperation<FeatureLoftReque
         FeatureFacts.MadeFaces(result, What(request));
     }
 }
+
+public sealed class FeatureRibOperation : ModelChangeOperation<FeatureRibRequest, FeatureResult>
+{
+    public FeatureRibOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(FeatureRibRequest request) => request.Document;
+
+    protected override FeatureResult Change(ISwDocument doc, FeatureRibRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        var spec = new RibSpec
+        {
+            ThicknessMm = FeatureFacts.Length(request.ThicknessMm, "thickness_mm", "a rib"),
+            Side = request.Side ?? RibSide.Both,
+            NormalToSketch = request.NormalToSketch == true,
+            FlipMaterial = request.FlipMaterial == true,
+            DraftOutward = request.DraftOutward == true,
+        };
+        if (request.DraftDeg != null)
+        {
+            if (!(request.DraftDeg > 0 && request.DraftDeg < 90)) throw FeatureFacts.Invalid("draft_deg", "draft_deg must be more than 0 and less than 90 degrees");
+            spec.DraftDeg = request.DraftDeg.Value;
+        }
+        else if (request.DraftOutward != null)
+        {
+            throw FeatureFacts.Invalid("draft_outward", "draft_outward is for a drafted rib; give draft_deg too");
+        }
+        if (BodiesBefore == 0) throw FeatureFacts.Invalid("sketch", "a rib runs out until it meets a body, and this part has none yet; make the body first");
+        var (sketch, _) = Services.References.Resolve(doc, request.Sketch, "sketch", ReferenceKind.Sketch);
+        var contents = FeatureFacts.Profile(doc, sketch, "sketch", "rib");
+        var feature = doc.Rib(sketch, spec)
+            ?? throw FeatureFacts.NotMade(doc, "rib", $"from {contents.Name}", "check that the sketch lies on a plane through the body and that the material side reaches it (flip_material)");
+        return FeatureFacts.Made(Services.References, doc, feature, tx);
+    }
+
+    /// <summary>The feature is a rib, the volume grew, and it made faces.</summary>
+    protected override void Check(ISwDocument doc, FeatureRibRequest request, FeatureResult result)
+    {
+        FeatureFacts.ExpectType(doc, result, "Rib", "rib");
+        FeatureFacts.VolumeChanged(result, "rib", VolumeBefore, Volume(doc, doc.SolidBodyCount()), 1);
+        FeatureFacts.MadeFaces(result, "rib");
+    }
+}

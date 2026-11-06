@@ -116,3 +116,17 @@ public sealed class LoftSpec
     public System.Collections.Generic.List<object> Guides { get; } = new System.Collections.Generic.List<object>();
     public bool Merge { get; set; } = true;
 }
+
+/// <summary>A rib as ISwDocument.Rib makes it: mm and degrees.</summary>
+public sealed class RibSpec
+{
+    public double ThicknessMm { get; set; }
+    public RibSide Side { get; set; }
+    public bool NormalToSketch { get; set; }
+    public bool FlipMaterial { get; set; }
+
+    /// <summary>0 for no draft.</summary>
+    public double DraftDeg { get; set; }
+
+    public bool DraftOutward { get; set; }
+}
