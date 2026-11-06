@@ -60,7 +60,8 @@ public static class McpHost
         {
             using var host = builder.Build();
             var log = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("SwAgent.Mcp");
-            log.LogInformation("swmcp {Version} serving MCP on stdio; tools: {Tools}", SwAgentClient.Version, string.Join(", ", ToolCatalog.All.Select(t => t.Name)));
+            log.LogInformation("swmcp {Version} serving MCP on stdio; tools: {Tools}", SwAgentClient.Version, string.Join(", ", ToolCatalog.For(options.ApiCall).Select(t => t.Name)));
+            if (!options.ApiCall) log.LogInformation("the escape hatch (sw_api_call) is off");
             await host.RunAsync(cancellationToken).ConfigureAwait(false);
             return ExitCodes.Success;
         }

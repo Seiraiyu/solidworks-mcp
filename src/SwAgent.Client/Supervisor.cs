@@ -39,6 +39,13 @@ public sealed class SupervisorOptions
 
     /// <summary>How long the add-in's pipe may take to appear after LoadAddIn.</summary>
     public TimeSpan PipeWait { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Whether the escape hatch (api.call, sw_api_call) is offered (design 371: on by default; off with
+    /// <c>swmcp serve --no-api-call</c> or <c>SWMCP_API_CALL=0</c>). Off, the MCP server does not list the tool and the
+    /// supervisor refuses the operation, from any caller.
+    /// </summary>
+    public bool ApiCall { get; set; } = true;
 }
 
 /// <summary>
@@ -72,6 +79,12 @@ public sealed class Supervisor : IDisposable
 
     public AddinLoader Loader { get; }
 
+    /// <summary>The operation the escape hatch's switch turns off.</summary>
+    public const string ApiCallOperation = "api.call";
+
+    /// <summary>Whether api.call is offered and passed on (<see cref="SupervisorOptions.ApiCall"/>).</summary>
+    public bool ApiCallEnabled => _options.ApiCall;
+
     public EventLog Events { get; } = new EventLog();
 
     /// <summary>Raised for each event as the add-in sent it (its own numbering), on the connection's reader thread.</summary>
@@ -101,6 +114,12 @@ public sealed class Supervisor : IDisposable
     /// </summary>
     public async Task<object?> CallAsync(string method, JsonObject parameters, TimeSpan? deadline = null, CancellationToken cancellationToken = default)
     {
+        if (!_options.ApiCall && string.Equals(method, ApiCallOperation, StringComparison.Ordinal))
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                "api.call (the escape hatch) is turned off for this server (swmcp serve --no-api-call, or SWMCP_API_CALL=0); nothing was sent to SOLIDWORKS",
+                new JsonObject { ["field"] = "method", ["method"] = method, ["switch"] = "SWMCP_API_CALL" });
+        }
         var limit = deadline ?? OperationFamilies.DefaultFor(method, _options.Client.DefaultDeadline);
         OperationFamilies.ValidateOverride((long)Math.Ceiling(limit.TotalMilliseconds));
         ThrowUnreportedCrash();

@@ -37,6 +37,12 @@ public class CliTests
         // The --pid of every serve the command line started (null for none); the MCP server never runs for real here.
         public System.Collections.Generic.List<int?> Served { get; } = new System.Collections.Generic.List<int?>();
 
+        // Whether each serve offered the escape hatch.
+        public System.Collections.Generic.List<bool> ServedApiCall { get; } = new System.Collections.Generic.List<bool>();
+
+        // The environment the command line reads (SWMCP_API_CALL); empty unless a test sets it.
+        public System.Collections.Generic.Dictionary<string, string> Variables { get; } = new System.Collections.Generic.Dictionary<string, string>();
+
         public CliEnvironment Build(TextWriter stdout, TextWriter stderr) => new CliEnvironment
         {
             Out = stdout,
@@ -47,7 +53,8 @@ public class CliTests
             BaseDirectory = AppContext.BaseDirectory,
             SolidWorks = SolidWorks,
             AddinLoadWait = TimeSpan.FromMilliseconds(300),
-            Serve = options => { Served.Add(options.Client.ProcessId); return Task.FromResult(ExitCodes.Success); },
+            Serve = options => { Served.Add(options.Client.ProcessId); ServedApiCall.Add(options.ApiCall); return Task.FromResult(ExitCodes.Success); },
+            Variable = name => Variables.TryGetValue(name, out var value) ? value : null,
             Processes = new FakeProcessWatch(),
             Stop = Stop,
         };
@@ -73,6 +80,43 @@ public class CliTests
         var run = await RunAsync(env, "call", "session.status");
         Assert.Equal(ExitCodes.Success, run.Exit);
         Assert.Equal("34.4.0", run.Json["sw_revision"]);
+    }
+
+    [Fact]
+    public async Task Serve_offers_the_escape_hatch_unless_the_flag_or_the_variable_turns_it_off()
+    {
+        var on = new CliEnvironmentBuilder();
+        Assert.Equal(ExitCodes.Success, (await RunAsync(on, "serve")).Exit);
+        Assert.Equal(ExitCodes.Success, (await RunAsync(on)).Exit);
+        Assert.Equal(new[] { true, true }, on.ServedApiCall);
+
+        var flag = new CliEnvironmentBuilder();
+        Assert.Equal(ExitCodes.Success, (await RunAsync(flag, "serve", "--no-api-call", "--pid", "42")).Exit);
+        Assert.Equal(new[] { false }, flag.ServedApiCall);
+        Assert.Equal(new int?[] { 42 }, flag.Served);
+
+        foreach (var value in new[] { "0", "false", "OFF", " no " })
+        {
+            var variable = new CliEnvironmentBuilder();
+            variable.Variables["SWMCP_API_CALL"] = value;
+            await RunAsync(variable, "serve");
+            Assert.Equal(new[] { false }, variable.ServedApiCall);
+        }
+        var stillOn = new CliEnvironmentBuilder();
+        stillOn.Variables["SWMCP_API_CALL"] = "1";
+        await RunAsync(stillOn, "serve");
+        Assert.Equal(new[] { true }, stillOn.ServedApiCall);
+    }
+
+    [Fact]
+    public async Task Call_api_call_is_refused_when_the_escape_hatch_is_off_and_SOLIDWORKS_is_not_touched()
+    {
+        var env = new CliEnvironmentBuilder();
+        env.Variables["SWMCP_API_CALL"] = "0";
+        var run = await RunAsync(env, "call", "api.call", "{\"target\":\"app\",\"member\":\"RevisionNumber\"}");
+        Assert.Equal(ExitCodes.For(ErrorCode.InvalidArgument), run.Exit);
+        Assert.Equal("invalid_argument", run.Json["code"]);
+        Assert.Equal("SWMCP_API_CALL", ((JsonObject)run.Json["details"]!)["switch"]);
     }
 
     [Fact]

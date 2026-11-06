@@ -43,6 +43,23 @@ public sealed class CliEnvironment
 
     /// <summary>Ends <c>events --follow</c> (Ctrl+C).</summary>
     public CancellationToken Stop { get; init; }
+
+    /// <summary>Reads an environment variable (SWMCP_API_CALL); a dictionary in tests.</summary>
+    public Func<string, string?> Variable { get; init; } = Environment.GetEnvironmentVariable;
+}
+
+/// <summary>The escape hatch's switch (design 371): on unless <c>SWMCP_API_CALL</c> is 0, false, off or no.</summary>
+public static class ApiCallSwitch
+{
+    public const string Variable = "SWMCP_API_CALL";
+
+    public const string Flag = "--no-api-call";
+
+    public static bool Enabled(string? value)
+    {
+        string v = (value ?? "").Trim();
+        return !(v == "0" || v.Equals("false", StringComparison.OrdinalIgnoreCase) || v.Equals("off", StringComparison.OrdinalIgnoreCase) || v.Equals("no", StringComparison.OrdinalIgnoreCase));
+    }
 }
 
 public sealed class UsageException : Exception
@@ -57,7 +74,7 @@ public static class Cli
 {
     public const string UsageText =
         "usage:\n" +
-        "  swmcp [serve] [--pid N]          MCP server on stdio (the default)\n" +
+        "  swmcp [serve] [--pid N] [--no-api-call]   MCP server on stdio (the default); --no-api-call (or SWMCP_API_CALL=0) leaves out sw_api_call\n" +
         "  swmcp call <method> [json-params] [--pid N] [--deadline-ms N]\n" +
         "  swmcp status [--pid N]\n" +
         "  swmcp events [--after-seq N] [--follow] [--pid N]\n" +
@@ -117,11 +134,13 @@ public static class Cli
 
     static async Task<int> ServeAsync(string[] args, CliEnvironment env)
     {
-        var a = Args.Parse(args, "--pid");
-        if (a.Positional.Count > 0) throw new UsageException("serve takes no arguments besides --pid");
+        var a = Args.Parse(args, new[] { ApiCallSwitch.Flag }, "--pid");
+        if (a.Positional.Count > 0) throw new UsageException("serve takes no arguments besides --pid and --no-api-call");
         int? pid = a.Int("--pid");
         if (pid != null) env.Client.ProcessId = pid;
-        return await env.Serve(Options(env)).ConfigureAwait(false);
+        var options = Options(env);
+        if (a.Flags.Contains(ApiCallSwitch.Flag)) options.ApiCall = false;
+        return await env.Serve(options).ConfigureAwait(false);
     }
 
     static async Task<int> CallAsync(string[] args, CliEnvironment env)
@@ -219,6 +238,7 @@ public static class Cli
         Registration = new RegistrarAddinRegistration(new AddinRegistrar(env.RegistryRoot)),
         Processes = env.Processes,
         PipeWait = env.AddinLoadWait,
+        ApiCall = ApiCallSwitch.Enabled(env.Variable(ApiCallSwitch.Variable)),
     };
 
     static async Task<int> AddinAsync(string[] args, CliEnvironment env)

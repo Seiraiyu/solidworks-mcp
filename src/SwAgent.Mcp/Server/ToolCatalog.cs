@@ -27,6 +27,10 @@ public static class ToolCatalog
 
     public static readonly IReadOnlyList<ToolDefinition> All = Build(ServerToolCatalog.All, OperationCatalog.All);
 
+    /// <summary>The tools offered: every one, or every one but sw_api_call when the escape hatch is off.</summary>
+    public static IReadOnlyList<ToolDefinition> For(bool apiCall) =>
+        apiCall ? All : All.Where(t => t.Operation != Supervisor.ApiCallOperation).ToList();
+
     /// <summary>The tool list for these server tools and operations; internal operations are left out.</summary>
     public static IReadOnlyList<ToolDefinition> Build(IEnumerable<ServerToolDescriptor> serverTools, IEnumerable<OperationDescriptor> operations) =>
         serverTools.Select(t => new ToolDefinition(t.Name, null, ReadOnlyServerTools.Contains(t.Name)))
@@ -34,9 +38,12 @@ public static class ToolCatalog
             .OrderBy(t => t.Name, StringComparer.Ordinal)
             .ToList();
 
-    /// <summary>A tool per definition, each built from its contract, logging its calls to <paramref name="log"/>.</summary>
+    /// <summary>
+    /// A tool per definition the supervisor offers (sw_api_call only when its escape hatch is on), each built from its
+    /// contract, logging its calls to <paramref name="log"/>.
+    /// </summary>
     public static IReadOnlyList<McpServerTool> Create(Supervisor supervisor, ILogger? log = null) =>
-        All.Select(d => d.Operation != null
+        For(supervisor.ApiCallEnabled).Select(d => d.Operation != null
                 ? (McpServerTool)new ContractTool(d,
                     OperationCatalog.Find(d.Operation) ?? throw new InvalidOperationException($"tool {d.Name} names unknown operation {d.Operation}"),
                     supervisor, log)
