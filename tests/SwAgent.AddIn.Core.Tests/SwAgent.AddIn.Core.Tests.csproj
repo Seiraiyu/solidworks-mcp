@@ -4,6 +4,7 @@
     <RootNamespace>SwAgent.AddIn.Core.Tests</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="System.IO.Compression" />
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
