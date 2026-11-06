@@ -49,6 +49,7 @@ public sealed class ExportPartOperation : Operation<ExportPartRequest, ExportPar
         var started = DateTime.UtcNow;
         SaveOutcome outcome;
         IReadOnlyList<string> readBack;
+        IReadOnlyList<string> publishAttempts = Array.Empty<string>();
         try
         {
             using (preferences.Apply(Name, settings))
@@ -57,15 +58,7 @@ public sealed class ExportPartOperation : Operation<ExportPartRequest, ExportPar
                 readBack = preferences.ReadBack(settings);
                 if (publish)
                 {
-                    int code = doc.PublishStep242(path);
-                    if (code != 0)
-                    {
-                        string error = SolidWorksCodes.Step242Error(code);
-                        throw new SwAgentException(ErrorCode.OperationFailed,
-                            $"SOLIDWORKS did not publish {path} as STEP AP242: PublishSTEP242File answered {error}" +
-                            (code == 4 ? " (this SOLIDWORKS has no MBD licence for STEP 242; ap214 needs none)" : ""),
-                            new JsonObject { ["path"] = path, ["errors"] = new List<object?> { error }, ["warnings"] = new List<object?>() });
-                    }
+                    publishAttempts = PublishAp242(doc, path);
                     outcome = new SaveOutcome(true, 0, 0);
                 }
                 else
@@ -102,7 +95,7 @@ public sealed class ExportPartOperation : Operation<ExportPartRequest, ExportPar
             details["read_back"] = readBack.Select(r => (object?)r).ToList();
             throw new SwAgentException(e.Code, $"{e.Message}; the export preferences SOLIDWORKS read back just before the export: {string.Join(", ", readBack)}", details);
         }
-        if (publish) file.Checks.Insert(0, "written with IModelDocExtension.PublishSTEP242File (SaveAs3 does not write AP242)");
+        if (publish) file.Checks.Insert(0, $"published as AP242 (SaveAs3 does not write it): {string.Join("; ", publishAttempts)}");
         var after = doc.Info();
         Unchanged(before, after);
         file.Checks.Add($"{after.Title} kept its path ({after.Path ?? "never saved"}) and its unsaved-changes flag ({(after.Dirty ? "dirty" : "clean")})");
@@ -124,6 +117,44 @@ public sealed class ExportPartOperation : Operation<ExportPartRequest, ExportPar
     }
 
     /// <summary>The file is still there and the part is still where it was, with the flag it had.</summary>
+    /// <summary>
+    /// STEP AP242 by the chain the 3.E live run called for, stopping at the first attempt that writes: PublishSTEP242File
+    /// with the path; the same with its extension in upper case (round 4 answered InvalidPath); GetMBDSTEP242Data with
+    /// PublishSTEP242File2. Every attempt and SOLIDWORKS' answer is returned, and when none writes they all go into
+    /// operation_failed, so the next run reads what SOLIDWORKS said rather than guessing.
+    /// </summary>
+    static IReadOnlyList<string> PublishAp242(ISwDocument doc, string path)
+    {
+        var attempts = new List<string>();
+        var errors = new List<object?>();
+        bool Tried(string what, int code)
+        {
+            string answer = SolidWorksCodes.Step242Error(code);
+            attempts.Add($"{what}: {answer}");
+            errors.Add(answer);
+            return code == 0;
+        }
+
+        if (Tried($"PublishSTEP242File({path})", doc.PublishStep242(path))) return attempts;
+        string extension = Path.GetExtension(path);
+        string upper = path.Substring(0, path.Length - extension.Length) + extension.ToUpperInvariant();
+        if (!string.Equals(upper, path, StringComparison.Ordinal) && Tried($"PublishSTEP242File({upper})", doc.PublishStep242(upper))) return attempts;
+        if (Tried("GetMBDSTEP242Data + PublishSTEP242File2", doc.PublishStep242WithData(path))) return attempts;
+
+        bool licence = errors.Contains(SolidWorksCodes.Step242Error(4));
+        throw new SwAgentException(ErrorCode.OperationFailed,
+            $"SOLIDWORKS did not publish {path} as STEP AP242; tried {string.Join("; ", attempts)}" +
+            (licence ? " (SOLIDWORKS reports no MBD licence for STEP 242)" : "") +
+            ". AP242 is written only by SOLIDWORKS MBD's publisher; ap214 needs none",
+            new JsonObject
+            {
+                ["path"] = path,
+                ["attempts"] = attempts.Select(a => (object?)a).ToList(),
+                ["errors"] = errors,
+                ["warnings"] = new List<object?>(),
+            });
+    }
+
     protected override void Verify(ExportPartRequest request, ExportPartResult result, IOperationContext context)
     {
         if (!File.Exists(result.Path))

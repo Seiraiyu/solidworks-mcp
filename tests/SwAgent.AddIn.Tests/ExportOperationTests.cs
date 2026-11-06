@@ -90,15 +90,50 @@ public class ExportPartTests : ExportTestBase
     [Theory]
     [InlineData(4, "swPublishStep242_MBDLicenseNotAvailable")]
     [InlineData(3, "swPublishStep242_UnknownError")]
-    public void A_PublishSTEP242File_error_is_operation_failed_naming_it(int code, string name)
+    public void When_every_AP242_attempt_fails_it_is_operation_failed_naming_each(int code, string name)
     {
+        // 3.E live run, round 4: PublishSTEP242File answered InvalidPath. Round 5 tries a chain and reports every attempt.
         var doc = ExportBlock();
         doc.PublishFails = code;
+        doc.PublishWithDataFails = 1;
         var e = Fails(() => Export(new ExportPartRequest { Path = PathOf("block.step"), Format = ExportFormat.Step, Options = new ExportOptions { StepSchema = StepSchema.Ap242 } }));
         Assert.Equal(ErrorCode.OperationFailed, e.Code);
-        Assert.Contains(name, e.Message);
-        Assert.Equal(new List<object?> { name }, (List<object?>)e.Error.Details!["errors"]!);
+        var attempts = ((List<object?>)e.Error.Details!["attempts"]!).Cast<string>().ToList();
+        Assert.Equal(3, attempts.Count);
+        Assert.Equal($"PublishSTEP242File({PathOf("block.step")}): {name}", attempts[0]);
+        Assert.Equal($"PublishSTEP242File({PathOf("block.STEP")}): {name}", attempts[1]);
+        Assert.Equal("GetMBDSTEP242Data + PublishSTEP242File2: swPublishStep242_InvalidPath", attempts[2]);
+        Assert.All(attempts, a => Assert.Contains(a, e.Message));
+        Assert.Equal(new List<object?> { name, name, "swPublishStep242_InvalidPath" }, (List<object?>)e.Error.Details["errors"]!);
+        Assert.Equal(new[] { PathOf("block.step"), PathOf("block.STEP") }, doc.Published.Select(p => p.Path));
+        Assert.Equal(new[] { PathOf("block.step") }, doc.PublishedWithData);
         Assert.False(File.Exists(PathOf("block.step")));
+        UsersPreferencesBack();
+    }
+
+    [Fact]
+    public void The_AP242_chain_stops_at_the_first_attempt_that_writes_and_says_which()
+    {
+        var doc = ExportBlock();
+        doc.PublishAnswer = p => p.EndsWith(".STEP", StringComparison.Ordinal) ? 0 : 1;
+        var result = Export(new ExportPartRequest { Path = PathOf("block.step"), Format = ExportFormat.Step, Options = new ExportOptions { StepSchema = StepSchema.Ap242 } });
+        Assert.StartsWith("AP242", result.StepSchema);
+        Assert.Equal(2, doc.Published.Count);
+        Assert.Empty(doc.PublishedWithData);
+        Assert.Contains(result.Checks, c => c.Contains($"PublishSTEP242File({PathOf("block.step")}): swPublishStep242_InvalidPath") && c.Contains($"PublishSTEP242File({PathOf("block.STEP")}): swPublishStep242_Success"));
+        UsersPreferencesBack();
+    }
+
+    [Fact]
+    public void The_AP242_chain_ends_with_PublishSTEP242File2_and_keeps_a_stp_extension_in_upper_case()
+    {
+        var doc = ExportBlock();
+        doc.PublishFails = 1;
+        var result = Export(new ExportPartRequest { Path = PathOf("block.stp"), Format = ExportFormat.Step, Options = new ExportOptions { StepSchema = StepSchema.Ap242 } });
+        Assert.StartsWith("AP242", result.StepSchema);
+        Assert.Equal(new[] { PathOf("block.stp"), PathOf("block.STP") }, doc.Published.Select(p => p.Path));
+        Assert.Equal(new[] { PathOf("block.stp") }, doc.PublishedWithData);
+        Assert.Contains(result.Checks, c => c.Contains("GetMBDSTEP242Data + PublishSTEP242File2: swPublishStep242_Success"));
         UsersPreferencesBack();
     }
 

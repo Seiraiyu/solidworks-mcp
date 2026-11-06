@@ -26,7 +26,7 @@ public enum StepSchema
     [Description("AP214 (automotive design), SOLIDWORKS' default.")]
     Ap214,
 
-    [Description("AP242 (managed model-based 3D engineering), written with SOLIDWORKS' PublishSTEP242File; operation_failed with SOLIDWORKS' answer when it will not publish one (for example without an MBD licence).")]
+    [Description("AP242 (managed model-based 3D engineering), published by SOLIDWORKS MBD (PublishSTEP242File, then PublishSTEP242File2); operation_failed listing every attempt and SOLIDWORKS' answer where it will not publish one, as on a seat without SOLIDWORKS MBD.")]
     Ap242,
 }
 

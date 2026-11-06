@@ -53,15 +53,36 @@ sealed partial class FakeDocument
     /// <summary>The swStep242Error_e the next publish answers; 0 writes the file.</summary>
     public int PublishFails { get; set; }
 
+    /// <summary>What PublishSTEP242File answers for a path; PublishFails for every path when null.</summary>
+    public Func<string, int>? PublishAnswer { get; set; }
+
+    /// <summary>The swStep242Error_e PublishSTEP242File2 answers; 0 writes the file.</summary>
+    public int PublishWithDataFails { get; set; }
+
+    /// <summary>Each path PublishSTEP242File2 was asked to write (its data's PublishFileName).</summary>
+    public List<string> PublishedWithData { get; } = new List<string>();
+
     public int PublishStep242(string path)
     {
         var prefs = Prefs ?? new FakePreferences();
         Published.Add((path, new Dictionary<(PreferenceKind, int), double>(prefs.Values)));
-        if (PublishFails != 0) return PublishFails;
-        File.WriteAllBytes(path, ExportWrites ?? Encoding.ASCII.GetBytes(
-            "ISO-10303-21;\r\nHEADER;\r\nFILE_DESCRIPTION (( 'STEP AP242' ), '1' );\r\nFILE_SCHEMA (( 'AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }' ));\r\nENDSEC;\r\nDATA;\r\nENDSEC;\r\nEND-ISO-10303-21;\r\n"));
+        int code = PublishAnswer?.Invoke(path) ?? PublishFails;
+        if (code != 0) return code;
+        WriteAp242(path);
         return 0;
     }
+
+    public int PublishStep242WithData(string path)
+    {
+        PublishedWithData.Add(path);
+        if (PublishWithDataFails != 0) return PublishWithDataFails;
+        WriteAp242(path);
+        return 0;
+    }
+
+    void WriteAp242(string path) =>
+        File.WriteAllBytes(path, ExportWrites ?? Encoding.ASCII.GetBytes(
+            "ISO-10303-21;\r\nHEADER;\r\nFILE_DESCRIPTION (( 'STEP AP242' ), '1' );\r\nFILE_SCHEMA (( 'AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF { 1 0 10303 442 1 1 4 }' ));\r\nENDSEC;\r\nDATA;\r\nENDSEC;\r\nEND-ISO-10303-21;\r\n"));
 
     public SaveOutcome Export(string path)
     {

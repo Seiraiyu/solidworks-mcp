@@ -69,6 +69,13 @@ public interface ISwDocument
     /// </summary>
     int PublishStep242(string path);
 
+    /// <summary>
+    /// Writes it to <paramref name="path"/> as STEP AP242 with GetMBDSTEP242Data (its PublishFileName set to the path)
+    /// and PublishSTEP242File2. swStep242Error_e: 0 when it was written; swPublishStep242_UnknownError when SOLIDWORKS
+    /// gives no MBD STEP 242 data.
+    /// </summary>
+    int PublishStep242WithData(string path);
+
     /// <summary>Rebuilds what changed, or every feature when <paramref name="force"/>; false when SOLIDWORKS reports it failed.</summary>
     bool Rebuild(bool force);
 
