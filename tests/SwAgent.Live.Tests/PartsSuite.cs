@@ -22,7 +22,7 @@ public sealed class PartsSuiteRun : LiveRun
 
 /// <summary>
 /// The parts live suite (design 371, Testing; plan 3.A covers documents, references, inspection and selection, plan
-/// 3.B sketches, dimensions, rollback and the user_editing precondition):
+/// 3.B sketches, dimensions, rollback and the user_editing precondition, plan 3.C features, reference geometry, suppress, delete and measure):
 /// every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve does, in [Step] order, and
 /// checks geometry against exact values. It never ends SOLIDWORKS. Before every case it stops the run if a document it
 /// did not create is open; it creates documents only in its scratch directory, records each before creating it, and
@@ -541,8 +541,294 @@ public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
         return $"busy, user_editing, command '{command}' (GetRunningCommandInfo), detected before; worked again {waited.TotalSeconds:0} s after asking for it to be closed";
     });
 
+    Task<ModelFindResult> Find(string document, ModelFindRequest r)
+    {
+        r.Document = document;
+        return Call<ModelFindRequest, ModelFindResult>(r);
+    }
+
+    /// <summary>The one face, edge or vertex model.find has within 0.001 mm of <paramref name="at"/>.</summary>
+    async Task<EntityInfo> At(string document, TopologyKind kind, Point3 at, GeometryType? geometry = null) =>
+        Assert.Single((await Find(document, new ModelFindRequest { Kind = kind, Near = at, MaxDistanceMm = 0.001, Geometry = geometry })).Entities);
+
+    async Task<double> VolumeOf(string document) => (await Call<ModelMassRequest, ModelMassResult>(new ModelMassRequest { Document = document })).VolumeMm3;
+
     [SkippableFact, Step(14)]
-    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(14, "the suite's documents closed", async () =>
+    public Task Extrudes_make_a_block_and_cut_a_hole_exactly() => _run.CaseAsync(14, "feature.extrude: a 40 x 20 x 10 boss from a sketch, then a 5 mm radius hole cut through all", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string path = NewPart("features");
+        await Call<DocumentNewRequest, DocumentNewResult>(new DocumentNewRequest { Path = path });
+        var outline = await Call<SketchCreateRequest, SketchCreateResult>(new SketchCreateRequest
+        {
+            Document = path,
+            On = "front",
+            Rectangles = new List<SketchRectangle> { new SketchRectangle { Id = "outline", Corner1 = new Point2(0, 0), Corner2 = new Point2(40, 20) } },
+        });
+        var boss = await Call<FeatureExtrudeRequest, FeatureResult>(new FeatureExtrudeRequest { Document = path, Sketch = outline.Sketch.Name, DepthMm = 10 });
+        Near(8000, boss.Change.VolumeAfterMm3, "the boss's volume");
+        Assert.Equal(6, boss.Faces.Count);
+        Assert.Contains(boss.Checks, c => c.Contains("mm² × 10 mm"));
+        var hole = await Call<SketchCreateRequest, SketchCreateResult>(new SketchCreateRequest
+        {
+            Document = path,
+            On = "front",
+            Circles = new List<SketchCircle> { new SketchCircle { Id = "hole", Center = new Point2(20, 10), RadiusMm = 5 } },
+        });
+        var cut = await Call<FeatureExtrudeRequest, FeatureResult>(new FeatureExtrudeRequest { Document = path, Sketch = hole.Sketch.Name, Mode = FeatureMode.Cut, End = ExtrudeEnd.ThroughAll });
+        Near(8000 - Math.PI * 25 * 10, await VolumeOf(path), "the volume after the hole");
+        var bore = Assert.Single(cut.Faces, f => f.Geometry == GeometryType.Cylinder);
+        Near(5, bore.RadiusMm!.Value, "the hole's radius");
+        return $"{boss.Feature.Name}: {string.Join("; ", boss.Checks)}; {cut.Feature.Name}: {string.Join("; ", cut.Checks)}, its faces {string.Join(", ", cut.Faces.Select(f => WireNames.ForEnum(f.Geometry)))}";
+    });
+
+    [SkippableFact, Step(15)]
+    public Task A_revolve_makes_a_tube_of_Pappus_volume() => _run.CaseAsync(15, "feature.revolve: a 10 x 30 profile turned about a centerline, a tube of Pappus' volume", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string path = NewPart("revolve");
+        await Call<DocumentNewRequest, DocumentNewResult>(new DocumentNewRequest { Path = path });
+        var profile = await Call<SketchCreateRequest, SketchCreateResult>(new SketchCreateRequest
+        {
+            Document = path,
+            On = "front",
+            Rectangles = new List<SketchRectangle> { new SketchRectangle { Id = "wall", Corner1 = new Point2(10, 0), Corner2 = new Point2(20, 30) } },
+            CenterLines = new List<SketchCenterLine> { new SketchCenterLine { Id = "axis", Start = new Point2(0, 0), End = new Point2(0, 40) } },
+        });
+        string axis = profile.Ids.Single(i => i.Id == "axis").References[0];
+        var tube = await Call<FeatureRevolveRequest, FeatureResult>(new FeatureRevolveRequest { Document = path, Sketch = profile.Sketch.Name, Axis = axis });
+        Near(Math.PI * (400 - 100) * 30, await VolumeOf(path), "the tube's volume");
+        Assert.Contains(tube.Checks, c => c.Contains("Pappus"));
+        Assert.Equal(2, tube.Faces.Count(f => f.Geometry == GeometryType.Cylinder));
+        return $"{tube.Feature.Name}: {string.Join("; ", tube.Checks)}; faces {string.Join(", ", tube.Faces.Select(f => WireNames.ForEnum(f.Geometry)))}";
+    });
+
+    [SkippableFact, Step(16)]
+    public Task A_fillet_and_a_chamfer_take_exact_volume_off_the_corners() => _run.CaseAsync(16, "feature.fillet and feature.chamfer on two of the block's 10 mm edges, by exact volume", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var block = await Block("edges");
+        string path = block.Path!;
+        var corner = await At(path, TopologyKind.Edge, new Point3(40, 20, 5));
+        var fillet = await Call<FeatureFilletRequest, FeatureResult>(new FeatureFilletRequest { Document = path, Edges = new List<string> { corner.Reference! }, RadiusMm = 2 });
+        Near(8000 - (4 - Math.PI) * 10, await VolumeOf(path), "the volume after a 2 mm fillet on a 10 mm edge");
+        Assert.Contains(fillet.Faces, f => f.Geometry == GeometryType.Cylinder);
+        var other = await At(path, TopologyKind.Edge, new Point3(0, 0, 5));
+        var chamfer = await Call<FeatureChamferRequest, FeatureResult>(new FeatureChamferRequest { Document = path, Edges = new List<string> { other.Reference! }, DistanceMm = 2 });
+        Near(8000 - (4 - Math.PI) * 10 - 20, await VolumeOf(path), "the volume after a 2 mm 45° chamfer on a 10 mm edge");
+        return $"{fillet.Feature.Name}: {string.Join("; ", fillet.Checks)}; {chamfer.Feature.Name}: {string.Join("; ", chamfer.Checks)}";
+    });
+
+    [SkippableFact, Step(17)]
+    public Task Reference_geometry_is_where_it_was_asked_to_be() => _run.CaseAsync(17, "refgeom.plane, refgeom.axis and refgeom.point on the block with the hole", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string path = LiveScratchPath("features");
+        var notes = new List<string>();
+        var top = Assert.Single((await Find(path, new ModelFindRequest { Kind = TopologyKind.Face, Direction = new Vector3(0, 0, 1) })).Entities);
+        var offset = await Call<RefgeomPlaneRequest, FeatureResult>(new RefgeomPlaneRequest { Document = path, Mode = PlaneMode.Offset, From = top.Reference!, DistanceMm = 15 });
+        Near(25, offset.Feature.Origin!.Z, "the offset plane's Z");
+        notes.Add($"{offset.Feature.Name} offset: {string.Join("; ", offset.Checks)}");
+        var bottomEdge = await At(path, TopologyKind.Edge, new Point3(20, 0, 0));
+        var angled = await Call<RefgeomPlaneRequest, FeatureResult>(new RefgeomPlaneRequest { Document = path, Mode = PlaneMode.Angle, From = "front", Axis = bottomEdge.Reference!, AngleDeg = 30 });
+        notes.Add($"{angled.Feature.Name} angle: {string.Join("; ", angled.Checks)}");
+        var points = new List<string>();
+        foreach (var p in new[] { new Point3(0, 0, 0), new Point3(40, 0, 0), new Point3(0, 20, 10) }) points.Add((await At(path, TopologyKind.Vertex, p)).Reference!);
+        var three = await Call<RefgeomPlaneRequest, FeatureResult>(new RefgeomPlaneRequest { Document = path, Mode = PlaneMode.ThreePoints, Points = points });
+        notes.Add($"{three.Feature.Name} three points: {string.Join("; ", three.Checks)}");
+        var meet = await Call<RefgeomAxisRequest, FeatureResult>(new RefgeomAxisRequest { Document = path, Mode = AxisMode.TwoPlanes, Entities = new List<string> { "front", "right" } });
+        Parallel(new Vector3(0, 1, 0), meet.Feature.Axis!, "front and right meet along Y");
+        var bore = Assert.Single((await Find(path, new ModelFindRequest { Kind = TopologyKind.Face, Geometry = GeometryType.Cylinder })).Entities);
+        var bored = await Call<RefgeomAxisRequest, FeatureResult>(new RefgeomAxisRequest { Document = path, Mode = AxisMode.Cylinder, Entities = new List<string> { bore.Reference! } });
+        Parallel(new Vector3(0, 0, 1), bored.Feature.Axis!, "the hole's axis");
+        var rim = await At(path, TopologyKind.Edge, new Point3(25, 10, 10), GeometryType.Circle);
+        var centre = await Call<RefgeomPointRequest, FeatureResult>(new RefgeomPointRequest { Document = path, Mode = PointMode.ArcCenter, Entities = new List<string> { rim.Reference! } });
+        Near(20, centre.Feature.Origin!.X, "the rim's centre X");
+        Near(10, centre.Feature.Origin.Y, "the rim's centre Y");
+        Near(10, centre.Feature.Origin.Z, "the rim's centre Z");
+        notes.Add($"{meet.Feature.Name} along {meet.Feature.Axis}; {bored.Feature.Name} along {bored.Feature.Axis}; {centre.Feature.Name} at {centre.Feature.Origin}");
+        return string.Join(" | ", notes);
+    });
+
+    [SkippableFact, Step(18)]
+    public Task Suppress_and_delete_change_the_part_and_refuse_children() => _run.CaseAsync(18, "feature.suppress and feature.delete on the hole: volume back and forth, children refused until asked", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string path = LiveScratchPath("features");
+        string cut = (await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = path })).Features.Single(f => f.Type == "Cut").Name;
+        await Call<FeatureSuppressRequest, FeatureSuppressResult>(new FeatureSuppressRequest { Document = path, Features = new List<string> { cut } });
+        Near(8000, await VolumeOf(path), "the volume with the hole suppressed");
+        await Call<FeatureSuppressRequest, FeatureSuppressResult>(new FeatureSuppressRequest { Document = path, Features = new List<string> { cut }, Suppressed = false });
+        Near(8000 - Math.PI * 250, await VolumeOf(path), "the volume with the hole back");
+        var refused = await Refused(() => Call<FeatureDeleteRequest, FeatureDeleteResult>(new FeatureDeleteRequest { Document = path, Features = new List<string> { cut } }));
+        Assert.Equal(ErrorCode.InvalidArgument, refused.Code);
+        Assert.Equal("children", refused.Error.Details!["field"]);
+        var deleted = await Call<FeatureDeleteRequest, FeatureDeleteResult>(new FeatureDeleteRequest { Document = path, Features = new List<string> { cut }, Children = DeleteChildren.Delete });
+        Near(8000, await VolumeOf(path), "the volume with the hole deleted");
+        Assert.DoesNotContain((await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = path })).Features, f => f.Type == "Cut");
+        return $"{cut} suppressed: 8000 mm³, unsuppressed: {8000 - Math.PI * 250:0.###} mm³; delete refused ({refused.Message}); deleted with children: {string.Join(", ", deleted.Deleted)}";
+    });
+
+    [SkippableFact, Step(19)]
+    public Task Measure_gives_exact_distances_and_angles() => _run.CaseAsync(19, "model.measure between the block's faces, vertices and planes", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var block = await Block("measuring");
+        string path = block.Path!;
+        var top = Assert.Single((await Find(path, new ModelFindRequest { Kind = TopologyKind.Face, Direction = new Vector3(0, 0, 1) })).Entities);
+        var bottom = Assert.Single((await Find(path, new ModelFindRequest { Kind = TopologyKind.Face, Direction = new Vector3(0, 0, -1) })).Entities);
+        var faces = await Call<ModelMeasureRequest, ModelMeasureResult>(new ModelMeasureRequest { Document = path, A = top.Reference!, B = bottom.Reference! });
+        Near(10, faces.DistanceMm, "top to bottom");
+        Near(0, faces.AngleDeg!.Value, "the angle between top and bottom", 1e-6);
+        var a = await At(path, TopologyKind.Vertex, new Point3(0, 0, 0));
+        var b = await At(path, TopologyKind.Vertex, new Point3(40, 20, 10));
+        var corners = await Call<ModelMeasureRequest, ModelMeasureResult>(new ModelMeasureRequest { Document = path, A = a.Reference!, B = b.Reference! });
+        Near(Math.Sqrt(1600 + 400 + 100), corners.DistanceMm, "corner to corner");
+        Near(Math.Sqrt(1600 + 400 + 100), corners.CenterDistanceMm!.Value, "corner to corner, centres");
+        var planes = await Call<ModelMeasureRequest, ModelMeasureResult>(new ModelMeasureRequest { Document = path, A = "front", B = "right" });
+        Near(90, planes.AngleDeg!.Value, "front to right", 1e-6);
+        return $"top to bottom {faces.DistanceMm} mm at {faces.AngleDeg}°; corners {corners.DistanceMm:0.######} mm (points {corners.PointA} and {corners.PointB}); front to right {planes.AngleDeg}°, {planes.DistanceMm} mm";
+    });
+
+    [SkippableFact, Step(20)]
+    public Task Features_SOLIDWORKS_cannot_make_leave_the_part_as_it_was() => _run.CaseAsync(20, "rollback: a fillet too big for its edge and a cut that misses the part leave it as it was", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var block = await Block("rollback");
+        string path = block.Path!;
+        int before = (await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = path })).Features.Count;
+        var edge = await At(path, TopologyKind.Edge, new Point3(40, 20, 5));
+        var big = await Refused(() => Call<FeatureFilletRequest, FeatureResult>(new FeatureFilletRequest { Document = path, Edges = new List<string> { edge.Reference! }, RadiusMm = 50 }));
+        Assert.Contains(big.Code, new[] { ErrorCode.OperationFailed, ErrorCode.VerificationFailed });
+        Assert.False(big.Error.Details!.ContainsKey("rollback_failed"));
+        var away = await Call<SketchCreateRequest, SketchCreateResult>(new SketchCreateRequest
+        {
+            Document = path,
+            On = "front",
+            Circles = new List<SketchCircle> { new SketchCircle { Id = "away", Center = new Point2(100, 100), RadiusMm = 5 } },
+        });
+        var miss = await Refused(() => Call<FeatureExtrudeRequest, FeatureResult>(new FeatureExtrudeRequest { Document = path, Sketch = away.Sketch.Name, Mode = FeatureMode.Cut, End = ExtrudeEnd.ThroughAll }));
+        Assert.Contains(miss.Code, new[] { ErrorCode.OperationFailed, ErrorCode.VerificationFailed });
+        var tree = (await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = path })).Features;
+        Assert.Equal(before + 1, tree.Count);
+        Assert.DoesNotContain(tree, f => f.Type == "Fillet" || f.Type == "Cut");
+        Near(8000, await VolumeOf(path), "the volume after both");
+        var status = await Call<ModelRebuildStatusRequest, RebuildResult>(new ModelRebuildStatusRequest { Document = path });
+        Assert.Equal(0, status.Errors);
+        return $"fillet r 50: {WireNames.ForEnum(big.Code)} ({big.Message}); cut away from the part: {WireNames.ForEnum(miss.Code)} ({miss.Message}); the sketch kept, volume 8000 mm³, no rebuild errors";
+    });
+
+    /// <summary>A new part with a 40 x 20 rectangle at the origin on the front plane; its path and the sketch's name.</summary>
+    async Task<(string Path, string Sketch)> Outlined(string name)
+    {
+        string path = NewPart(name);
+        await Call<DocumentNewRequest, DocumentNewResult>(new DocumentNewRequest { Path = path });
+        var sketch = await Call<SketchCreateRequest, SketchCreateResult>(new SketchCreateRequest
+        {
+            Document = path,
+            On = "front",
+            Rectangles = new List<SketchRectangle> { new SketchRectangle { Id = "outline", Corner1 = new Point2(0, 0), Corner2 = new Point2(40, 20) } },
+        });
+        return (path, sketch.Sketch.Name);
+    }
+
+    async Task<Box3> BoxOf(string document) =>
+        (await Call<ModelBoundingBoxRequest, ModelBoundingBoxResult>(new ModelBoundingBoxRequest { Document = document, Precise = true })).Box!;
+
+    /// <summary>
+    /// The ends and options only SOLIDWORKS can judge: whether swEndCondUpToNext is the end condition for up_to_next,
+    /// which way mid_plane, reverse and a second direction go (by the bounding box), that a draft narrows the profile
+    /// (by the drafted volume), and that a thin wall is the wall asked for.
+    /// </summary>
+    [SkippableFact, Step(21)]
+    public Task Extrude_ends_and_options_make_the_geometry_asked_for() => _run.CaseAsync(21, "feature.extrude: up_to_next, mid_plane, reverse, a second direction, draft and a thin wall, by bounding box and exact volume", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var notes = new List<string>();
+
+        var (mid, midSketch) = await Outlined("mid-plane");
+        await Call<FeatureExtrudeRequest, FeatureResult>(new FeatureExtrudeRequest { Document = mid, Sketch = midSketch, End = ExtrudeEnd.MidPlane, DepthMm = 10 });
+        var box = await BoxOf(mid);
+        Near(-5, box.Min.Z, "mid_plane min Z");
+        Near(5, box.Max.Z, "mid_plane max Z");
+        Near(8000, await VolumeOf(mid), "mid_plane volume");
+        notes.Add("mid_plane: z -5 to 5, 8000 mm³");
+
+        var (back, backSketch) = await Outlined("reverse");
+        await Call<FeatureExtrudeRequest, FeatureResult>(new FeatureExtrudeRequest { Document = back, Sketch = backSketch, DepthMm = 10, Reverse = true });
+        box = await BoxOf(back);
+        Near(-10, box.Min.Z, "reverse min Z");
+        Near(0, box.Max.Z, "reverse max Z");
+        notes.Add("reverse: z -10 to 0");
+
+        var (both, bothSketch) = await Outlined("both-ways");
+        var twice = await Call<FeatureExtrudeRequest, FeatureResult>(new FeatureExtrudeRequest
+        {
+            Document = both,
+            Sketch = bothSketch,
+            DepthMm = 10,
+            Direction2 = new ExtrudeDirection { DepthMm = 5 },
+        });
+        box = await BoxOf(both);
+        Near(-5, box.Min.Z, "second direction min Z");
+        Near(10, box.Max.Z, "second direction max Z");
+        Near(12000, await VolumeOf(both), "both ways volume");
+        notes.Add($"direction2: z -5 to 10, {string.Join("; ", twice.Checks)}");
+
+        var (drafted, draftSketch) = await Outlined("draft");
+        await Call<FeatureExtrudeRequest, FeatureResult>(new FeatureExtrudeRequest { Document = drafted, Sketch = draftSketch, DepthMm = 10, DraftDeg = 5 });
+        double k = 2 * Math.Tan(5 * Math.PI / 180);
+        double narrowing = 8000 - 3000 * k + 1000 * k * k / 3;
+        Near(narrowing, await VolumeOf(drafted), "a 5° inward draft's volume (∫ (40 - kt)(20 - kt) dt over 0 to 10)");
+        notes.Add($"draft 5° inward: {narrowing:0.###} mm³");
+
+        string thinPath = NewPart("thin");
+        await Call<DocumentNewRequest, DocumentNewResult>(new DocumentNewRequest { Path = thinPath });
+        var ring = await Call<SketchCreateRequest, SketchCreateResult>(new SketchCreateRequest
+        {
+            Document = thinPath,
+            On = "front",
+            Circles = new List<SketchCircle> { new SketchCircle { Id = "ring", Center = new Point2(0, 0), RadiusMm = 10 } },
+        });
+        await Call<FeatureExtrudeRequest, FeatureResult>(new FeatureExtrudeRequest
+        {
+            Document = thinPath,
+            Sketch = ring.Sketch.Name,
+            DepthMm = 10,
+            Thin = new ExtrudeThin { ThicknessMm = 1, Side = ThinSide.MidPlane },
+        });
+        Near(Math.PI * (10.5 * 10.5 - 9.5 * 9.5) * 10, await VolumeOf(thinPath), "a 1 mm mid-plane wall round a 10 mm radius, 10 mm deep");
+        notes.Add($"thin mid_plane: {Math.PI * 200:0.###} mm³");
+
+        var (next, nextSketch) = await Outlined("up-to-next");
+        await Call<FeatureExtrudeRequest, FeatureResult>(new FeatureExtrudeRequest { Document = next, Sketch = nextSketch, DepthMm = 10 });
+        var below = await Call<RefgeomPlaneRequest, FeatureResult>(new RefgeomPlaneRequest { Document = next, Mode = PlaneMode.Offset, From = "front", DistanceMm = 20, Flip = true });
+        Near(-20, below.Feature.Origin!.Z, "the plane below the block");
+        var mark = await Call<SketchCreateRequest, SketchCreateResult>(new SketchCreateRequest
+        {
+            Document = next,
+            On = below.Feature.Name!,
+            Points = new List<SketchPointItem> { new SketchPointItem { Id = "at", At = new Point2(0, 0) } },
+        });
+        var s = mark.Sketch;
+        double dx = 20 - s.Origin.X, dy = 10 - s.Origin.Y, dz = -20 - s.Origin.Z;
+        var under = new Point2(dx * s.XAxis.X + dy * s.XAxis.Y + dz * s.XAxis.Z, dx * s.YAxis.X + dy * s.YAxis.Y + dz * s.YAxis.Z);
+        await Call<SketchModifyRequest, SketchCreateResult>(new SketchModifyRequest
+        {
+            Document = next,
+            Sketch = s.Name,
+            Add = new SketchGeometry { Circles = new List<SketchCircle> { new SketchCircle { Id = "post", Center = under, RadiusMm = 5 } } },
+        });
+        var post = await Call<FeatureExtrudeRequest, FeatureResult>(new FeatureExtrudeRequest { Document = next, Sketch = s.Name, End = ExtrudeEnd.UpToNext, Reverse = s.Normal.Z < 0 });
+        Near(8000 + Math.PI * 25 * 20, await VolumeOf(next), "the post up to the block's underside");
+        box = await BoxOf(next);
+        Near(-20, box.Min.Z, "the post's foot");
+        notes.Add($"up_to_next: {post.Feature.Name} from z -20 to the block, the circle at {under} in a sketch with normal {s.Normal}");
+        return string.Join(" | ", notes);
+    });
+
+    [SkippableFact, Step(22)]
+    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(22, "the suite's documents closed", async () =>
     {
         var state = await _run.RequireOnlyOwnDocumentsAsync();
         int closed = 0;
