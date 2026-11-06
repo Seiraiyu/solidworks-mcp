@@ -196,4 +196,51 @@ public class MoreErrorCodeTests : FeatureTestBase
         Assert.Equal(code, Reach(() => Run(new FeatureShellOperation(Services), request)).Code);
         Assert.DoesNotContain(doc.Tree, f => f.Type == "Shell");
     }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_draft_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureDraftRequest { NeutralPlane = "front", AngleDeg = 5 };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            request.Faces.Add("Face1");
+            Assert.Equal(code, Reach(() => Run(new FeatureDraftOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Part();
+        Block();
+        var side = doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Plane, Normal = new Vector3(1, 0, 0) });
+        request.Faces.Add(Services.References.Describe(doc, side).Reference!);
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.AngleDeg = 90;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                side.State = PersistState.Suppressed;
+                break;
+            case ErrorCode.Busy:
+                Sw.OpenCommandTitle = "Draft";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.DraftAngleError = 2;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureDraftOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "Draft");
+    }
 }

@@ -67,4 +67,57 @@ sealed partial class FakeDocument
         if (!FacesSurvive) foreach (var f in facesToRemove.Cast<FakeEntity>()) f.State = PersistState.Deleted;
         return MakeFeature("Shell", "Shell", (outward ? 1 : -1) * 1000 * thicknessMm, 6);
     }
+
+    public List<DraftSpec> Drafts { get; } = new List<DraftSpec>();
+
+    /// <summary>Added to the angle every drafted face is tilted by, degrees (a draft that is not what was asked).</summary>
+    public double DraftAngleError { get; set; }
+
+    /// <summary>The drafted faces are made anew (their references no longer resolve), as the draft's own faces.</summary>
+    public bool DraftRemakesFaces { get; set; }
+
+    /// <summary>
+    /// Each face is tilted by the angle (and DraftAngleError) from standing square to the neutral normal: its normal is
+    /// turned towards the neutral normal. 10 mm³ per degree per face comes off the part.
+    /// </summary>
+    public object? Draft(DraftSpec spec)
+    {
+        Drafts.Add(spec);
+        if (FeatureSelectFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the face a feature needs");
+        if (FeatureRefuses) return null;
+        var n = ((FakeEntity)spec.Neutral).Info.Normal!;
+        var draft = MakeFeature("Draft", "Draft", -10 * spec.AngleDeg * spec.Faces.Count, 0);
+        double t = (spec.AngleDeg + DraftAngleError) * Math.PI / 180;
+        foreach (var face in spec.Faces.Cast<FakeEntity>())
+        {
+            var f = face.Info.Normal ?? new Vector3(1, 0, 0);
+            var tilted = new Vector3(f.X * Math.Cos(t) + n.X * Math.Sin(t), f.Y * Math.Cos(t) + n.Y * Math.Sin(t), f.Z * Math.Cos(t) + n.Z * Math.Sin(t));
+            if (DraftRemakesFaces)
+            {
+                face.State = PersistState.Deleted;
+                _facesOf[draft].Add(Add(ReferenceKind.Face, new EntityInfo { Feature = draft.Info.Name, Geometry = GeometryType.Plane, Normal = tilted, AreaMm2 = face.Info.AreaMm2 }));
+            }
+            else
+            {
+                var before = face.Info.Normal;
+                face.Info.Normal = tilted;
+                _facesOf[draft].Add(face);
+                Undo(draft, () =>
+                {
+                    face.Info.Normal = before;
+                    _facesOf[draft].Remove(face);
+                });
+            }
+        }
+        return draft;
+    }
+
+    readonly Dictionary<FakeEntity, List<Action>> _undo = new Dictionary<FakeEntity, List<Action>>();
+
+    /// <summary>Something Delete puts back when it deletes <paramref name="feature"/> (a draft's tilted faces).</summary>
+    void Undo(FakeEntity feature, Action undo)
+    {
+        if (!_undo.TryGetValue(feature, out var list)) _undo[feature] = list = new List<Action>();
+        list.Add(undo);
+    }
 }

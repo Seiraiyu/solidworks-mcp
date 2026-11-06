@@ -329,6 +329,11 @@ sealed partial class FakeDocument
         {
             foreach (var child in ChildrenOf(f).Where(n => !DeleteSpares.Contains(n)).Select(FeatureByName).OfType<FakeEntity>().ToList()) Delete(child, true, absorbed);
         }
+        if (_undo.TryGetValue(f, out var undo))
+        {
+            undo.ForEach(u => u());
+            _undo.Remove(f);
+        }
         RemoveFeature(f);
         if (_facesOf.TryGetValue(f, out var faces)) Entities.RemoveAll(faces.Contains);
         if (_volumeOf.TryGetValue(f, out double v))

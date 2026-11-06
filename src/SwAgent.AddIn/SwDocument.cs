@@ -138,6 +138,9 @@ public interface ISwDocument
     /// <summary>A shell of <paramref name="thicknessMm"/> leaving <paramref name="facesToRemove"/> open; the new feature, or null when SOLIDWORKS made none.</summary>
     object? Shell(System.Collections.Generic.IReadOnlyList<object> facesToRemove, double thicknessMm, bool outward);
 
+    /// <summary>A neutral-plane draft (<see cref="DraftSpec"/>); the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Draft(DraftSpec spec);
+
     /// <summary>A constant-radius fillet on these edges and faces; the new feature, or null when SOLIDWORKS made none.</summary>
     object? Fillet(System.Collections.Generic.IReadOnlyList<object> edgesAndFaces, double radiusMm);
 

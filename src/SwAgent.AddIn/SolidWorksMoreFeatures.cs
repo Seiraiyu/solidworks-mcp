@@ -103,4 +103,24 @@ internal sealed partial class SolidWorksDocument
             Doc.InsertFeatureShell(thicknessMm / Mm, outward);
         });
     }
+
+    /// <summary>
+    /// InsertMultiFaceDraft, a neutral-plane draft without propagation, with the neutral plane selected with mark 1 and
+    /// the faces with mark 2.
+    /// </summary>
+    public object? Draft(DraftSpec s)
+    {
+        Doc.ClearSelection2(true);
+        try
+        {
+            Pick(s.Neutral, append: false, mark: 1);
+            foreach (var face in s.Faces) Pick(face, append: true, mark: 2);
+            return Doc.FeatureManager.InsertMultiFaceDraft(s.AngleDeg * Rad, s.Reverse, false,
+                (int)swDraftFacePropagationType_e.swFacePropNone, false, false);
+        }
+        finally
+        {
+            Doc.ClearSelection2(true);
+        }
+    }
 }

@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "description": "Tapers faces by an angle about a neutral plane (a plane or planar face that keeps its size), as a mould needs. Angles in degrees. Checked: the feature exists as a draft, rebuilds without error, the volume changed, and every planar face it drafted now stands at 90 degrees less the draft angle to the neutral plane's normal. Otherwise the draft is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "neutral_plane": {
+      "type": "string",
+      "description": "The neutral plane: a plane's name (front, top, right, Plane1) or reference, or a planar face's reference. The draft pulls away from it along its normal."
+    },
+    "faces": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The faces to taper: their references (model.find kind face), each meeting the neutral plane at an angle."
+    },
+    "angle_deg": {
+      "type": "number",
+      "description": "The draft angle, degrees, more than 0 and less than 90."
+    },
+    "reverse": {
+      "type": "boolean",
+      "description": "Pull the other way, against the neutral plane's normal. Default false."
+    }
+  },
+  "required": [
+    "neutral_plane",
+    "faces"
+  ],
+  "additionalProperties": false
+}

@@ -130,3 +130,14 @@ public sealed class RibSpec
 
     public bool DraftOutward { get; set; }
 }
+
+/// <summary>A neutral-plane draft as ISwDocument.Draft makes it: degrees, the plane and faces resolved.</summary>
+public sealed class DraftSpec
+{
+    /// <summary>A plane feature or a planar face.</summary>
+    public object Neutral { get; set; } = new object();
+
+    public System.Collections.Generic.List<object> Faces { get; } = new System.Collections.Generic.List<object>();
+    public double AngleDeg { get; set; }
+    public bool Reverse { get; set; }
+}
