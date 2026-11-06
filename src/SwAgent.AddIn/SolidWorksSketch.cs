@@ -60,6 +60,14 @@ internal sealed class SolidWorksSketchEditor : ISketchEditor
         return new SolidWorksSketchEditor(doc, feature);
     }
 
+    /// <summary>The point through the sketch's ModelToSketchTransform (row vectors: p · R + t, as TextLocation reads its inverse).</summary>
+    public Point2 ToSketch(Point3 model)
+    {
+        var t = (double[])Active.ModelToSketchTransform.ArrayData;
+        double x = model.X / M, y = model.Y / M, z = model.Z / M;
+        return new Point2((x * t[0] + y * t[3] + z * t[6] + t[9]) * M, (x * t[1] + y * t[4] + z * t[7] + t[10]) * M);
+    }
+
     public void Rename(string name)
     {
         Feature.Name = name;

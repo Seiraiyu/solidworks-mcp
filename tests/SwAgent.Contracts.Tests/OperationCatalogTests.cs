@@ -18,9 +18,9 @@ public sealed class EmptyResult { }
 public class OperationCatalogTests
 {
     [Fact]
-    public void Catalog_holds_the_phase_3C_operations()
+    public void Catalog_holds_the_phase_3D_operations()
     {
-        Assert.Equal(new[] { "addin.events", "addin.state", "diag.dialog", "diag.edit_sketch", "diag.editing", "diag.scratch_block", "diag.scratch_part", "diag.select", "diag.sleep", "dialog.respond", "dimension.set", "document.close", "document.new", "document.open", "document.rebuild", "document.save", "document.save_as", "feature.chamfer", "feature.delete", "feature.extrude", "feature.fillet", "feature.revolve", "feature.suppress", "model.bounding_box", "model.dimensions", "model.find", "model.mass", "model.measure", "model.rebuild_status", "model.tree", "refgeom.axis", "refgeom.plane", "refgeom.point", "selection.get", "session.hello", "session.status", "sketch.create", "sketch.modify", "sketch.read" },
+        Assert.Equal(new[] { "addin.events", "addin.state", "configuration.activate", "configuration.add", "configuration.list", "diag.arm_dialog", "diag.dialog", "diag.edit_sketch", "diag.editing", "diag.scratch_block", "diag.scratch_part", "diag.select", "diag.sleep", "dialog.respond", "dimension.set", "document.close", "document.new", "document.open", "document.rebuild", "document.save", "document.save_as", "feature.chamfer", "feature.circular_pattern", "feature.delete", "feature.draft", "feature.extrude", "feature.fillet", "feature.hole", "feature.linear_pattern", "feature.loft", "feature.mirror", "feature.revolve", "feature.rib", "feature.shell", "feature.suppress", "feature.sweep", "model.bounding_box", "model.dimensions", "model.find", "model.mass", "model.measure", "model.rebuild_status", "model.tree", "refgeom.axis", "refgeom.plane", "refgeom.point", "selection.get", "session.hello", "session.status", "sketch.create", "sketch.modify", "sketch.read" },
             OperationCatalog.All.Select(o => o.Name).ToArray());
         var status = OperationCatalog.Find("session.status")!;
         Assert.Equal("session", status.Family);
@@ -73,6 +73,19 @@ public class OperationCatalogTests
         Assert.Equal("Ui/tool", Shape("refgeom.plane"));
         Assert.Equal("Ui/tool", Shape("refgeom.axis"));
         Assert.Equal("Ui/tool", Shape("refgeom.point"));
+        Assert.Equal("Ui/tool", Shape("feature.sweep"));
+        Assert.Equal("Ui/tool", Shape("feature.loft"));
+        Assert.Equal("Ui/tool", Shape("feature.rib"));
+        Assert.Equal("Ui/tool", Shape("feature.shell"));
+        Assert.Equal("Ui/tool", Shape("feature.draft"));
+        Assert.Equal("Ui/tool", Shape("feature.hole"));
+        Assert.Equal("Ui/tool", Shape("feature.linear_pattern"));
+        Assert.Equal("Ui/tool", Shape("feature.circular_pattern"));
+        Assert.Equal("Ui/tool", Shape("feature.mirror"));
+        Assert.Equal("Ui/tool", Shape("configuration.activate"));
+        Assert.Equal("Ui/tool", Shape("configuration.add"));
+        Assert.True(OperationCatalog.Find("configuration.list")!.ReadOnly);
+        Assert.Equal("Ui/internal", Shape("diag.arm_dialog"));
     }
 
     [Fact]

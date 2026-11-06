@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "description": "A part's configurations, by name, and which one is active. feature.suppress and dimension.set act in the active configuration.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    }
+  },
+  "additionalProperties": false
+}

@@ -49,6 +49,30 @@ public sealed class DiagDialogResult
     public string Pressed { get; set; } = "";
 }
 
+[Operation("diag.arm_dialog", typeof(DiagArmDialogResult), Internal = true)]
+[Description("Fault testing only: the next model change shows this message box, owned by SOLIDWORKS' main window, after it has made its change and before it checks it, as a feature that raises a prompt mid-operation would. ok or yes lets the change go on; cancel or no rolls it back. Shown once. Refused unless diagnostics are on.")]
+public sealed class DiagArmDialogRequest
+{
+    [Required]
+    [Description("The message box title.")]
+    public string Title { get; set; } = "";
+
+    [Required]
+    [Description("The message box text.")]
+    public string Text { get; set; } = "";
+
+    [Description("Which buttons it shows: ok, ok_cancel or yes_no.")]
+    public DiagDialogButtons Buttons { get; set; }
+}
+
+[Description("The message box the next model change will show.")]
+public sealed class DiagArmDialogResult
+{
+    [Required]
+    [Description("Its title.")]
+    public string Armed { get; set; } = "";
+}
+
 [Operation("diag.scratch_part", typeof(DocumentInfo), Internal = true)]
 [Description("Fault testing only: creates a part from the default part template, saves it as a new file in the live suite's scratch directory, and marks it as having unsaved changes. Refused unless diagnostics are on.")]
 public sealed class DiagScratchPartRequest

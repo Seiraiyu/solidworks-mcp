@@ -307,6 +307,42 @@ public class DispatcherTests
     }
 
     [Fact]
+    public void The_hook_runs_before_the_answer_is_sent()
+    {
+        // Issue #11: addin.state answers from the table the hook refreshes, so it must be fresh by the time the client has the answer.
+        using var ui = new UiThread();
+        var dispatcher = Create(ui, TestOps.Registry(), new MemoryLog());
+        var reply = new CapturingReply();
+        int answersWhenHooked = -1;
+        var hooked = new ManualResetEventSlim(false);
+        dispatcher.AfterEachRequest = () =>
+        {
+            answersWhenHooked = reply.Lines.Count;
+            hooked.Set();
+        };
+        dispatcher.Enqueue(Requests.Echo(1, "a"), DateTime.UtcNow, reply);
+        Assert.True(hooked.Wait(TimeSpan.FromSeconds(10)));
+        Assert.Equal(0, answersWhenHooked);
+        reply.Next();
+        ui.Invoke(dispatcher.Dispose);
+    }
+
+    [Fact]
+    public void The_hook_still_runs_once_for_a_request_its_client_dropped()
+    {
+        using var ui = new UiThread();
+        var dispatcher = Create(ui, TestOps.Registry(), new MemoryLog());
+        int hooks = 0;
+        var ran = new ManualResetEventSlim(false);
+        dispatcher.AfterEachRequest = () => { hooks++; ran.Set(); };
+        var reply = new CapturingReply { Open = false };
+        dispatcher.Enqueue(Requests.Echo(1, "a"), DateTime.UtcNow, reply);
+        Assert.True(ran.Wait(TimeSpan.FromSeconds(10)));
+        ui.Invoke(dispatcher.Dispose);
+        Assert.Equal(1, hooks);
+    }
+
+    [Fact]
     public void A_probe_records_that_the_UI_thread_pumped()
     {
         using var ui = new UiThread();

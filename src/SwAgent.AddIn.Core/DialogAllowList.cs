@@ -48,6 +48,18 @@ public sealed class DialogAllowList
         Rules.FirstOrDefault(r => r.Matches(dialog) && DialogButtons.Find(dialog, r.Button) != null);
 }
 
+/// <summary>
+/// Windows only a person may answer (issue #10): a 3DEXPERIENCE sign-in or licence window. Closing one ended a
+/// SOLIDWORKS session in the 3.C live run, so they are never answered by the add-in, its allow-list or dialog.respond.
+/// </summary>
+public static class DialogGuards
+{
+    static readonly Regex PersonOnly = new Regex(@"3DEXPERIENCE|\bLog\s?-?in\b|\bSign\s?-?in\b|\bLicen[cs]e",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    public static bool NeedsPerson(string title) => PersonOnly.IsMatch(title ?? "");
+}
+
 /// <summary>How a button is named in a request: by its text (case and & ignored) or, failing that, by its control id.</summary>
 public static class DialogButtons
 {

@@ -126,6 +126,51 @@ public interface ISwDocument
     /// <summary>Revolves <paramref name="sketch"/> about <see cref="RevolveSpec.Axis"/>; the new feature, or null when SOLIDWORKS made none.</summary>
     object? Revolve(object sketch, RevolveSpec spec);
 
+    /// <summary>Sweeps <paramref name="profile"/> (a sketch) along <see cref="SweepSpec.Path"/>; the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Sweep(object profile, SweepSpec spec);
+
+    /// <summary>Lofts through <see cref="LoftSpec.Profiles"/> in order; the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Loft(LoftSpec spec);
+
+    /// <summary>A rib from an open sketch (<see cref="RibSpec"/>); the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Rib(object sketch, RibSpec spec);
+
+    /// <summary>A shell of <paramref name="thicknessMm"/> leaving <paramref name="facesToRemove"/> open; the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Shell(System.Collections.Generic.IReadOnlyList<object> facesToRemove, double thicknessMm, bool outward);
+
+    /// <summary>A neutral-plane draft (<see cref="DraftSpec"/>); the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Draft(DraftSpec spec);
+
+    /// <summary>Hole Wizard holes at <see cref="HoleSpec.Points"/>; the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Hole(HoleSpec spec);
+
+    /// <summary>A linear pattern of <see cref="LinearPatternSpec.Seeds"/>; the new feature, or null when SOLIDWORKS made none.</summary>
+    object? LinearPattern(LinearPatternSpec spec);
+
+    /// <summary>How many instances a pattern or mirror feature has, the seed included, as SOLIDWORKS reads its definition back.</summary>
+    int PatternInstances(object feature);
+
+    /// <summary>A circular pattern of <see cref="CircularPatternSpec.Seeds"/>; the new feature, or null when SOLIDWORKS made none.</summary>
+    object? CircularPattern(CircularPatternSpec spec);
+
+    /// <summary>A mirror of features or of the body (<see cref="MirrorSpec"/>); the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Mirror(MirrorSpec spec);
+
+    /// <summary>Every configuration's name, in SOLIDWORKS' order.</summary>
+    System.Collections.Generic.IReadOnlyList<string> ConfigurationNames();
+
+    /// <summary>The active configuration's name.</summary>
+    string ActiveConfiguration();
+
+    /// <summary>Adds a configuration copied from the active one (SOLIDWORKS makes it active); false when SOLIDWORKS added none.</summary>
+    bool AddConfiguration(string name);
+
+    /// <summary>Makes a configuration active, rebuilding the part as it has it; false when SOLIDWORKS refused.</summary>
+    bool ShowConfiguration(string name);
+
+    /// <summary>Deletes a configuration that is not active; false when SOLIDWORKS refused.</summary>
+    bool DeleteConfiguration(string name);
+
     /// <summary>A constant-radius fillet on these edges and faces; the new feature, or null when SOLIDWORKS made none.</summary>
     object? Fillet(System.Collections.Generic.IReadOnlyList<object> edgesAndFaces, double radiusMm);
 

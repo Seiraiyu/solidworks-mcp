@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "description": "Makes one of a part's configurations active; SOLIDWORKS then shows and rebuilds the part as that configuration has it. Checked: it is active and the part rebuilds without a new error; otherwise the one that was active is active again (rolled back). The evidence block's volume before and after shows what changed. Busy with user_editing while the user is editing a sketch or has a command open.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "name": {
+      "type": "string",
+      "description": "The configuration's name."
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "additionalProperties": false
+}

@@ -194,6 +194,7 @@ public sealed class Dispatcher : IDisposable
 
     void RunOne(LedgerEntry entry)
     {
+        bool hooked = false;
         try
         {
             if (!entry.Reply.IsOpen)
@@ -204,6 +205,10 @@ public sealed class Dispatcher : IDisposable
             var started = entry.StartedUtc ?? _utcNow();
             var response = _executor.ExecuteResponse(entry.Request, entry.ReceivedUtc, started);
             entry.Outcome = response;
+            // Before the answer, so a client reading addin.state as soon as it has the answer sees what the request did
+            // (issue #11: the document table was refreshed after the response was sent, and listed a closed document).
+            hooked = true;
+            RunAfterEach();
             if (!entry.TryAnswer(RpcCodec.FormatResponse(response), "result"))
             {
                 _log.Info($"request {entry.Request.Id} {entry.Request.Method} finished after its client was answered {entry.AnsweredAs}");
@@ -225,9 +230,14 @@ public sealed class Dispatcher : IDisposable
         finally
         {
             _ledger.Finish(entry, _utcNow());
-            var hook = AfterEachRequest;
-            if (hook != null) RunAction("after each request", hook);
+            if (!hooked) RunAfterEach();
         }
+    }
+
+    void RunAfterEach()
+    {
+        var hook = AfterEachRequest;
+        if (hook != null) RunAction("after each request", hook);
     }
 
     /// <summary>A request the ledger refused to start because its deadline had passed: busy, naming what ran before it.</summary>

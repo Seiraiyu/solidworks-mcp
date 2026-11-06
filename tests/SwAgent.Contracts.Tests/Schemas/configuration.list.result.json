@@ -1,0 +1,56 @@
+{
+  "type": "object",
+  "description": "A part's configurations.",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty"
+      ],
+      "additionalProperties": false,
+      "description": "The part."
+    },
+    "active": {
+      "type": "string",
+      "description": "The active configuration's name."
+    },
+    "configurations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Every configuration's name, in SOLIDWORKS' order."
+    }
+  },
+  "required": [
+    "document",
+    "active",
+    "configurations"
+  ],
+  "additionalProperties": false
+}

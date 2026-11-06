@@ -37,6 +37,9 @@ public interface ISketchEditor
 
     object Point(Point2 at);
 
+    /// <summary>Where a point in the part's model space (mm) lies in this sketch's own coordinates, mm: on the sketch's plane, its projection.</summary>
+    Point2 ToSketch(Point3 model);
+
     /// <summary>A line's start and end, mm in the sketch.</summary>
     (Point2 Start, Point2 End) Ends(object line);
 

@@ -134,6 +134,13 @@ public sealed class DialogWatch : IDisposable
                 new JsonObject { ["dialog"] = request.Dialog, ["open"] = Current?.Id });
         }
 
+        if (t.Info.NeedsPerson)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"dialog \"{t.Info.Title}\" is a 3DEXPERIENCE sign-in or licence window: only a person answers it, so it was left alone. Ask the user to deal with it in SOLIDWORKS, then try again",
+                new JsonObject { ["dialog"] = t.Info.Id, ["reason"] = "needs_person" });
+        }
+
         string pressed;
         int? controlId = null;
         bool posted;
@@ -248,13 +255,15 @@ public sealed class DialogWatch : IDisposable
             Buttons = native.Buttons.Select(b => new DialogButton { Text = DialogButtons.Clean(b.Text), ControlId = b.ControlId }).ToList(),
             RequestId = running?.Request.Id,
             OpenedAt = now.ToString("o", CultureInfo.InvariantCulture),
+            NeedsPerson = DialogGuards.NeedsPerson(native.Title),
         };
         lock (_gate) _open[native.Hwnd] = new Tracked(native, info, running, sequence);
         _log.Info($"dialogs: {info.Id} \"{info.Title}\" opened ({string.Join(" | ", info.Text)}), buttons [{string.Join(", ", info.Buttons.Select(b => b.Text))}]" +
                   (running == null ? ", no request running" : $", during request {running.Request.Id} {running.Request.Method}"));
         _events.Publish("dialog.opened", new DialogEvent { Dialog = info });
 
-        var rule = _allowList.Match(native);
+        if (info.NeedsPerson) _log.Warn($"dialogs: {info.Id} \"{info.Title}\" is a sign-in or licence window; only a person answers it");
+        var rule = info.NeedsPerson ? null : _allowList.Match(native);
         if (rule != null)
         {
             var button = DialogButtons.Find(native, rule.Button)!;

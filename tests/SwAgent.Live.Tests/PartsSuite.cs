@@ -29,7 +29,7 @@ public sealed class PartsSuiteRun : LiveRun
 /// closes them all at the end. Skipped unless SWMCP_LIVE=1.
 /// </summary>
 [TestCaseOrderer(StepOrderer.TypeName, StepOrderer.AssemblyName)]
-public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
+public sealed partial class PartsSuite : IClassFixture<PartsSuiteRun>
 {
     static readonly TimeSpan Short = TimeSpan.FromSeconds(30);
     const double Tight = 1e-6;
@@ -846,8 +846,8 @@ public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
         return string.Join(" | ", notes);
     });
 
-    [SkippableFact, Step(22)]
-    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(22, "the suite's documents closed", async () =>
+    [SkippableFact, Step(31)]
+    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(31, "the suite's documents closed", async () =>
     {
         var state = await _run.RequireOnlyOwnDocumentsAsync();
         int closed = 0;
@@ -856,16 +856,8 @@ public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
             await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = d.Path, Discard = true, UsersDocument = true });
             closed++;
         }
-        // Workaround for #11, a bug in our own add-in, not SOLIDWORKS timing: the dispatcher refreshes the add-in's document
-        // table (DocumentTracker) in its finally, after the response is sent, and addin.state answers from that table, so
-        // it can still list a document the close just closed. Re-read for up to 5 s, still failing if one stays listed;
-        // remove this retry when #11 is fixed.
+        // Read once: the add-in refreshes its document table before it answers (#11), so a close is already reflected.
         var open = (await _run.AddinStateAsync()).Documents;
-        for (int i = 0; i < 10 && open.Count > 0; i++)
-        {
-            await Task.Delay(500);
-            open = (await _run.AddinStateAsync()).Documents;
-        }
         Assert.True(open.Count == 0, $"still open after closing {closed}: {string.Join(", ", open.Select(d => d.Path ?? d.Title))}");
         return $"closed {closed} documents; none open";
     });

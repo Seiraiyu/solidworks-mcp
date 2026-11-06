@@ -35,17 +35,34 @@ sealed class FakeSketch
     /// <summary>What the solver says; under defined unless a test says otherwise.</summary>
     public SolveState Solve { get; set; } = SolveState.UnderDefined;
 
+    /// <summary>The sketch's axes as SOLIDWORKS sets them on the standard planes: on top, y runs along -z; on right, x runs along -z.</summary>
+    (Vector3 X, Vector3 Y, Vector3 Normal) Axes()
+    {
+        var n = (On as FakeEntity)?.Info.Normal ?? new Vector3(0, 0, 1);
+        if (Math.Abs(n.Y) > 0.999) return (new Vector3(1, 0, 0), new Vector3(0, 0, -1), n);
+        if (Math.Abs(n.X) > 0.999) return (new Vector3(0, 0, -1), new Vector3(0, 1, 0), n);
+        return (new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, 1));
+    }
+
+    /// <summary>A model point in the sketch's coordinates: its components along the sketch's axes (the fake's origin is the part's).</summary>
+    public Point2 ToSketch(Point3 p)
+    {
+        var (x, y, _) = Axes();
+        return new Point2(p.X * x.X + p.Y * x.Y + p.Z * x.Z, p.X * y.X + p.Y * y.Y + p.Z * y.Z);
+    }
+
     public SketchContents Read()
     {
+        var (x, y, normal) = Axes();
         var c = new SketchContents
         {
             Name = Name,
             Feature = Feature,
             Solve = Solve,
             Origin = new Point3(0, 0, 0),
-            XAxis = new Vector3(1, 0, 0),
-            YAxis = new Vector3(0, 1, 0),
-            Normal = new Vector3(0, 0, 1),
+            XAxis = x,
+            YAxis = y,
+            Normal = normal,
         };
         c.Segments.AddRange(Segments);
         c.Points.AddRange(Points);
@@ -92,6 +109,8 @@ sealed class FakeSketchEditor : ISketchEditor
     public string Name => _sketch.Name;
 
     public bool Closed { get; private set; }
+
+    public Point2 ToSketch(Point3 model) => _sketch.ToSketch(model);
 
     public void Rename(string name)
     {

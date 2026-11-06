@@ -1,0 +1,552 @@
+using System.Collections.Generic;
+using System.Linq;
+using SwAgent.AddIn.Operations;
+using SwAgent.Contracts;
+using Xunit;
+
+namespace SwAgent.AddIn.Tests;
+
+/// <summary>
+/// Every error code each 3.D operation lists in the plan's code table is reachable (design 371, Error handling), one
+/// case per code, as ErrorCodeTests does for 3.A to 3.C. The dispatcher's own busy (not started), timeout and
+/// dialog_open, which every operation can answer, are proven by phase 2's tests.
+/// </summary>
+public class MoreErrorCodeTests : FeatureTestBase
+{
+    static SwAgentException Reach(System.Action action) => Fails(action);
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_sweep_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureSweepRequest { Profile = "Sketch1", Path = "Sketch2" };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new FeatureSweepOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Part();
+        Sketch(new SketchGeometry { Lines = new List<SketchLine> { new SketchLine { Id = "path", Start = P(0, 0), End = P(0, -30) } } }, on: "top");
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Path = "Sketch1";
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                var edge = doc.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, LengthMm = 10 });
+                request.Path = Services.References.Describe(doc, edge).Reference!;
+                edge.State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch2";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.FeatureVolumeError = 1;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureSweepOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "Sweep");
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_loft_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureLoftRequest { Profiles = new List<string> { "Sketch1", "Sketch2" } };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new FeatureLoftOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Part();
+        var small = Sketch(new SketchGeometry { Rectangles = new List<SketchRectangle> { new SketchRectangle { Id = "small", Corner1 = P(10, 5), Corner2 = P(30, 15) } } });
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Profiles.RemoveAt(1);
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                request.Profiles[1] = small.Sketch.Reference!;
+                ((FakeEntity)doc.FeatureByName("Sketch2")!).State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                Sw.OpenCommandTitle = "Loft";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.FeatureAddsNothing = true;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureLoftOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "Blend");
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_rib_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureRibRequest { Sketch = "Sketch2", ThicknessMm = 2 };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new FeatureRibOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Part();
+        Block();
+        var line = Sketch(new SketchGeometry { Lines = new List<SketchLine> { new SketchLine { Id = "rib", Start = P(5, 10), End = P(35, 10) } } });
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.ThicknessMm = -1;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                request.Sketch = line.Sketch.Reference!;
+                ((FakeEntity)doc.FeatureByName("Sketch2")!).State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                Sw.OpenCommandTitle = "Rib";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.FeatureAddsNothing = true;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureRibOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "Rib");
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_shell_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureShellRequest { ThicknessMm = 2 };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new FeatureShellOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Part();
+        Block();
+        request.FacesToRemove = new List<string> { Face(doc) };
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.ThicknessMm = 0;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                doc.Entities.Last(e => e.Kind == ReferenceKind.Face).State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch1";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.FacesSurvive = true;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureShellOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "Shell");
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_draft_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureDraftRequest { NeutralPlane = "front", AngleDeg = 5 };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            request.Faces.Add("Face1");
+            Assert.Equal(code, Reach(() => Run(new FeatureDraftOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Part();
+        Block();
+        var side = doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Plane, Normal = new Vector3(1, 0, 0) });
+        request.Faces.Add(Services.References.Describe(doc, side).Reference!);
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.AngleDeg = 90;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                side.State = PersistState.Suppressed;
+                break;
+            case ErrorCode.Busy:
+                Sw.OpenCommandTitle = "Draft";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.DraftAngleError = 2;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureDraftOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "Draft");
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_hole_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureHoleRequest { Face = "Face1", Positions = new List<Point3> { new Point3(20, 10, 10) }, Size = "Ø5.0", DepthMm = 5 };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new FeatureHoleOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Part();
+        Block();
+        var top = doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Plane, Normal = new Vector3(0, 0, 1), DistanceMm = 0 });
+        request.Face = Services.References.Describe(doc, top).Reference!;
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.DepthMm = null;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                top.State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                Sw.OpenCommandTitle = "Hole Specification";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.HoleOffsetMm = 1;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureHoleOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "HoleWzd" || f.Name == "Sketch2");
+    }
+
+    /// <summary>The block with a through hole (Cut-Extrude1) and a straight edge to pattern it along.</summary>
+    (FakeDocument Doc, string Edge) Holed()
+    {
+        var doc = Part();
+        Block();
+        Sketch(new SketchGeometry { Circles = new List<SketchCircle> { new SketchCircle { Id = "hole", Center = P(20, 10), RadiusMm = 5 } } });
+        Extrude(new FeatureExtrudeRequest { Sketch = "Sketch2", Mode = FeatureMode.Cut, End = ExtrudeEnd.ThroughAll });
+        var edge = doc.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, LengthMm = 40 });
+        return (doc, Services.References.Describe(doc, edge).Reference!);
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_linear_pattern_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureLinearPatternRequest { Features = new List<string> { "Cut-Extrude1" }, Direction = "Edge1", SpacingMm = 8, Count = 3 };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new FeatureLinearPatternOperation(Services), request)).Code);
+            return;
+        }
+        var (doc, edge) = Holed();
+        request.Direction = edge;
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Count = 0;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                doc.Entities.Last(e => e.Kind == ReferenceKind.Edge).State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch2";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.InstanceError = -1;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureLinearPatternOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "LPattern");
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    public void A_linear_face_pattern_reaches_the_codes_its_faces_add(ErrorCode code)
+    {
+        var (doc, edge) = Holed();
+        var bore = doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Cylinder });
+        var request = new FeatureLinearPatternRequest { Faces = new List<string> { Services.References.Describe(doc, bore).Reference! }, Direction = edge, SpacingMm = 8, Count = 3 };
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Features = new List<string> { "Cut-Extrude1" };
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                bore.State = PersistState.Deleted;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.FaceInstanceVolume = 0;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureLinearPatternOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "LPattern");
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_circular_pattern_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureCircularPatternRequest { Features = new List<string> { "Cut-Extrude1" }, Axis = "Edge1", Count = 4 };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new FeatureCircularPatternOperation(Services), request)).Code);
+            return;
+        }
+        var (doc, edge) = Holed();
+        request.Axis = edge;
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.AngleDeg = 0;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                doc.Entities.Last(e => e.Kind == ReferenceKind.Edge).State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                Sw.OpenCommandTitle = "Circular Pattern";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.FeatureVolumeError = 1;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureCircularPatternOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "CirPattern");
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_mirror_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureMirrorRequest { Features = new List<string> { "Cut-Extrude1" }, Plane = "right" };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new FeatureMirrorOperation(Services), request)).Code);
+            return;
+        }
+        var (doc, _) = Holed();
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Body = true;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                var face = doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Plane });
+                request.Plane = Services.References.Describe(doc, face).Reference!;
+                face.State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch1";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.FeatureVolumeError = 1;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureMirrorOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "MirrorPattern");
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    public void Configuration_list_reaches_every_listed_code(ErrorCode code)
+    {
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new ConfigurationListOperation(Services), new ConfigurationListRequest())).Code);
+            return;
+        }
+        var doc = Part();
+        var request = new ConfigurationListRequest();
+        if (code == ErrorCode.InvalidArgument) request.Document = "Nope";
+        else doc.Active = "Gone";
+        Assert.Equal(code, Reach(() => Run(new ConfigurationListOperation(Services), request)).Code);
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    public void Configuration_add_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new ConfigurationAddRequest { Name = "Long" };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new ConfigurationAddOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Part();
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Name = "Default";
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch1";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.ConfigurationAddFails = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.ConfigurationAddStaysPut = true;
+                doc.ShowConfigurationIgnored = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new ConfigurationAddOperation(Services), request)).Code);
+        Assert.Equal(new[] { "Default" }, doc.Configurations.ToArray());
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    public void Configuration_activate_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new ConfigurationActivateRequest { Name = "Long" };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new ConfigurationActivateOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Part();
+        doc.Configurations.Add("Long");
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Name = "Short";
+                break;
+            case ErrorCode.Busy:
+                Sw.OpenCommandTitle = "Configuration Properties";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.ShowConfigurationRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.ShowConfigurationIgnored = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new ConfigurationActivateOperation(Services), request)).Code);
+        Assert.Equal("Default", doc.Active);
+    }
+}

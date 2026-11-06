@@ -1,0 +1,269 @@
+{
+  "type": "object",
+  "description": "A part's configurations after a change.",
+  "properties": {
+    "change": {
+      "type": "object",
+      "properties": {
+        "document": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "The document's title as SOLIDWORKS shows it."
+            },
+            "path": {
+              "type": "string",
+              "description": "The full path, absent while the document has never been saved."
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "part",
+                "assembly",
+                "drawing"
+              ],
+              "description": "Part, assembly or drawing."
+            },
+            "dirty": {
+              "type": "boolean",
+              "description": "True when the document has unsaved changes."
+            }
+          },
+          "required": [
+            "title",
+            "type",
+            "dirty"
+          ],
+          "additionalProperties": false,
+          "description": "The part it acted on."
+        },
+        "created": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "Something a model-changing operation made.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Its name, for example Sketch3 or Line2."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "face",
+                  "edge",
+                  "vertex",
+                  "feature",
+                  "sketch",
+                  "sketch_entity",
+                  "sketch_point",
+                  "plane",
+                  "axis",
+                  "point",
+                  "dimension"
+                ],
+                "description": "What it is: feature, sketch, sketch_entity, sketch_point, dimension, plane, axis or point."
+              },
+              "reference": {
+                "type": "string",
+                "description": "Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one."
+              }
+            },
+            "required": [
+              "name",
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          "description": "What it made (features, sketches, sketch entities), in the order it made them."
+        },
+        "changed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A value a model-changing operation edited.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "What was edited, for example D1@Sketch1."
+              },
+              "property": {
+                "type": "string",
+                "description": "Which of its properties: value, or suppressed."
+              },
+              "before": {
+                "type": "string",
+                "description": "Its value before, with its unit, for example 40 mm."
+              },
+              "after": {
+                "type": "string",
+                "description": "Its value after, with its unit."
+              }
+            },
+            "required": [
+              "name",
+              "property",
+              "before",
+              "after"
+            ],
+            "additionalProperties": false
+          },
+          "description": "What it edited, each with its value before and after."
+        },
+        "rebuild": {
+          "type": "object",
+          "properties": {
+            "errors": {
+              "type": "integer",
+              "description": "How many features have a rebuild error."
+            },
+            "warnings": {
+              "type": "integer",
+              "description": "How many features have a rebuild warning."
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "description": "A feature with a rebuild error or warning.",
+                "properties": {
+                  "feature": {
+                    "type": "string",
+                    "description": "The feature's name."
+                  },
+                  "code": {
+                    "type": "string",
+                    "description": "SOLIDWORKS' error code name (swFeatureError_e), for example swFeatureErrorFilletNoEdge."
+                  },
+                  "warning": {
+                    "type": "boolean",
+                    "description": "True for a warning, false for an error."
+                  }
+                },
+                "required": [
+                  "feature",
+                  "code",
+                  "warning"
+                ],
+                "additionalProperties": false
+              },
+              "description": "Each feature with an error or warning."
+            }
+          },
+          "required": [
+            "errors",
+            "warnings",
+            "items"
+          ],
+          "additionalProperties": false,
+          "description": "The part's rebuild errors and warnings after the change, by feature."
+        },
+        "bodies_before": {
+          "type": "integer",
+          "description": "Solid bodies before the change."
+        },
+        "bodies_after": {
+          "type": "integer",
+          "description": "Solid bodies after the change."
+        },
+        "volume_before_mm3": {
+          "type": "number",
+          "description": "Volume of the solid bodies before the change, mm³."
+        },
+        "volume_after_mm3": {
+          "type": "number",
+          "description": "Volume of the solid bodies after the change, mm³."
+        },
+        "box": {
+          "type": "object",
+          "properties": {
+            "min": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "description": "X, mm."
+                },
+                "y": {
+                  "type": "number",
+                  "description": "Y, mm."
+                },
+                "z": {
+                  "type": "number",
+                  "description": "Z, mm."
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "additionalProperties": false,
+              "description": "The corner with the smallest coordinates."
+            },
+            "max": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "description": "X, mm."
+                },
+                "y": {
+                  "type": "number",
+                  "description": "Y, mm."
+                },
+                "z": {
+                  "type": "number",
+                  "description": "Z, mm."
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "additionalProperties": false,
+              "description": "The corner with the largest coordinates."
+            }
+          },
+          "required": [
+            "min",
+            "max"
+          ],
+          "additionalProperties": false,
+          "description": "The box around the solid bodies after the change (SOLIDWORKS' quick box), mm; absent when the part has no solid body."
+        }
+      },
+      "required": [
+        "document",
+        "created",
+        "changed",
+        "rebuild",
+        "bodies_before",
+        "bodies_after",
+        "volume_before_mm3",
+        "volume_after_mm3"
+      ],
+      "additionalProperties": false,
+      "description": "The evidence: the active configuration before and after, and the part rebuilt."
+    },
+    "active": {
+      "type": "string",
+      "description": "The active configuration's name now."
+    },
+    "configurations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Every configuration's name now, in SOLIDWORKS' order."
+    }
+  },
+  "required": [
+    "change",
+    "active",
+    "configurations"
+  ],
+  "additionalProperties": false
+}

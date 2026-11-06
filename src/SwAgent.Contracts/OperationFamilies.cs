@@ -26,6 +26,7 @@ public static class OperationFamilies
         ["api"] = TimeSpan.FromSeconds(30),
         ["dimension"] = TimeSpan.FromSeconds(30),
         ["refgeom"] = TimeSpan.FromSeconds(30),
+        ["configuration"] = TimeSpan.FromSeconds(30),
     };
 
     public static bool TryGetDefault(string family, out TimeSpan deadline) => Defaults.TryGetValue(family, out deadline);

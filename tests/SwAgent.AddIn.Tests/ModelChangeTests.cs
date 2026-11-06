@@ -177,3 +177,52 @@ public class DiagEditingTests : DocumentTestBase
         Assert.Equal(ErrorCode.InvalidArgument, Fails(() => Run(new SwAgent.AddIn.Operations.DiagEditingOperation(Services), new DiagEditingRequest())).Code);
     }
 }
+
+/// <summary>diag.arm_dialog's message box, shown mid-change by every model change (design 371: the dialog-during-feature fault case).</summary>
+public class ArmedDialogTests : DocumentTestBase
+{
+    FakeDocument Part()
+    {
+        var doc = Sw.Track(FakeDocument.Part("Part1", PathOf("part1.SLDPRT")));
+        doc.Bodies = 1;
+        doc.MassProperties = new ModelMassResult { VolumeMm3 = 8000 };
+        return doc;
+    }
+
+    TestChangeResult Change(TestChangeRequest request) => Run(new TestChangeOperation(Services), request);
+
+    [Fact]
+    public void An_armed_dialog_answered_ok_lets_the_change_go_on_and_is_shown_once()
+    {
+        var doc = Part();
+        var shown = new List<string>();
+        Services.ShowBox = box =>
+        {
+            shown.Add(box.Title);
+            return "ok";
+        };
+        Services.Runtime.ArmDialog(new DiagDialogRequest { Title = "mid-change", Text = "x", Buttons = DiagDialogButtons.OkCancel });
+        Change(new TestChangeRequest());
+        Assert.Equal(new[] { "mid-change" }, shown.ToArray());
+        Assert.Contains(doc.Tree, f => f.Name == "Sketch9");
+        doc.RemoveFeature((FakeEntity)doc.FeatureByName("Sketch9")!);
+        Change(new TestChangeRequest());
+        Assert.Single(shown);
+    }
+
+    [Theory]
+    [InlineData("cancel")]
+    [InlineData("no")]
+    public void An_armed_dialog_answered_cancel_or_no_rolls_the_change_back(string pressed)
+    {
+        var doc = Part();
+        Services.ShowBox = _ => pressed;
+        Services.Runtime.ArmDialog(new DiagDialogRequest { Title = "mid-change", Text = "x", Buttons = DiagDialogButtons.YesNo });
+        var e = Fails(() => Change(new TestChangeRequest()));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.Equal(pressed, e.Error.Details!["pressed"]);
+        Assert.Contains("taken back", e.Message);
+        Assert.DoesNotContain(doc.Tree, f => f.Name == "Sketch9");
+        Assert.Equal(8000, doc.MassProperties!.VolumeMm3);
+    }
+}

@@ -38,6 +38,10 @@ public sealed class DialogInfo
     public long? RequestId { get; set; }
 
     [Required]
+    [Description("A 3DEXPERIENCE sign-in or licence window: only a person answers it, and dialog.respond refuses to. Ask the user to deal with it.")]
+    public bool NeedsPerson { get; set; }
+
+    [Required]
     [Description("When it was first seen, UTC, ISO 8601.")]
     public string OpenedAt { get; set; } = "";
 }

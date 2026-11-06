@@ -182,10 +182,17 @@ public sealed partial class FaultSuite : IClassFixture<FaultSuiteRun>
         while (dialog == null && clock.Elapsed < TimeSpan.FromMinutes(3))
         {
             var state = await _run.AddinStateAsync();
-            if (state.Dialog != null && state.Dialog.RequestId == null) dialog = state.Dialog;
+            if (state.Dialog?.NeedsPerson == true)
+            {
+                // Issue #10: a sign-in or licence window is never touched; the run stops for a person.
+                _run.Say($"STOP: SOLIDWORKS is showing '{state.Dialog.Title}', a sign-in or licence window; only a person answers it. Stop the run and report");
+                throw new InvalidOperationException($"'{state.Dialog.Title}' needs a person; the case stopped without touching it");
+            }
+            // Only System Options counts: any other window (issue #10's sign-in window passed this case) is waited past.
+            if (state.Dialog != null && state.Dialog.RequestId == null && state.Dialog.Title.Contains("Options")) dialog = state.Dialog;
             else await Task.Delay(1000);
         }
-        if (dialog == null) throw new SkipException("no dialog was opened by hand within 3 min");
+        if (dialog == null) throw new SkipException("System Options was not opened by hand within 3 min");
 
         var blocked = await Assert.ThrowsAsync<SwAgentException>(() =>
             Call<SessionStatusRequest, SessionStatusResult>(new SessionStatusRequest(), Short));
