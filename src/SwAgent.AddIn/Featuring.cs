@@ -78,3 +78,18 @@ public sealed class PlaneSpec
     public double AngleDeg { get; set; }
     public bool Flip { get; set; }
 }
+
+/// <summary>A reference axis or point as ISwDocument.Axis and ISwDocument.Point make them: the entities resolved, in order.</summary>
+public sealed class RefSpec
+{
+    public System.Collections.Generic.List<object> References { get; } = new System.Collections.Generic.List<object>();
+
+    /// <summary>The axis's mode, for an axis.</summary>
+    public AxisMode AxisMode { get; set; }
+
+    /// <summary>The point's mode, for a point.</summary>
+    public PointMode PointMode { get; set; }
+
+    /// <summary>For a point along a curve, mm.</summary>
+    public double DistanceMm { get; set; }
+}

@@ -196,6 +196,46 @@ internal sealed partial class SolidWorksDocument
         }
     }
 
+    /// <summary>InsertAxis2 with the references selected (it returns only whether it worked): the new axis is the RefAxis that was not in the tree before.</summary>
+    public object? Axis(RefSpec s)
+    {
+        var before = new HashSet<string>(AllFeatures().Where(f => f.GetTypeName2() == "RefAxis").Select(f => f.Name), StringComparer.Ordinal);
+        Doc.ClearSelection2(true);
+        try
+        {
+            for (int i = 0; i < s.References.Count; i++) Pick(s.References[i], append: i > 0, mark: 0);
+            if (!Doc.InsertAxis2(true)) return null;
+        }
+        finally
+        {
+            Doc.ClearSelection2(true);
+        }
+        return AllFeatures().FirstOrDefault(f => f.GetTypeName2() == "RefAxis" && !before.Contains(f.Name));
+    }
+
+    /// <summary>InsertReferencePoint with the references selected: one point of the mode's type (along a curve: by distance from its start).</summary>
+    public object? Point(RefSpec s)
+    {
+        int type = s.PointMode switch
+        {
+            PointMode.ArcCenter => (int)swRefPointType_e.swRefPointCenterEdge,
+            PointMode.FaceCenter => (int)swRefPointType_e.swRefPointFaceCenter,
+            PointMode.Intersection => (int)swRefPointType_e.swRefPointIntersection,
+            _ => (int)swRefPointType_e.swRefPointAlongCurve,
+        };
+        Doc.ClearSelection2(true);
+        try
+        {
+            for (int i = 0; i < s.References.Count; i++) Pick(s.References[i], append: i > 0, mark: 0);
+            object? made = Doc.FeatureManager.InsertReferencePoint(type, (int)swRefPointAlongCurveType_e.swRefPointAlongCurveDistance, s.DistanceMm / Mm, 1);
+            return made is object[] points ? points.FirstOrDefault(p => p != null) : made;
+        }
+        finally
+        {
+            Doc.ClearSelection2(true);
+        }
+    }
+
     public IReadOnlyList<object> FacesOf(object feature) =>
         ((IFeature)feature).GetFaces() is object[] faces ? faces.Where(f => f != null).ToList() : new List<object>();
 

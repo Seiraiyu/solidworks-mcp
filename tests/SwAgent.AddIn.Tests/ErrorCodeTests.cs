@@ -520,4 +520,93 @@ public class ErrorCodeTests : DocumentTestBase
         Assert.Equal(code, Fails(() => Run(new RefgeomPlaneOperation(Services), request)).Code);
         Assert.DoesNotContain(doc.Tree, f => f.Name == "Plane1");
     }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Refgeom_axis_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new RefgeomAxisRequest { Mode = AxisMode.TwoPlanes, Entities = new List<string> { "front", "right" } };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Fails(() => Run(new RefgeomAxisOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Part();
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Entities.RemoveAt(1);
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                var face = doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Plane, Normal = new Vector3(1, 0, 0) });
+                request.Entities[1] = Services.References.Describe(doc, face).Reference!;
+                face.State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch9";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.RefGeometryError = 1;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Run(new RefgeomAxisOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Name == "Axis1");
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Refgeom_point_reaches_every_listed_code(ErrorCode code)
+    {
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Fails(() => Run(new RefgeomPointOperation(Services), new RefgeomPointRequest { Mode = PointMode.ArcCenter, Entities = new List<string> { "Edge1" } })).Code);
+            return;
+        }
+        var doc = Part();
+        var circle = doc.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Circle, Origin = new Point3(20, 10, 10) });
+        var request = new RefgeomPointRequest { Mode = PointMode.ArcCenter, Entities = new List<string> { Services.References.Describe(doc, circle).Reference! } };
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.DistanceMm = 2;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                circle.State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                Sw.OpenCommandTitle = "Point";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.RefGeometryError = 1;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Run(new RefgeomPointOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Name == "Point1");
+    }
 }

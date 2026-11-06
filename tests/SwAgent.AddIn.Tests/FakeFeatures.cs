@@ -145,6 +145,63 @@ sealed partial class FakeDocument
         return plane;
     }
 
+    public List<RefSpec> Axes { get; } = new List<RefSpec>();
+    public List<RefSpec> Points { get; } = new List<RefSpec>();
+
+    /// <summary>An axis on the line its references give, RefGeometryError off it.</summary>
+    public object? Axis(RefSpec spec)
+    {
+        Axes.Add(spec);
+        if (FeatureSelectFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the entity an axis needs");
+        if (FeatureRefuses) return null;
+        var r = spec.References.Cast<FakeEntity>().Select(e => e.Info).ToList();
+        Vector3 dir;
+        Point3 at;
+        switch (spec.AxisMode)
+        {
+            case AxisMode.TwoPlanes:
+                var (n1, n2) = (r[0].Normal!, r[1].Normal!);
+                var u = Cross(n1, n2);
+                double uu = u.X * u.X + u.Y * u.Y + u.Z * u.Z;
+                double d1 = Dot(n1, r[0].Origin), d2 = Dot(n2, r[1].Origin);
+                var a = Cross(n2, u);
+                var b = Cross(u, n1);
+                dir = Unit(u);
+                at = new Point3((d1 * a.X + d2 * b.X) / uu, (d1 * a.Y + d2 * b.Y) / uu, (d1 * a.Z + d2 * b.Z) / uu);
+                break;
+            case AxisMode.TwoPoints:
+                var (p, q) = (r[0].Origin!, r[1].Origin!);
+                dir = Unit(new Vector3(q.X - p.X, q.Y - p.Y, q.Z - p.Z));
+                at = p;
+                break;
+            default:
+                dir = r[0].Axis!;
+                at = r[0].Origin!;
+                break;
+        }
+        var off = Unit(Math.Abs(dir.X) < 0.9 ? Cross(dir, new Vector3(1, 0, 0)) : Cross(dir, new Vector3(0, 1, 0)));
+        var axis = MakeFeature("Axis", "RefAxis", 0, 0, ReferenceKind.Axis);
+        axis.Info.Geometry = GeometryType.Line;
+        axis.Info.Axis = dir;
+        axis.Info.Origin = Along(at, off, RefGeometryError);
+        return axis;
+    }
+
+    /// <summary>A point at its first reference's origin (the circle's or face's centre, where the edges meet), RefGeometryError off it in x.</summary>
+    public object? Point(RefSpec spec)
+    {
+        Points.Add(spec);
+        if (FeatureSelectFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the entity a point needs");
+        if (FeatureRefuses) return null;
+        var o = ((FakeEntity)spec.References[0]).Info.Origin ?? new Point3(0, 0, 0);
+        var point = MakeFeature("Point", "RefPoint", 0, 0, ReferenceKind.Point);
+        point.Info.Geometry = GeometryType.Point;
+        point.Info.Origin = new Point3(o.X + RefGeometryError, o.Y, o.Z);
+        return point;
+    }
+
+    static double Dot(Vector3 n, Point3? p) => p == null ? 0 : n.X * p.X + n.Y * p.Y + n.Z * p.Z;
+
     static Point3 Along(Point3 o, Vector3 n, double d) => new Point3(o.X + n.X * d, o.Y + n.Y * d, o.Z + n.Z * d);
 
     static Vector3 Cross(Vector3 u, Vector3 v) => new Vector3(u.Y * v.Z - u.Z * v.Y, u.Z * v.X - u.X * v.Z, u.X * v.Y - u.Y * v.X);

@@ -1,0 +1,36 @@
+{
+  "type": "object",
+  "description": "Makes a reference point: the centre of a circular edge (arc_center), the centre of a face (face_center), where two edges meet (intersection), or distance_mm along an edge from its start (along_curve). Lengths in mm. Checked: the point exists, the part's volume is unchanged, and it is where its entities put it (at the circle's centre, on the face's plane, on both edges, on the edge). Otherwise it is deleted (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "arc_center",
+        "face_center",
+        "intersection",
+        "along_curve"
+      ],
+      "description": "arc_center, face_center, intersection or along_curve."
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What it is built on, by reference: one circular edge (arc_center), one face (face_center), two edges (intersection), or one edge (along_curve)."
+    },
+    "distance_mm": {
+      "type": "number",
+      "description": "For along_curve: how far along the edge from its start, mm, more than 0."
+    }
+  },
+  "required": [
+    "mode",
+    "entities"
+  ],
+  "additionalProperties": false
+}

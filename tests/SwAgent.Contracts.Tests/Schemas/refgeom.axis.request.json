@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "description": "Makes a reference axis: where two planes meet (two_planes: two planes or planar faces), through two points (two_points: two vertices or points), along a cylinder's or cone's axis (cylinder: its face), or along a straight edge (edge). Checked: the axis exists, the part's volume is unchanged, and its direction and position are what its entities give. Otherwise it is deleted (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "two_planes",
+        "two_points",
+        "cylinder",
+        "edge"
+      ],
+      "description": "two_planes, two_points, cylinder or edge."
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What it is built on, by reference or name: two planes or planar faces (two_planes), two vertices or points (two_points), one cylindrical or conical face (cylinder), or one straight edge (edge)."
+    }
+  },
+  "required": [
+    "mode",
+    "entities"
+  ],
+  "additionalProperties": false
+}

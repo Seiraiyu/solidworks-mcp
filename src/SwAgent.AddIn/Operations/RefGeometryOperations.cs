@@ -126,6 +126,155 @@ public sealed class RefgeomPlaneOperation : ModelChangeOperation<RefgeomPlaneReq
     }
 }
 
+public sealed class RefgeomAxisOperation : ModelChangeOperation<RefgeomAxisRequest, FeatureResult>
+{
+    public RefgeomAxisOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(RefgeomAxisRequest request) => request.Document;
+
+    protected override FeatureResult Change(ISwDocument doc, RefgeomAxisRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        var spec = new RefSpec { AxisMode = request.Mode };
+        spec.References.AddRange(Resolved(doc, request));
+        var feature = doc.Axis(spec) ?? throw FeatureFacts.NotMade(doc, "reference axis", $"({WireNames.ForEnum(request.Mode)})", "check that its entities define one line");
+        return FeatureFacts.Made(Services.References, doc, feature, tx);
+    }
+
+    List<object> Resolved(ISwDocument doc, RefgeomAxisRequest r)
+    {
+        var references = Services.References;
+        int count = r.Mode == AxisMode.TwoPlanes || r.Mode == AxisMode.TwoPoints ? 2 : 1;
+        if (r.Entities.Count != count)
+            throw FeatureFacts.Invalid("entities", $"a {WireNames.ForEnum(r.Mode)} axis is built on {count} {(count == 1 ? "entity" : "entities")}, not {r.Entities.Count}");
+        return r.Entities.Select((text, i) =>
+        {
+            string field = $"/entities/{i}";
+            switch (r.Mode)
+            {
+                case AxisMode.TwoPlanes:
+                    return RefGeometry.Plane(references, doc, text, field);
+                case AxisMode.TwoPoints:
+                    return references.Resolve(doc, text, field, ReferenceKind.Vertex, ReferenceKind.Point).Entity;
+                case AxisMode.Cylinder:
+                    var face = references.Resolve(doc, text, field, ReferenceKind.Face).Entity;
+                    var g = doc.Describe(face).Geometry;
+                    if (g != GeometryType.Cylinder && g != GeometryType.Cone)
+                        throw FeatureFacts.Invalid(field, $"{field}: a cylinder axis needs a cylindrical or conical face, and this is a {WireNames.ForEnum(g)} face");
+                    return face;
+                default:
+                    return RefGeometry.Line(references, doc, text, field);
+            }
+        }).ToList();
+    }
+
+    /// <summary>The feature is an axis, the volume is unchanged, and the axis lies where its entities put it.</summary>
+    protected override void Check(ISwDocument doc, RefgeomAxisRequest request, FeatureResult result)
+    {
+        FeatureFacts.ExpectType(doc, result, "RefAxis", "reference axis");
+        FeatureFacts.VolumeChanged(result, "reference axis", VolumeBefore, Volume(doc, doc.SolidBodyCount()), 0);
+        var axis = RefGeometry.Made(doc, result);
+        var dir = axis.Axis ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"{result.Feature.Name} has no direction", new JsonObject { ["check"] = "axis_direction" });
+        var at = axis.Origin ?? new Point3(0, 0, 0);
+        var refs = Resolved(doc, request).Select(doc.Describe).ToList();
+        string name = result.Feature.Name ?? "the axis";
+        switch (request.Mode)
+        {
+            case AxisMode.TwoPlanes:
+                for (int i = 0; i < 2; i++)
+                {
+                    FeatureChecks.Near("axis_direction", $"the angle between {name} and the normal of /entities/{i}", 90, FeatureChecks.AngleDeg(refs[i].Normal!, dir), RefGeometry.AngleTolerance, "deg");
+                    FeatureChecks.Near("axis_position", $"the distance from {name} to /entities/{i}", 0,
+                        FeatureChecks.Offset(refs[i].Origin ?? new Point3(0, 0, 0), refs[i].Normal!, at), RefGeometry.LengthTolerance, "mm");
+                }
+                result.Checks.Add("along the line where the two planes meet");
+                break;
+            case AxisMode.TwoPoints:
+                var (a, b) = (refs[0].Origin!, refs[1].Origin!);
+                var ab = new Vector3(b.X - a.X, b.Y - a.Y, b.Z - a.Z);
+                RefGeometry.Along(ab, a, dir, at, name);
+                result.Checks.Add("through the two points");
+                break;
+            default:
+                RefGeometry.Along(refs[0].Axis!, refs[0].Origin!, dir, at, name);
+                result.Checks.Add(request.Mode == AxisMode.Cylinder ? "along the face's axis" : "along the edge");
+                break;
+        }
+    }
+}
+
+public sealed class RefgeomPointOperation : ModelChangeOperation<RefgeomPointRequest, FeatureResult>
+{
+    public RefgeomPointOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(RefgeomPointRequest request) => request.Document;
+
+    protected override FeatureResult Change(ISwDocument doc, RefgeomPointRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        if (request.Mode == PointMode.AlongCurve) FeatureFacts.Length(request.DistanceMm, "distance_mm", "a point along a curve");
+        else if (request.DistanceMm != null) throw FeatureFacts.Invalid("distance_mm", "distance_mm is for along_curve only");
+        var spec = new RefSpec { PointMode = request.Mode, DistanceMm = request.DistanceMm ?? 0 };
+        spec.References.AddRange(Resolved(doc, request));
+        var feature = doc.Point(spec) ?? throw FeatureFacts.NotMade(doc, "reference point", $"({WireNames.ForEnum(request.Mode)})", "check that its entities define one point");
+        return FeatureFacts.Made(Services.References, doc, feature, tx);
+    }
+
+    List<object> Resolved(ISwDocument doc, RefgeomPointRequest r)
+    {
+        int count = r.Mode == PointMode.Intersection ? 2 : 1;
+        if (r.Entities.Count != count)
+            throw FeatureFacts.Invalid("entities", $"a {WireNames.ForEnum(r.Mode)} point is built on {count} {(count == 1 ? "entity" : "entities")}, not {r.Entities.Count}");
+        return r.Entities.Select((text, i) =>
+        {
+            string field = $"/entities/{i}";
+            if (r.Mode == PointMode.FaceCenter) return Services.References.Resolve(doc, text, field, ReferenceKind.Face).Entity;
+            var edge = Services.References.Resolve(doc, text, field, ReferenceKind.Edge).Entity;
+            var g = doc.Describe(edge).Geometry;
+            if (r.Mode == PointMode.ArcCenter && g != GeometryType.Circle)
+                throw FeatureFacts.Invalid(field, $"{field}: an arc_center point needs a circular edge, and this is a {WireNames.ForEnum(g)} edge");
+            return edge;
+        }).ToList();
+    }
+
+    /// <summary>The feature is a point, the volume is unchanged, and the point is where its entities put it.</summary>
+    protected override void Check(ISwDocument doc, RefgeomPointRequest request, FeatureResult result)
+    {
+        FeatureFacts.ExpectType(doc, result, "RefPoint", "reference point");
+        FeatureFacts.VolumeChanged(result, "reference point", VolumeBefore, Volume(doc, doc.SolidBodyCount()), 0);
+        var at = RefGeometry.Made(doc, result).Origin
+            ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"{result.Feature.Name} has no position", new JsonObject { ["check"] = "point_position" });
+        var refs = Resolved(doc, request);
+        string name = result.Feature.Name ?? "the point";
+        switch (request.Mode)
+        {
+            case PointMode.ArcCenter:
+                var centre = doc.Describe(refs[0]).Origin!;
+                double off = Math.Sqrt(Math.Pow(at.X - centre.X, 2) + Math.Pow(at.Y - centre.Y, 2) + Math.Pow(at.Z - centre.Z, 2));
+                FeatureChecks.Near("point_position", $"the distance from {name} to the circle's centre", 0, off, RefGeometry.LengthTolerance, "mm");
+                result.Checks.Add($"at the circle's centre {centre}");
+                break;
+            case PointMode.FaceCenter:
+                var face = doc.Describe(refs[0]);
+                if (face.Geometry == GeometryType.Plane && face.Normal != null && face.Origin != null)
+                {
+                    RefGeometry.Contains(face.Origin, face.Normal, at, name, result);
+                    result.Checks.Add("on the face's plane");
+                }
+                break;
+            default:
+                for (int i = 0; i < refs.Count; i++)
+                    FeatureChecks.Near("point_position", $"the distance from {name} to /entities/{i}", 0, doc.DistanceMm(refs[i], at), RefGeometry.LengthTolerance, "mm");
+                result.Checks.Add(request.Mode == PointMode.Intersection ? "on both edges" : "on the edge");
+                break;
+        }
+    }
+}
+
 /// <summary>Resolving and checking what reference geometry is built on.</summary>
 public static class RefGeometry
 {
@@ -151,6 +300,21 @@ public static class RefGeometry
         if (kind == ReferenceKind.Edge && info.Geometry != GeometryType.Line)
             throw FeatureFacts.Invalid(field, $"{field}: this needs a straight edge or an axis, and this is a {WireNames.ForEnum(info.Geometry)} edge");
         return entity;
+    }
+
+    /// <summary>The feature just made, described now.</summary>
+    public static EntityInfo Made(ISwDocument doc, FeatureResult result) =>
+        doc.Describe(doc.FeatureByName(result.Feature.Name ?? "")
+            ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"{result.Feature.Name} is not in the part", new JsonObject { ["check"] = "feature_exists" }));
+
+    /// <summary>The axis through <paramref name="at"/> along <paramref name="dir"/> is the line through <paramref name="point"/> along <paramref name="line"/>.</summary>
+    public static void Along(Vector3 line, Point3 point, Vector3 dir, Point3 at, string name)
+    {
+        FeatureChecks.Near("axis_direction", $"the angle between {name} and the line it should follow", 0, FeatureChecks.AngleDeg(line, dir), AngleTolerance, "deg");
+        double l = Math.Sqrt(line.X * line.X + line.Y * line.Y + line.Z * line.Z);
+        double dx = at.X - point.X, dy = at.Y - point.Y, dz = at.Z - point.Z;
+        double cx = dy * line.Z - dz * line.Y, cy = dz * line.X - dx * line.Z, cz = dx * line.Y - dy * line.X;
+        FeatureChecks.Near("axis_position", $"the distance from {name} to the line it should follow", 0, Math.Sqrt(cx * cx + cy * cy + cz * cz) / l, LengthTolerance, "mm");
     }
 
     public static void Parallel(Vector3 expected, Vector3 normal, FeatureResult result) =>

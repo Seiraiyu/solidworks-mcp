@@ -48,3 +48,56 @@ public sealed class RefgeomPlaneRequest
     [Description("For normal_to_curve: the edge it is normal to, at through.")]
     public string? Curve { get; set; }
 }
+
+/// <summary>How a reference axis is placed.</summary>
+public enum AxisMode
+{
+    TwoPlanes,
+    TwoPoints,
+    Cylinder,
+    Edge,
+}
+
+[Operation("refgeom.axis", typeof(FeatureResult))]
+[Description("Makes a reference axis: where two planes meet (two_planes: two planes or planar faces), through two points (two_points: two vertices or points), along a cylinder's or cone's axis (cylinder: its face), or along a straight edge (edge). Checked: the axis exists, the part's volume is unchanged, and its direction and position are what its entities give. Otherwise it is deleted (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class RefgeomAxisRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("two_planes, two_points, cylinder or edge.")]
+    public AxisMode Mode { get; set; }
+
+    [Required]
+    [Description("What it is built on, by reference or name: two planes or planar faces (two_planes), two vertices or points (two_points), one cylindrical or conical face (cylinder), or one straight edge (edge).")]
+    public List<string> Entities { get; set; } = new List<string>();
+}
+
+/// <summary>How a reference point is placed.</summary>
+public enum PointMode
+{
+    ArcCenter,
+    FaceCenter,
+    Intersection,
+    AlongCurve,
+}
+
+[Operation("refgeom.point", typeof(FeatureResult))]
+[Description("Makes a reference point: the centre of a circular edge (arc_center), the centre of a face (face_center), where two edges meet (intersection), or distance_mm along an edge from its start (along_curve). Lengths in mm. Checked: the point exists, the part's volume is unchanged, and it is where its entities put it (at the circle's centre, on the face's plane, on both edges, on the edge). Otherwise it is deleted (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class RefgeomPointRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("arc_center, face_center, intersection or along_curve.")]
+    public PointMode Mode { get; set; }
+
+    [Required]
+    [Description("What it is built on, by reference: one circular edge (arc_center), one face (face_center), two edges (intersection), or one edge (along_curve).")]
+    public List<string> Entities { get; set; } = new List<string>();
+
+    [Description("For along_curve: how far along the edge from its start, mm, more than 0.")]
+    public double? DistanceMm { get; set; }
+}

@@ -135,6 +135,12 @@ public interface ISwDocument
     /// <summary>A reference plane; the new plane feature, or null when SOLIDWORKS made none.</summary>
     object? Plane(PlaneSpec spec);
 
+    /// <summary>A reference axis on the spec's references; the new axis feature, or null when SOLIDWORKS made none.</summary>
+    object? Axis(RefSpec spec);
+
+    /// <summary>A reference point on the spec's references; the new point feature, or null when SOLIDWORKS made none.</summary>
+    object? Point(RefSpec spec);
+
     /// <summary>The faces <paramref name="feature"/> made.</summary>
     System.Collections.Generic.IReadOnlyList<object> FacesOf(object feature);
 }
