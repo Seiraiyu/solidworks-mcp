@@ -66,7 +66,13 @@ public sealed class SwAgentAddIn : ISwAddin
                 _log.Error("preferences: recovering export preferences at load failed; the journal (if any) is kept", e);
             }
             if (runtime.DiagnosticsEnabled) _log.Warn("diagnostic operations are ON (HKCU\\Software\\solidworks-mcp\\Diagnostics = 1)");
-            var services = new AddInServices(app, Version, runtime) { Preferences = _preferences, ExportPreferences = exportPreferences };
+            var services = new AddInServices(app, Version, runtime)
+            {
+                Preferences = _preferences,
+                ExportPreferences = exportPreferences,
+                ApiBinder = new SolidWorksBinder(),
+                ApiCalls = new ApiCallLog(ApiCallLog.DefaultPath),
+            };
             runtime.Documents = new DocumentTracker(app.OpenDocuments, runtime.Events, _log);
             // The selection is read on the UI thread, between requests, once it has been still for 250 ms.
             runtime.Selection = new SelectionReporter(runtime.Events, () => runtime.Ledger.Running != null, _log,

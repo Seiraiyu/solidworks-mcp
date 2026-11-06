@@ -580,4 +580,5 @@ abstract class DelegatingSolidWorks : ISolidWorksApplication
     public virtual ISwDocument NewDocument(string template) => Inner.NewDocument(template);
     public OpenOutcome OpenDocument(string path, DocumentType type, bool readOnly) => Inner.OpenDocument(path, type, readOnly);
     public virtual void Close(ISwDocument document) => Inner.Close(document);
+    public object ApiObject() => Inner.ApiObject();
 }

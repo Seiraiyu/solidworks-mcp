@@ -167,6 +167,12 @@ sealed class FakeApiExtension
     }
 
     public int Words(object Values) => ((string[])Values).Length;
+
+    /// <summary>Selects the entity a reference resolved to, as SOLIDWORKS' IEntity.Select4 would through the document.</summary>
+    public bool SelectEntity(object Entity, bool Append) => _doc.Select(Entity, Append);
+
+    /// <summary>The document goes (a way to close it the guard does not know of).</summary>
+    public void Vanish() => _doc.Vanished?.Invoke();
 }
 
 /// <summary>Late binding as SolidWorksBinder does it, with the fakes classified and named as SOLIDWORKS' own objects are.</summary>
@@ -199,4 +205,9 @@ sealed partial class FakeDocument
 
     /// <summary>The document's IModelDoc2 as api.call reaches it.</summary>
     public FakeApiDoc Api => _api ??= new FakeApiDoc(this);
+
+    public object ApiObject() => Api;
+
+    /// <summary>Run by the fake API's Vanish: the document closing behind api.call's back.</summary>
+    public Action? Vanished { get; set; }
 }

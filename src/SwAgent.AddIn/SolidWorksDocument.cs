@@ -61,6 +61,8 @@ internal sealed partial class SolidWorksDocument : ISwDocument
 
     public DocumentInfo Info() => SolidWorksApplication.Describe(Doc);
 
+    public object ApiObject() => Doc;
+
     public byte[]? PersistId(object entity) => Doc.Extension.GetPersistReference3(entity) as byte[];
 
     public object? Resolve(byte[] persistId, out PersistState state)

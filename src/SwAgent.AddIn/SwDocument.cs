@@ -209,6 +209,9 @@ public interface ISwDocument
 
     /// <summary>The faces <paramref name="feature"/> made.</summary>
     System.Collections.Generic.IReadOnlyList<object> FacesOf(object feature);
+
+    /// <summary>The document's own IModelDoc2, for api.call's document target only (the escape hatch calls it by late binding).</summary>
+    object ApiObject();
 }
 
 /// <summary>One selected object as SOLIDWORKS reports it.</summary>

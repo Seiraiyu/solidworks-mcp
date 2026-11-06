@@ -53,6 +53,9 @@ public interface ISolidWorksApplication
 
     /// <summary>Closes <paramref name="document"/> without saving it.</summary>
     void Close(ISwDocument document);
+
+    /// <summary>SOLIDWORKS' own ISldWorks, for api.call's app target only (the escape hatch calls it by late binding).</summary>
+    object ApiObject();
 }
 
 /// <summary>The real SOLIDWORKS, through the ISldWorks it handed the add-in in ConnectToSW.</summary>
@@ -132,6 +135,8 @@ internal sealed class SolidWorksApplication : ISolidWorksApplication
     }
 
     public void Close(ISwDocument document) => _sw.CloseDoc(((SolidWorksDocument)document).Doc.GetTitle());
+
+    public object ApiObject() => _sw;
 
     public DocumentInfo CreateScratchPart(string path)
     {

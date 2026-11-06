@@ -117,6 +117,13 @@ sealed class FakeSolidWorks : ISolidWorksApplication
     }
 
     /// <summary>Adds a document the operations can see, wired so Activate makes it the active one.</summary>
+    FakeApiApp? _api;
+
+    /// <summary>SOLIDWORKS as api.call's app target reaches it.</summary>
+    public FakeApiApp Api => _api ??= new FakeApiApp(this);
+
+    public object ApiObject() => Api;
+
     public FakeDocument Track(FakeDocument doc)
     {
         if (!Docs.Contains(doc)) Docs.Add(doc);
