@@ -655,7 +655,7 @@ public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
     {
         await _run.RequireOnlyOwnDocumentsAsync();
         string path = LiveScratchPath("features");
-        string cut = (await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = path })).Features.Single(f => f.Type == "Cut").Name;
+        string cut = (await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = path })).Features.Single(f => f.Type == "ICE" || f.Type == "Cut").Name;
         await Call<FeatureSuppressRequest, FeatureSuppressResult>(new FeatureSuppressRequest { Document = path, Features = new List<string> { cut } });
         Near(8000, await VolumeOf(path), "the volume with the hole suppressed");
         await Call<FeatureSuppressRequest, FeatureSuppressResult>(new FeatureSuppressRequest { Document = path, Features = new List<string> { cut }, Suppressed = false });
@@ -665,7 +665,7 @@ public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
         Assert.Equal("children", refused.Error.Details!["field"]);
         var deleted = await Call<FeatureDeleteRequest, FeatureDeleteResult>(new FeatureDeleteRequest { Document = path, Features = new List<string> { cut }, Children = DeleteChildren.Delete });
         Near(8000, await VolumeOf(path), "the volume with the hole deleted");
-        Assert.DoesNotContain((await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = path })).Features, f => f.Type == "Cut");
+        Assert.DoesNotContain((await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = path })).Features, f => f.Type == "ICE" || f.Type == "Cut");
         return $"{cut} suppressed: 8000 mm³, unsuppressed: {8000 - Math.PI * 250:0.###} mm³; delete refused ({refused.Message}); deleted with children: {string.Join(", ", deleted.Deleted)}";
     });
 
@@ -698,24 +698,27 @@ public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
         string path = block.Path!;
         int before = (await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = path })).Features.Count;
         var edge = await At(path, TopologyKind.Edge, new Point3(40, 20, 5));
-        // 3.C round 2: SOLIDWORKS made this fillet and every check passed. Until that is understood, a fillet that is made
-        // fails the case with what SOLIDWORKS made, so the next round reads it rather than guesses.
+        // 3.C round 3: SOLIDWORKS makes a 50 mm fillet on this 10 mm edge (a cylinder face that overflows both 40 and 20 mm
+        // faces: volume 8000 -> 5591.19 mm³, no rebuild errors), so it is not a fillet SOLIDWORKS cannot make. Either way the
+        // part must end as it was: a refusal leaves it so, and a fillet made is taken out again with feature.delete.
         FeatureResult? madeBig = null;
         var bigError = await Record.ExceptionAsync(async () =>
             madeBig = await Call<FeatureFilletRequest, FeatureResult>(new FeatureFilletRequest { Document = path, Edges = new List<string> { edge.Reference! }, RadiusMm = 50 }));
+        string fillet;
         if (madeBig != null)
         {
-            var tree50 = (await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = path })).Features;
-            var box50 = await BoxOf(path);
-            Assert.Fail($"a 50 mm fillet on the block's 10 mm edge at (40, 20, 5) was made, not refused: {madeBig.Feature.Name}; " +
-                $"checks: {string.Join("; ", madeBig.Checks)}; faces: {string.Join(", ", madeBig.Faces.Select(f => f.Geometry))}; " +
-                $"volume {madeBig.Change.VolumeBeforeMm3:0.###} -> {madeBig.Change.VolumeAfterMm3:0.###} mm³; bodies {madeBig.Change.BodiesBefore} -> {madeBig.Change.BodiesAfter}; " +
-                $"rebuild errors {madeBig.Change.Rebuild.Errors}, warnings {madeBig.Change.Rebuild.Warnings}; box {box50.Min} to {box50.Max}; " +
-                $"tree: {string.Join(", ", tree50.Select(f => $"{f.Name} ({f.Type})"))}");
+            var removed = await Call<FeatureDeleteRequest, FeatureDeleteResult>(new FeatureDeleteRequest { Document = path, Features = new List<string> { madeBig.Feature.Name! } });
+            Assert.Contains(madeBig.Feature.Name!, removed.Deleted);
+            fillet = $"made by SOLIDWORKS ({madeBig.Feature.Name}: faces {string.Join(", ", madeBig.Faces.Select(f => f.Geometry))}; " +
+                $"volume {madeBig.Change.VolumeBeforeMm3:0.###} -> {madeBig.Change.VolumeAfterMm3:0.###} mm³; rebuild errors {madeBig.Change.Rebuild.Errors}), then deleted";
         }
-        var big = Assert.IsType<SwAgentException>(bigError);
-        Assert.Contains(big.Code, new[] { ErrorCode.OperationFailed, ErrorCode.VerificationFailed });
-        Assert.False(big.Error.Details!.ContainsKey("rollback_failed"));
+        else
+        {
+            var big = Assert.IsType<SwAgentException>(bigError);
+            Assert.Contains(big.Code, new[] { ErrorCode.OperationFailed, ErrorCode.VerificationFailed });
+            Assert.False(big.Error.Details!.ContainsKey("rollback_failed"));
+            fillet = $"{WireNames.ForEnum(big.Code)} ({big.Message})";
+        }
         var away = await Call<SketchCreateRequest, SketchCreateResult>(new SketchCreateRequest
         {
             Document = path,
@@ -726,11 +729,11 @@ public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
         Assert.Contains(miss.Code, new[] { ErrorCode.OperationFailed, ErrorCode.VerificationFailed });
         var tree = (await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = path })).Features;
         Assert.Equal(before + 1, tree.Count);
-        Assert.DoesNotContain(tree, f => f.Type == "Fillet" || f.Type == "Cut");
+        Assert.DoesNotContain(tree, f => f.Type == "Fillet" || f.Type == "ICE" || f.Type == "Cut");
         Near(8000, await VolumeOf(path), "the volume after both");
         var status = await Call<ModelRebuildStatusRequest, RebuildResult>(new ModelRebuildStatusRequest { Document = path });
         Assert.Equal(0, status.Errors);
-        return $"fillet r 50: {WireNames.ForEnum(big.Code)} ({big.Message}); cut away from the part: {WireNames.ForEnum(miss.Code)} ({miss.Message}); the sketch kept, volume 8000 mm³, no rebuild errors";
+        return $"fillet r 50: {fillet}; cut away from the part: {WireNames.ForEnum(miss.Code)} ({miss.Message}); the sketch kept, volume 8000 mm³, no rebuild errors";
     });
 
     /// <summary>A new part with a 40 x 20 rectangle at the origin on the front plane; its path and the sketch's name.</summary>
