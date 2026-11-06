@@ -31,6 +31,9 @@ public sealed class AddInServices
     /// <summary>Applied on session.hello; null when preferences are not managed (tests).</summary>
     public PreferenceGuard? Preferences { get; set; }
 
+    /// <summary>Sets export.part's preferences for the call and puts them back, journalled; null when not set up (tests that do not export), and export.part then answers api_error.</summary>
+    public ScopedPreferences? ExportPreferences { get; set; }
+
     /// <summary>Requests waiting on the UI thread.</summary>
     public Func<int> QueuedRequests { get; set; }
 }

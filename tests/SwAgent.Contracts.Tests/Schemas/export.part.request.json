@@ -1,0 +1,65 @@
+{
+  "type": "object",
+  "description": "Writes a copy of a part as STEP, Parasolid (.x_t), binary STL or 3MF, in mm; the part keeps its own path and unsaved changes. A part that is not the active document is made active for the export, and the document that was active is made active again afterwards. The export options it needs (STEP schema, mesh resolution, STL units and format) are set for the call and put back afterwards. Checked on disk: the file was written by this call, is not empty, and has its format's header (ISO-10303-21; and the schema asked, the Parasolid transmit header, a binary STL whose size matches its triangle count, a 3MF zip holding 3D/3dmodel.model).",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "path": {
+      "type": "string",
+      "description": "Full path of the file to write, in an existing folder, with the format's extension: .step or .stp, .x_t, .stl, .3mf."
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "step",
+        "parasolid",
+        "stl",
+        "threemf"
+      ],
+      "description": "The format to write."
+    },
+    "overwrite": {
+      "type": "boolean",
+      "description": "Replace the file if it exists. Default false."
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "step_schema": {
+          "type": "string",
+          "enum": [
+            "ap214",
+            "ap242"
+          ],
+          "description": "STEP only: the application protocol. Default ap214."
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "coarse",
+            "fine",
+            "custom"
+          ],
+          "description": "STL and 3MF only: coarse, fine (the default) or custom, which takes deviation_mm and angle_deg."
+        },
+        "deviation_mm": {
+          "type": "number",
+          "description": "STL and 3MF, custom resolution: the largest distance between the mesh and the surface, mm, more than 0."
+        },
+        "angle_deg": {
+          "type": "number",
+          "description": "STL and 3MF, custom resolution: the largest angle between neighbouring triangles, degrees, more than 0 and less than 90."
+        }
+      },
+      "additionalProperties": false,
+      "description": "The format's options; its defaults when absent."
+    }
+  },
+  "required": [
+    "path",
+    "format"
+  ],
+  "additionalProperties": false
+}

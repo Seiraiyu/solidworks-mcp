@@ -51,6 +51,14 @@ internal sealed partial class SolidWorksDocument : ISwDocument
         return new SaveOutcome(saved, errors, warnings);
     }
 
+    public SaveOutcome Export(string path)
+    {
+        int errors = 0, warnings = 0;
+        bool saved = Doc.Extension.SaveAs3(path, (int)swSaveAsVersion_e.swSaveAsCurrentVersion,
+            (int)(swSaveAsOptions_e.swSaveAsOptions_Silent | swSaveAsOptions_e.swSaveAsOptions_Copy), null, null, ref errors, ref warnings);
+        return new SaveOutcome(saved, errors, warnings);
+    }
+
     public DocumentInfo Info() => SolidWorksApplication.Describe(Doc);
 
     public byte[]? PersistId(object entity) => Doc.Extension.GetPersistReference3(entity) as byte[];
