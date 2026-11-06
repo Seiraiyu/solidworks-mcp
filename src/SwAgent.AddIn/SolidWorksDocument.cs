@@ -59,6 +59,8 @@ internal sealed partial class SolidWorksDocument : ISwDocument
         return new SaveOutcome(saved, errors, warnings);
     }
 
+    public int PublishStep242(string path) => Doc.Extension.PublishSTEP242File(path);
+
     public DocumentInfo Info() => SolidWorksApplication.Describe(Doc);
 
     public object ApiObject() => Doc;

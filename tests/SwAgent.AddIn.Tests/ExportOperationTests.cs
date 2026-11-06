@@ -73,13 +73,42 @@ public class ExportPartTests : ExportTestBase
     }
 
     [Fact]
-    public void AP242_is_set_for_the_call_and_found_in_the_file()
+    public void AP242_goes_through_PublishSTEP242File_and_is_found_in_the_file()
     {
+        // 3.E live run: SaveAs3 with swStepAP = 242 writes STEP AP203, so AP242 is published (the owner's choice).
         var doc = ExportBlock();
         var result = Export(new ExportPartRequest { Path = PathOf("block.stp"), Format = ExportFormat.Step, Options = new ExportOptions { StepSchema = StepSchema.Ap242 } });
         Assert.StartsWith("AP242", result.StepSchema);
-        Assert.Equal(242, doc.Exports.Single().Prefs[(PreferenceKind.Integer, 75)]);
+        Assert.Empty(doc.Exports);
+        Assert.Equal(PathOf("block.stp"), Assert.Single(doc.Published).Path);
+        Assert.Equal(242, doc.Published.Single().Prefs[(PreferenceKind.Integer, 75)]);
+        Assert.Contains(result.Checks, c => c.Contains("PublishSTEP242File"));
+        Assert.True(result.Document.Dirty);
         UsersPreferencesBack();
+    }
+
+    [Theory]
+    [InlineData(4, "swPublishStep242_MBDLicenseNotAvailable")]
+    [InlineData(3, "swPublishStep242_UnknownError")]
+    public void A_PublishSTEP242File_error_is_operation_failed_naming_it(int code, string name)
+    {
+        var doc = ExportBlock();
+        doc.PublishFails = code;
+        var e = Fails(() => Export(new ExportPartRequest { Path = PathOf("block.step"), Format = ExportFormat.Step, Options = new ExportOptions { StepSchema = StepSchema.Ap242 } }));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.Contains(name, e.Message);
+        Assert.Equal(new List<object?> { name }, (List<object?>)e.Error.Details!["errors"]!);
+        Assert.False(File.Exists(PathOf("block.step")));
+        UsersPreferencesBack();
+    }
+
+    [Fact]
+    public void AP214_still_goes_through_SaveAs3()
+    {
+        var doc = ExportBlock();
+        Export(new ExportPartRequest { Path = PathOf("block.step"), Format = ExportFormat.Step });
+        Assert.Single(doc.Exports);
+        Assert.Empty(doc.Published);
     }
 
     [Fact]

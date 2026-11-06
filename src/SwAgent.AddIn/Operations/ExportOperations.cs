@@ -43,6 +43,9 @@ public sealed class ExportPartOperation : Operation<ExportPartRequest, ExportPar
         bool switched = previousInfo == null || !DocumentKeys.Same(DocumentKeys.Of(previousInfo), DocumentKeys.Of(before));
         if (switched) doc.Activate();
 
+        // AP242 is published, not saved as (3.E live run: SaveAs3 with swStepAP = 242 writes AP203; the owner chose
+        // PublishSTEP242File). swStepAP is still set to 242 for the call, and put back.
+        bool publish = request.Format == ExportFormat.Step && ExportSettings.SchemaOf(request) == StepSchema.Ap242;
         var started = DateTime.UtcNow;
         SaveOutcome outcome;
         IReadOnlyList<string> readBack;
@@ -52,7 +55,23 @@ public sealed class ExportPartOperation : Operation<ExportPartRequest, ExportPar
             {
                 // What SOLIDWORKS holds just before it writes, for a file it did not make from them (3.E live run).
                 readBack = preferences.ReadBack(settings);
-                outcome = doc.Export(path);
+                if (publish)
+                {
+                    int code = doc.PublishStep242(path);
+                    if (code != 0)
+                    {
+                        string error = SolidWorksCodes.Step242Error(code);
+                        throw new SwAgentException(ErrorCode.OperationFailed,
+                            $"SOLIDWORKS did not publish {path} as STEP AP242: PublishSTEP242File answered {error}" +
+                            (code == 4 ? " (this SOLIDWORKS has no MBD licence for STEP 242; ap214 needs none)" : ""),
+                            new JsonObject { ["path"] = path, ["errors"] = new List<object?> { error }, ["warnings"] = new List<object?>() });
+                    }
+                    outcome = new SaveOutcome(true, 0, 0);
+                }
+                else
+                {
+                    outcome = doc.Export(path);
+                }
             }
         }
         finally
@@ -83,6 +102,7 @@ public sealed class ExportPartOperation : Operation<ExportPartRequest, ExportPar
             details["read_back"] = readBack.Select(r => (object?)r).ToList();
             throw new SwAgentException(e.Code, $"{e.Message}; the export preferences SOLIDWORKS read back just before the export: {string.Join(", ", readBack)}", details);
         }
+        if (publish) file.Checks.Insert(0, "written with IModelDocExtension.PublishSTEP242File (SaveAs3 does not write AP242)");
         var after = doc.Info();
         Unchanged(before, after);
         file.Checks.Add($"{after.Title} kept its path ({after.Path ?? "never saved"}) and its unsaved-changes flag ({(after.Dirty ? "dirty" : "clean")})");

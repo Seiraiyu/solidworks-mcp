@@ -63,6 +63,12 @@ public interface ISwDocument
     /// </summary>
     SaveOutcome Export(string path);
 
+    /// <summary>
+    /// Writes it to <paramref name="path"/> as STEP AP242 with IModelDocExtension.PublishSTEP242File (3.E live run:
+    /// SaveAs3 with swStepAP = 242 writes AP203). SOLIDWORKS' swStep242Error_e: 0 when it was written.
+    /// </summary>
+    int PublishStep242(string path);
+
     /// <summary>Rebuilds what changed, or every feature when <paramref name="force"/>; false when SOLIDWORKS reports it failed.</summary>
     bool Rebuild(bool force);
 

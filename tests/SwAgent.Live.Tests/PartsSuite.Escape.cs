@@ -75,8 +75,8 @@ public sealed partial class PartsSuite
         var ap214 = await Export("export-214.step", ExportFormat.Step);
         Assert.Equal("ISO-10303-21;", FirstLine(ap214.Path));
         Assert.Contains("AUTOMOTIVE_DESIGN", ap214.StepSchema);
-        // AP242 is with the owner (3.E live run: SaveAs3 with swStepAP = 242 writes STEP AP203). Its outcome is recorded
-        // and the case goes on, so the other formats run; the case still fails while AP242 is not written.
+        // AP242 goes through PublishSTEP242File (3.E live run: SaveAs3 with swStepAP = 242 wrote STEP AP203). Its
+        // outcome is recorded and the case goes on, so the other formats run; the case fails unless AP242 is written.
         string? ap242Problem = null;
         try
         {
