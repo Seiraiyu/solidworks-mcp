@@ -128,7 +128,8 @@
         "title",
         "text",
         "buttons",
-        "needs_person"
+        "needs_person",
+        "opened_at"
       ],
       "additionalProperties": false,
       "description": "The next dialog the request raised, when the outcome is dialog_open."

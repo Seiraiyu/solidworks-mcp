@@ -241,7 +241,8 @@
             "title",
             "text",
             "buttons",
-            "needs_person"
+            "needs_person",
+            "opened_at"
           ],
           "additionalProperties": false,
           "description": "The modal dialog SOLIDWORKS is showing; absent when none is open."
