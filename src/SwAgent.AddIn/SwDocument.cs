@@ -129,6 +129,9 @@ public interface ISwDocument
     /// <summary>A constant-radius fillet on these edges and faces; the new feature, or null when SOLIDWORKS made none.</summary>
     object? Fillet(System.Collections.Generic.IReadOnlyList<object> edgesAndFaces, double radiusMm);
 
+    /// <summary>A chamfer on these edges; the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Chamfer(System.Collections.Generic.IReadOnlyList<object> edges, ChamferSpec spec);
+
     /// <summary>The faces <paramref name="feature"/> made.</summary>
     System.Collections.Generic.IReadOnlyList<object> FacesOf(object feature);
 }

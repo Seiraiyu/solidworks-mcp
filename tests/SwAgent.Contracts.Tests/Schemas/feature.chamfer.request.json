@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "description": "Bevels edges with a chamfer: distance and angle (45 degrees unless given), or two distances. Lengths in mm, angles in degrees. Checked: the feature exists as a chamfer, rebuilds without error, every edge named is gone (it no longer resolves), the chamfer made at least one face per edge, and the part's volume changed. Otherwise the chamfer is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The edges to bevel: their references (model.find kind edge)."
+    },
+    "distance_mm": {
+      "type": "number",
+      "description": "The distance, mm, more than 0: along the first face, from the edge."
+    },
+    "angle_deg": {
+      "type": "number",
+      "description": "The angle from the first face, degrees, more than 0 and less than 90. Default 45. Not with distance2_mm."
+    },
+    "distance2_mm": {
+      "type": "number",
+      "description": "A second distance, mm, along the other face, for a distance-distance chamfer. Not with angle_deg."
+    }
+  },
+  "required": [
+    "edges"
+  ],
+  "additionalProperties": false
+}

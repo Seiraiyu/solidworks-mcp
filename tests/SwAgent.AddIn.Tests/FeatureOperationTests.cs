@@ -47,6 +47,8 @@ public abstract class FeatureTestBase : DocumentTestBase
 
     internal FeatureResult Fillet(FeatureFilletRequest request) => Run(new FeatureFilletOperation(Services), request);
 
+    internal FeatureResult Chamfer(FeatureChamferRequest request) => Run(new FeatureChamferOperation(Services), request);
+
     /// <summary>A straight edge of the part, as model.find would name it.</summary>
     internal string Edge(FakeDocument doc) =>
         Services.References.Describe(doc, doc.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, LengthMm = 10, Feature = "Boss-Extrude1" })).Reference!;
@@ -425,5 +427,61 @@ public class FeatureFilletTests : FeatureTestBase
         doc.FeatureAddsNothing = true;
         Assert.Equal("volume_change", Fails(() => Fillet(new FeatureFilletRequest { Edges = new List<string> { Edge(doc) }, RadiusMm = 2 })).Error.Details!["check"]);
         Assert.DoesNotContain(doc.Tree, f => f.Name == "Fillet1");
+    }
+}
+public class FeatureChamferTests : FeatureTestBase
+{
+    [Fact]
+    public void Bevels_at_45_degrees_unless_told_otherwise()
+    {
+        var doc = Part();
+        Block();
+        var made = Chamfer(new FeatureChamferRequest { Edges = new List<string> { Edge(doc) }, DistanceMm = 2 });
+        Assert.Equal("Chamfer1", made.Feature.Name);
+        Assert.Contains("the 1 edges named are gone, and the chamfer made 1 faces", made.Checks);
+        var spec = doc.Chamfers.Single().Spec;
+        Assert.Equal(2, spec.DistanceMm);
+        Assert.Equal(45, spec.AngleDeg);
+        Assert.Null(spec.Distance2Mm);
+    }
+
+    [Fact]
+    public void Two_distances_make_a_distance_distance_chamfer()
+    {
+        var doc = Part();
+        Block();
+        Chamfer(new FeatureChamferRequest { Edges = new List<string> { Edge(doc) }, DistanceMm = 2, Distance2Mm = 3 });
+        Assert.Equal(3, doc.Chamfers.Single().Spec.Distance2Mm);
+    }
+
+    [Theory]
+    [InlineData("no_edges", "edges")]
+    [InlineData("no_distance", "distance_mm")]
+    [InlineData("both", "distance2_mm")]
+    [InlineData("angle_90", "angle_deg")]
+    public void A_wrong_request_is_refused_by_its_field(string wrong, string field)
+    {
+        var doc = Part();
+        Block();
+        var request = new FeatureChamferRequest { Edges = new List<string> { Edge(doc) }, DistanceMm = 2 };
+        switch (wrong)
+        {
+            case "no_edges": request.Edges.Clear(); break;
+            case "no_distance": request.DistanceMm = null; break;
+            case "both": request.AngleDeg = 30; request.Distance2Mm = 2; break;
+            case "angle_90": request.AngleDeg = 90; break;
+        }
+        Assert.Equal(field, Fails(() => Chamfer(request)).Error.Details!["field"]);
+        Assert.Empty(doc.Chamfers);
+    }
+
+    [Fact]
+    public void An_edge_still_there_afterwards_rolls_the_chamfer_back()
+    {
+        var doc = Part();
+        Block();
+        doc.EdgesSurvive = true;
+        Assert.Equal("edges_gone", Fails(() => Chamfer(new FeatureChamferRequest { Edges = new List<string> { Edge(doc) }, DistanceMm = 2 })).Error.Details!["check"]);
+        Assert.DoesNotContain(doc.Tree, f => f.Name == "Chamfer1");
     }
 }

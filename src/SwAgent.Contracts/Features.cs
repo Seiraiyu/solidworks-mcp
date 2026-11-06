@@ -144,6 +144,26 @@ public sealed class FeatureFilletRequest
     [Description("The radius, mm: more than 0.")]
     public double? RadiusMm { get; set; }
 }
+[Operation("feature.chamfer", typeof(FeatureResult))]
+[Description("Bevels edges with a chamfer: distance and angle (45 degrees unless given), or two distances. Lengths in mm, angles in degrees. Checked: the feature exists as a chamfer, rebuilds without error, every edge named is gone (it no longer resolves), the chamfer made at least one face per edge, and the part's volume changed. Otherwise the chamfer is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class FeatureChamferRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The edges to bevel: their references (model.find kind edge).")]
+    public List<string> Edges { get; set; } = new List<string>();
+
+    [Description("The distance, mm, more than 0: along the first face, from the edge.")]
+    public double? DistanceMm { get; set; }
+
+    [Description("The angle from the first face, degrees, more than 0 and less than 90. Default 45. Not with distance2_mm.")]
+    public double? AngleDeg { get; set; }
+
+    [Description("A second distance, mm, along the other face, for a distance-distance chamfer. Not with angle_deg.")]
+    public double? Distance2Mm { get; set; }
+}
 [Description("A feature made, with references to it and the faces it made, and the part after it.")]
 public sealed class FeatureResult : IModelChangeResult
 {

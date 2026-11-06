@@ -140,6 +140,29 @@ internal sealed partial class SolidWorksDocument
         }
     }
 
+    /// <summary>InsertFeatureChamfer with the edges selected (mark 0), propagating along tangent edges: angle-distance, or distance-distance.</summary>
+    public object? Chamfer(IReadOnlyList<object> edges, ChamferSpec s)
+    {
+        Doc.ClearSelection2(true);
+        try
+        {
+            bool first = true;
+            foreach (var e in edges)
+            {
+                Pick(e, append: !first, mark: 0);
+                first = false;
+            }
+            bool twoDistances = s.Distance2Mm != null;
+            return Doc.FeatureManager.InsertFeatureChamfer((int)swFeatureChamferOption_e.swFeatureChamferTangentPropagation,
+                twoDistances ? (int)swChamferType_e.swChamferDistanceDistance : (int)swChamferType_e.swChamferAngleDistance,
+                s.DistanceMm / Mm, twoDistances ? 0 : s.AngleDeg * Rad, twoDistances ? s.Distance2Mm!.Value / Mm : 0, 0, 0, 0);
+        }
+        finally
+        {
+            Doc.ClearSelection2(true);
+        }
+    }
+
     public IReadOnlyList<object> FacesOf(object feature) =>
         ((IFeature)feature).GetFaces() is object[] faces ? faces.Where(f => f != null).ToList() : new List<object>();
 

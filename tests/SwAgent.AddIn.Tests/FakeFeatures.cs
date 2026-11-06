@@ -82,6 +82,14 @@ sealed partial class FakeDocument
         return EdgeFeature("Fillet", edgesAndFaces);
     }
 
+    public List<(IReadOnlyList<object> Edges, ChamferSpec Spec)> Chamfers { get; } = new List<(IReadOnlyList<object>, ChamferSpec)>();
+
+    public object? Chamfer(IReadOnlyList<object> edges, ChamferSpec spec)
+    {
+        Chamfers.Add((edges, spec));
+        return EdgeFeature("Chamfer", edges);
+    }
+
     /// <summary>A fillet or chamfer: one face per edge or face it was given, its edges consumed, EdgeVolume removed per edge.</summary>
     FakeEntity? EdgeFeature(string type, IReadOnlyList<object> targets)
     {

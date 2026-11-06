@@ -432,4 +432,47 @@ public class ErrorCodeTests : DocumentTestBase
         Assert.Equal(code, Fails(() => Run(new FeatureFilletOperation(Services), request)).Code);
         Assert.DoesNotContain(doc.Tree, f => f.Type == "Fillet");
     }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_chamfer_reaches_every_listed_code(ErrorCode code)
+    {
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Fails(() => Run(new FeatureChamferOperation(Services), new FeatureChamferRequest { Edges = new List<string> { "Edge1" }, DistanceMm = 2 })).Code);
+            return;
+        }
+        var (doc, edge) = Blocked();
+        var request = new FeatureChamferRequest { Edges = new List<string> { edge }, DistanceMm = 2 };
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.DistanceMm = 0;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                doc.Entities.Single(e => e.Kind == ReferenceKind.Edge).State = PersistState.Suppressed;
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch1";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.FeatureAddsNothing = true;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Run(new FeatureChamferOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "Chamfer");
+    }
 }

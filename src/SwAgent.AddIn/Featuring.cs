@@ -58,3 +58,13 @@ public sealed class RevolveSpec
     public bool Reverse { get; set; }
     public bool Merge { get; set; } = true;
 }
+
+/// <summary>A chamfer as ISwDocument.Chamfer makes it: distance and angle, or two distances (Distance2Mm set).</summary>
+public sealed class ChamferSpec
+{
+    public double DistanceMm { get; set; }
+    public double AngleDeg { get; set; } = 45;
+
+    /// <summary>For a distance-distance chamfer; null for distance and angle.</summary>
+    public double? Distance2Mm { get; set; }
+}

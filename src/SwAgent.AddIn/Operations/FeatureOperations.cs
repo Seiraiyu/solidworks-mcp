@@ -208,6 +208,44 @@ public sealed class FeatureFilletOperation : ModelChangeOperation<FeatureFilletR
     }
 }
 
+public sealed class FeatureChamferOperation : ModelChangeOperation<FeatureChamferRequest, FeatureResult>
+{
+    public FeatureChamferOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(FeatureChamferRequest request) => request.Document;
+
+    protected override FeatureResult Change(ISwDocument doc, FeatureChamferRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        var spec = new ChamferSpec { DistanceMm = FeatureFacts.Length(request.DistanceMm, "distance_mm", "a chamfer") };
+        if (request.AngleDeg != null && request.Distance2Mm != null)
+            throw FeatureFacts.Invalid("distance2_mm", "a chamfer has an angle or a second distance, not both");
+        if (request.Distance2Mm != null) spec.Distance2Mm = FeatureFacts.Length(request.Distance2Mm, "distance2_mm", "a distance-distance chamfer");
+        if (request.AngleDeg != null)
+        {
+            if (!(request.AngleDeg > 0 && request.AngleDeg < 90)) throw FeatureFacts.Invalid("angle_deg", "angle_deg must be more than 0 and less than 90 degrees");
+            spec.AngleDeg = request.AngleDeg.Value;
+        }
+        if (request.Edges.Count == 0) throw FeatureFacts.Invalid("edges", "a chamfer needs the edges to bevel");
+        var edges = FeatureFacts.Entities(Services.References, doc, request.Edges, "edges", ReferenceKind.Edge);
+        var feature = doc.Chamfer(edges, spec)
+            ?? throw FeatureFacts.NotMade(doc, "chamfer", FormattableString.Invariant($"of {spec.DistanceMm:0.###} mm"), "check that the distance fits the faces beside each edge");
+        return FeatureFacts.Made(Services.References, doc, feature, tx);
+    }
+
+    /// <summary>The feature is a chamfer, the edges named are gone and faces replaced them, and the volume changed.</summary>
+    protected override void Check(ISwDocument doc, FeatureChamferRequest request, FeatureResult result)
+    {
+        FeatureFacts.ExpectType(doc, result, "Chamfer", "chamfer");
+        FeatureFacts.EdgesGone(Services.References, doc, request.Edges, result, "chamfer");
+        double after = Volume(doc, doc.SolidBodyCount());
+        FeatureChecks.VolumeMoved("chamfer", VolumeBefore, after);
+        result.Checks.Add(FormattableString.Invariant($"the volume changed: {VolumeBefore:0.###} -> {after:0.###} mm³"));
+    }
+}
+
 /// <summary>What every feature operation shares: request checks, the feature recorded in the transaction, the result filled, and the common checks.</summary>
 public static class FeatureFacts
 {
