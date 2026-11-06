@@ -39,9 +39,13 @@ public sealed class FeatureExtrudeOperation : ModelChangeOperation<FeatureExtrud
     protected override void Check(ISwDocument doc, FeatureExtrudeRequest request, FeatureResult result)
     {
         bool cut = request.Mode == FeatureMode.Cut;
-        // SOLIDWORKS names a thin boss ExtruThin and a thin cut CutThin (IFeature.GetTypeName2; 3.C live run).
-        string type = request.Thin != null ? (cut ? "CutThin" : "ExtruThin") : cut ? "Cut" : "Extrusion";
-        FeatureFacts.ExpectType(doc, result, type, What(request));
+        // IFeature.GetTypeName2 measured live (3.C): a first boss is Extrusion, a thin boss ExtruThin, a cut extrude ICE,
+        // and a second boss (up_to_next onto the body) ICE as well; Boss, Cut and CutThin are SOLIDWORKS' other extrude
+        // names. So the type only says it is an extrude; whether it added or removed material is the volume check's.
+        var types = request.Thin != null
+            ? (cut ? new[] { "CutThin", "ICE" } : new[] { "ExtruThin", "BossThin" })
+            : cut ? new[] { "ICE", "Cut" } : new[] { "Extrusion", "Boss", "ICE" };
+        FeatureFacts.ExpectType(doc, result, types, What(request));
         double after = Volume(doc, doc.SolidBodyCount());
         FeatureFacts.VolumeChanged(result, What(request), VolumeBefore, after, cut ? -1 : 1);
         var end = request.End ?? ExtrudeEnd.Blind;
@@ -501,15 +505,19 @@ public static class FeatureFacts
     }
 
     /// <summary>The feature is in the tree with SOLIDWORKS' type name <paramref name="type"/> (IFeature.GetTypeName2).</summary>
-    public static void ExpectType(ISwDocument doc, FeatureResult result, string type, string what)
+    public static void ExpectType(ISwDocument doc, FeatureResult result, string type, string what) => ExpectType(doc, result, new[] { type }, what);
+
+    /// <summary>The feature is in the tree with one of SOLIDWORKS' type names <paramref name="types"/> (IFeature.GetTypeName2).</summary>
+    public static void ExpectType(ISwDocument doc, FeatureResult result, IReadOnlyList<string> types, string what)
     {
         string name = result.Feature.Name ?? "";
         var record = doc.Features().FirstOrDefault(f => f.Name == name)
             ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"the {what} {name} is not in the feature tree after it was made", new JsonObject { ["check"] = "feature_exists" });
-        if (record.Type != type)
+        if (!types.Contains(record.Type))
         {
-            throw new SwAgentException(ErrorCode.VerificationFailed, $"{name} is a {record.Type}, not the {type} a {what} makes",
-                new JsonObject { ["check"] = "feature_type", ["expected"] = type, ["measured"] = record.Type });
+            string expected = string.Join(" or ", types);
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"{name} is a {record.Type}, not the {expected} a {what} makes",
+                new JsonObject { ["check"] = "feature_type", ["expected"] = expected, ["measured"] = record.Type });
         }
     }
 

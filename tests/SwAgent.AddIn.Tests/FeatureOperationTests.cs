@@ -246,6 +246,22 @@ public class FeatureExtrudeTests : FeatureTestBase
         Assert.DoesNotContain(doc.Tree, f => f.Name == "Cut-Extrude1");
     }
 
+    [Theory]
+    [InlineData("ICE", false)]
+    [InlineData("Boss", false)]
+    [InlineData("ICE", true)]
+    [InlineData("Cut", true)]
+    public void SOLIDWORKS_extrude_type_names_are_accepted(string type, bool cut)
+    {
+        // 3.C live run: GetTypeName2 named a cut extrude ICE, and a second boss (up_to_next) ICE too.
+        var doc = Part();
+        Extrude(new FeatureExtrudeRequest { Sketch = "Sketch1", DepthMm = 10 });
+        Hole();
+        doc.FeatureTypeOverride = type;
+        var made = Extrude(new FeatureExtrudeRequest { Sketch = "Sketch2", Mode = cut ? FeatureMode.Cut : FeatureMode.Boss, DepthMm = 5 });
+        Assert.Equal(type, doc.Tree.Single(f => f.Name == made.Feature.Name).Type);
+    }
+
     [Fact]
     public void A_feature_of_another_type_is_rolled_back()
     {
