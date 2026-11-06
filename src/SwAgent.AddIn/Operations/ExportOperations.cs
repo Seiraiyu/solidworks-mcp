@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using SwAgent.AddIn.Core;
@@ -44,10 +45,13 @@ public sealed class ExportPartOperation : Operation<ExportPartRequest, ExportPar
 
         var started = DateTime.UtcNow;
         SaveOutcome outcome;
+        IReadOnlyList<string> readBack;
         try
         {
             using (preferences.Apply(Name, settings))
             {
+                // What SOLIDWORKS holds just before it writes, for a file it did not make from them (3.E live run).
+                readBack = preferences.ReadBack(settings);
                 outcome = doc.Export(path);
             }
         }
@@ -68,7 +72,17 @@ public sealed class ExportPartOperation : Operation<ExportPartRequest, ExportPar
                     ["warnings"] = warnings.Select(n => (object?)n).ToList(),
                 });
         }
-        var file = ExportFileCheck.Check(path, request.Format, started, ExportSettings.SchemaOf(request), bodies);
+        ExportFile file;
+        try
+        {
+            file = ExportFileCheck.Check(path, request.Format, started, ExportSettings.SchemaOf(request), bodies);
+        }
+        catch (SwAgentException e) when (e.Code == ErrorCode.VerificationFailed && readBack.Count > 0)
+        {
+            var details = e.Error.Details ?? new JsonObject();
+            details["read_back"] = readBack.Select(r => (object?)r).ToList();
+            throw new SwAgentException(e.Code, $"{e.Message}; the export preferences SOLIDWORKS read back just before the export: {string.Join(", ", readBack)}", details);
+        }
         var after = doc.Info();
         Unchanged(before, after);
         file.Checks.Add($"{after.Title} kept its path ({after.Path ?? "never saved"}) and its unsaved-changes flag ({(after.Dirty ? "dirty" : "clean")})");

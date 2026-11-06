@@ -247,6 +247,23 @@ public class ExportPartTests : ExportTestBase
     }
 
     [Fact]
+    public void A_STEP_schema_not_written_reports_the_file_description_and_the_preferences_read_back()
+    {
+        // 3.E live run, round 1: SOLIDWORKS kept swStepAP = 242 but wrote STEP AP203 (CONFIG_CONTROL_DESIGN).
+        var doc = ExportBlock();
+        doc.ExportWrites = System.Text.Encoding.ASCII.GetBytes(
+            "ISO-10303-21;\r\nHEADER;\r\nFILE_DESCRIPTION (( 'STEP AP203' ),\r\n    '1' );\r\nFILE_SCHEMA (( 'CONFIG_CONTROL_DESIGN' ));\r\nENDSEC;\r\n");
+        var e = Fails(() => Export(new ExportPartRequest { Path = PathOf("block.step"), Format = ExportFormat.Step, Options = new ExportOptions { StepSchema = StepSchema.Ap242 } }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("step_schema", e.Error.Details!["check"]);
+        Assert.Equal("STEP AP203", e.Error.Details["description"]);
+        Assert.Contains("FILE_DESCRIPTION is STEP AP203", e.Message);
+        Assert.Equal(new List<object?> { "swStepAP = 242" }, (List<object?>)e.Error.Details["read_back"]!);
+        Assert.Contains("read back just before the export: swStepAP = 242", e.Message);
+        UsersPreferencesBack();
+    }
+
+    [Fact]
     public void A_preference_SOLIDWORKS_does_not_keep_exports_nothing()
     {
         var doc = ExportBlock();

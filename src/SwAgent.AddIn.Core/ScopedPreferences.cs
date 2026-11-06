@@ -119,6 +119,23 @@ public sealed class ScopedPreferences
     }
 
     /// <summary>
+    /// Each preference as SOLIDWORKS holds it now, as name = value (or what reading it threw), so a result SOLIDWORKS
+    /// did not make from its preferences can say what they were. Never throws.
+    /// </summary>
+    public IReadOnlyList<string> ReadBack(IReadOnlyList<PreferenceSetting> settings) =>
+        settings.Select(s =>
+        {
+            try
+            {
+                return $"{s.Name} = {PreferenceSetting.Format(s.Kind, _store.Get(s.Kind, s.Id))}";
+            }
+            catch (Exception e)
+            {
+                return $"{s.Name}: reading it failed ({e.Message})";
+            }
+        }).ToList();
+
+    /// <summary>
     /// Records each preference's value, writes the journal, then sets every one and reads it back. Disposing the result
     /// puts them back and deletes the journal. api_error (after putting back what it set) when a preference cannot be
     /// read, written or does not keep its value.

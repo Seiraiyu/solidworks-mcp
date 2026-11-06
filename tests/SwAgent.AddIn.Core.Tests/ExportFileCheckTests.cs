@@ -74,6 +74,8 @@ public class ExportFileCheckTests
         var e = Fails(() => ExportFileCheck.Check(ap214, ExportFormat.Step, _started, StepSchema.Ap242, 1));
         Assert.Equal("step_schema", CheckOf(e));
         Assert.Equal("AP242", e.Error.Details!["expected"]);
+        Assert.Equal("STEP AP214", e.Error.Details["description"]);
+        Assert.Contains("its FILE_DESCRIPTION is STEP AP214", e.Message);
         string text = WriteText("not.step", "solid block\nendsolid");
         Assert.Equal("file_header", CheckOf(Fails(() => ExportFileCheck.Check(text, ExportFormat.Step, _started, StepSchema.Ap214, 1))));
     }

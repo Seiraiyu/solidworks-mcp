@@ -148,6 +148,18 @@ public class ScopedPreferencesTests
     }
 
     [Fact]
+    public void ReadBack_reports_what_SOLIDWORKS_holds_now()
+    {
+        var (prefs, store, _, _) = Make();
+        using (prefs.Apply("export.part", new[] { Schema, Binary }))
+        {
+            Assert.Equal(new[] { "swStepAP = 242", "swSTLBinaryFormat = true" }, prefs.ReadBack(new[] { Schema, Binary }));
+        }
+        store.FailGet.Add(69);
+        Assert.Equal(new[] { "swStepAP = 214", "swSTLBinaryFormat: reading it failed (COM said no)" }, prefs.ReadBack(new[] { Schema, Binary }));
+    }
+
+    [Fact]
     public void Doubles_compare_within_a_part_in_a_billion()
     {
         Assert.True(ScopedPreferences.Same(PreferenceKind.Double, 0.0001, 0.0001 + 1e-15));

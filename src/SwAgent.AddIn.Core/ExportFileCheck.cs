@@ -45,6 +45,8 @@ public static class ExportFileCheck
 
     static readonly Regex FileSchema = new Regex(@"FILE_SCHEMA\s*\(\s*\(\s*'([^']*)'", RegexOptions.CultureInvariant);
 
+    static readonly Regex FileDescription = new Regex(@"FILE_DESCRIPTION\s*\(\s*\(\s*'([^']*)'", RegexOptions.CultureInvariant);
+
     public static ExportFile Check(string path, ExportFormat format, DateTime startedUtc, StepSchema stepSchema, int bodies)
     {
         var info = new FileInfo(path);
@@ -83,8 +85,14 @@ public static class ExportFileCheck
         string wanted = schema == StepSchema.Ap242 ? "AP242" : "AUTOMOTIVE_DESIGN";
         if (found.IndexOf(wanted, StringComparison.OrdinalIgnoreCase) < 0)
         {
-            throw Failed("step_schema", path, wanted, found.Length == 0 ? "no FILE_SCHEMA" : found,
-                $"{path} was asked as {WireNames.ForEnum(schema)} ({wanted}) but its FILE_SCHEMA is {(found.Length == 0 ? "missing" : found)}");
+            // What SOLIDWORKS says it wrote, so a schema it did not take is reported, not guessed (3.E live run).
+            var d = FileDescription.Match(head);
+            string description = d.Success ? d.Groups[1].Value : "";
+            var e = Failed("step_schema", path, wanted, found.Length == 0 ? "no FILE_SCHEMA" : found,
+                $"{path} was asked as {WireNames.ForEnum(schema)} ({wanted}) but its FILE_SCHEMA is {(found.Length == 0 ? "missing" : found)}" +
+                $" and its FILE_DESCRIPTION is {(description.Length == 0 ? "missing" : description)}");
+            e.Error.Details!["description"] = description.Length == 0 ? null : description;
+            throw e;
         }
         file.Schema = found;
         file.Checks.Add($"starts ISO-10303-21; with FILE_SCHEMA {found} ({WireNames.ForEnum(schema)})");
