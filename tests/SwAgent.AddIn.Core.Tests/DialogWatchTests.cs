@@ -265,4 +265,40 @@ public class DialogWatchTests
         watch.Tick();
         Assert.Equal(new[] { "dialog.opened", "dialog.closed" }, Dialogs.Kinds(events));
     }
+
+    [Theory]
+    [InlineData("Login - 3DEXPERIENCE ID - Dassault Systemes")]
+    [InlineData("Login | 3DEXPERIENCE ID | Dassault Systèmes")]
+    [InlineData("License not granted")]
+    [InlineData("SOLIDWORKS Sign In")]
+    public void A_sign_in_or_licence_window_needs_a_person_and_is_never_answered(string title)
+    {
+        var allow = new DialogAllowList(new[] { new DialogRule("anything", ".*", null, "OK") });
+        var (watch, windows, _, _) = Make(allow);
+        windows.Show(Dialogs.Box(500, title, "OK"));
+        watch.Tick();
+        Assert.True(watch.Current!.NeedsPerson);
+        Assert.Empty(windows.Actions);
+        var e = Assert.Throws<SwAgentException>(() => watch.Respond(new DialogRespondRequest { Dialog = watch.Current.Id, Button = "close" }, T0.AddSeconds(10)));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal("needs_person", e.Error.Details!["reason"]);
+        Assert.Contains("only a person", e.Message);
+        Assert.Throws<SwAgentException>(() => watch.Respond(new DialogRespondRequest { Dialog = watch.Current.Id, Button = "OK" }, T0.AddSeconds(10)));
+        Assert.Empty(windows.Actions);
+    }
+
+    [Theory]
+    [InlineData("System Options - General")]
+    [InlineData("SOLIDWORKS")]
+    [InlineData("Rebuild Errors")]
+    public void Other_dialogs_are_answered_as_before(string title)
+    {
+        Assert.False(DialogGuards.NeedsPerson(title));
+        var (watch, windows, _, _) = Make();
+        windows.Show(Dialogs.Box(600, title, "OK"));
+        watch.Tick();
+        Assert.False(watch.Current!.NeedsPerson);
+        watch.Respond(new DialogRespondRequest { Dialog = watch.Current.Id, Button = "close", WaitMs = 0 }, T0.AddSeconds(10));
+        Assert.Equal(new[] { "close" }, windows.Actions.ToArray());
+    }
 }

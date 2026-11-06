@@ -114,6 +114,10 @@
           "type": "integer",
           "description": "The request that was running when it opened; absent when none was."
         },
+        "needs_person": {
+          "type": "boolean",
+          "description": "A 3DEXPERIENCE sign-in or licence window: only a person answers it, and dialog.respond refuses to. Ask the user to deal with it."
+        },
         "opened_at": {
           "type": "string",
           "description": "When it was first seen, UTC, ISO 8601."
@@ -124,7 +128,7 @@
         "title",
         "text",
         "buttons",
-        "opened_at"
+        "needs_person"
       ],
       "additionalProperties": false,
       "description": "The next dialog the request raised, when the outcome is dialog_open."
