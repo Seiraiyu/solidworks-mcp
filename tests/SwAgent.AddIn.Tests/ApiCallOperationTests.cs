@@ -96,6 +96,50 @@ public class ApiCallTests : ApiCallTestBase
     }
 
     [Fact]
+    public void A_suppressed_feature_resolves_as_the_target_and_as_a_ref_argument_for_api_call_only()
+    {
+        // 3.E live run, round 2: unsuppressing a hole through api.call needs its suppressed feature as the target.
+        var doc = ApiBlock();
+        var entity = doc.Entities.Find(e => e.Info.Name == "Boss-Extrude1")!;
+        string feature = (string)Services.References.Describe(doc, entity).Reference!;
+        entity.State = PersistState.Suppressed;
+        var on = Api(new ApiCallRequest { Target = feature, Member = "Info", Rebuild = false });
+        Assert.Equal(new[] { "IFeature" }, on.Interfaces);
+        Api(new ApiCallRequest { Target = "document", Member = "Extension.SelectEntity", Args = Args(new JsonObject { ["ref"] = feature }, false), Rebuild = false });
+        Assert.Same(entity, Assert.Single(doc.Selected).Entity);
+        // Every other operation still refuses it.
+        var other = Assert.Throws<SwAgentException>(() => Services.References.Resolve(doc, feature, "feature"));
+        Assert.Equal(ErrorCode.ReferenceUnresolved, other.Code);
+        Assert.Equal("suppressed", other.Error.Details!["reason"]);
+        // When SOLIDWORKS returns no object for the suppressed feature, nothing is substituted and the error says so.
+        doc.Selected.Clear();
+        doc.SuppressedResolvesToNothing = true;
+        var nothing = Fails(() => Api(new ApiCallRequest { Target = feature, Member = "Info", Rebuild = false }));
+        Assert.Equal(ErrorCode.ReferenceUnresolved, nothing.Code);
+        Assert.Contains("SOLIDWORKS returned no object for it", nothing.Message);
+    }
+
+    [Fact]
+    public void A_deleted_or_unresolved_reference_or_a_suppressed_face_is_still_reference_unresolved_for_api_call()
+    {
+        var doc = ApiBlock();
+        var entity = doc.Entities.Find(e => e.Info.Name == "Boss-Extrude1")!;
+        string feature = (string)Services.References.Describe(doc, entity).Reference!;
+        entity.State = PersistState.Deleted;
+        var deleted = Fails(() => Api(new ApiCallRequest { Target = feature, Member = "Info", Rebuild = false }));
+        Assert.Equal(ErrorCode.ReferenceUnresolved, deleted.Code);
+        Assert.Equal("deleted", deleted.Error.Details!["reason"]);
+        entity.State = PersistState.Invalid;
+        Assert.Equal("not_found", Fails(() => Api(new ApiCallRequest { Target = feature, Member = "Info", Rebuild = false })).Error.Details!["reason"]);
+        string face = Face(doc);
+        ((FakeEntity)Services.References.Resolve(doc, face, "face").Entity).State = PersistState.Suppressed;
+        var arg = Fails(() => Api(new ApiCallRequest { Target = "document", Member = "Extension.SelectEntity", Args = Args(new JsonObject { ["ref"] = face }, false), Rebuild = false }));
+        Assert.Equal(ErrorCode.ReferenceUnresolved, arg.Code);
+        Assert.Equal("suppressed", arg.Error.Details!["reason"]);
+        Assert.Empty(doc.Selected);
+    }
+
+    [Fact]
     public void A_returned_entity_comes_back_as_its_reference()
     {
         var doc = ApiBlock();

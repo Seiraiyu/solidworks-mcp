@@ -57,7 +57,16 @@ public sealed class ReferenceService
         return (entity, kind);
     }
 
-    (object, ReferenceKind) ResolveReference(ISwDocument doc, string text, string field)
+    /// <summary>
+    /// For api.call only: as <see cref="Resolve"/>, except that a feature SOLIDWORKS reports suppressed resolves, to the
+    /// entity SOLIDWORKS returns for that very reference (never another), so the escape hatch can act on it (unsuppress
+    /// it, read it). Anything else that does not resolve, a deleted feature or a suppressed face included, is still
+    /// reference_unresolved.
+    /// </summary>
+    public (object Entity, ReferenceKind Kind) ResolveForApiCall(ISwDocument doc, string text, string field) =>
+        References.IsReference(text) ? ResolveReference(doc, text, field, allowSuppressedFeature: true) : ResolveName(doc, text, field);
+
+    (object, ReferenceKind) ResolveReference(ISwDocument doc, string text, string field, bool allowSuppressedFeature = false)
     {
         var data = References.Decode(text, field);
         string docKey = DocumentKeys.Of(doc.Info());
@@ -65,7 +74,8 @@ public sealed class ReferenceService
         if (!DocumentKeys.Same(now, docKey))
             throw Unresolved(text, field, data, "other_document", $"it belongs to {now}, not {docKey}");
         var entity = doc.Resolve(data.PersistId, out var state);
-        if (state != PersistState.Ok || entity == null)
+        bool suppressedFeature = allowSuppressedFeature && state == PersistState.Suppressed && data.Kind == ReferenceKind.Feature && entity != null;
+        if ((state != PersistState.Ok && !suppressedFeature) || entity == null)
         {
             string reason = state switch
             {
@@ -73,7 +83,10 @@ public sealed class ReferenceService
                 PersistState.Suppressed => "suppressed",
                 _ => "not_found",
             };
-            throw Unresolved(text, field, data, reason, reason == "not_found" ? "SOLIDWORKS no longer finds it" : $"it was {reason}");
+            string why = reason == "not_found" ? "SOLIDWORKS no longer finds it" : $"it was {reason}";
+            if (allowSuppressedFeature && state == PersistState.Suppressed && data.Kind == ReferenceKind.Feature && entity == null)
+                why += " and SOLIDWORKS returned no object for it";
+            throw Unresolved(text, field, data, reason, why);
         }
         var kind = doc.KindOf(entity);
         if (kind != data.Kind)

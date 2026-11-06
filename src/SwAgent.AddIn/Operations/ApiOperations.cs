@@ -87,11 +87,11 @@ public sealed class ApiCallOperation : Operation<ApiCallRequest, ApiCallResult>
         if (rebuild) ModelChangeGuard.Require(sw, doc!, Name);
 
         // Every reference resolves before anything is called, so a request with one bad reference calls nothing.
-        object on = app ? sw.ApiObject() : whole ? doc!.ApiObject() : _services.References.Resolve(doc!, target, "target").Entity;
+        object on = app ? sw.ApiObject() : whole ? doc!.ApiObject() : _services.References.ResolveForApiCall(doc!, target, "target").Entity;
         var resolved = new Dictionary<string, object>(StringComparer.Ordinal);
         foreach (var (reference, field) in references)
         {
-            if (!resolved.ContainsKey(reference)) resolved[reference] = _services.References.Resolve(doc!, reference, field).Entity;
+            if (!resolved.ContainsKey(reference)) resolved[reference] = _services.References.ResolveForApiCall(doc!, reference, field).Entity;
         }
 
         var outcome = ApiCaller.Call(_services.ApiBinder, on, request.Member, args, resolved);

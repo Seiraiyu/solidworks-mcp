@@ -63,6 +63,9 @@ sealed partial class FakeDocument : ISwDocument
 
     public byte[]? PersistId(object entity) => ((FakeEntity)entity).Id;
 
+    /// <summary>SOLIDWORKS reports a suppressed feature but returns no object for it.</summary>
+    public bool SuppressedResolvesToNothing { get; set; }
+
     public object? Resolve(byte[] persistId, out PersistState state)
     {
         var e = Entities.FirstOrDefault(x => x.Id != null && x.Id.SequenceEqual(persistId));
@@ -72,6 +75,8 @@ sealed partial class FakeDocument : ISwDocument
             return null;
         }
         state = e.State;
+        // A suppressed feature is still an object SOLIDWORKS can hand back; the live run (3.E, round 3) checks that.
+        if (e.State == PersistState.Suppressed && e.Kind == ReferenceKind.Feature && !SuppressedResolvesToNothing) return e;
         return e.State == PersistState.Ok ? e.ResolvesTo ?? e : null;
     }
 
