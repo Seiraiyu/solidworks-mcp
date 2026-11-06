@@ -209,7 +209,7 @@ internal sealed partial class SolidWorksDocument
         }
         s.How = string.Join("; ", tried);
         if (feature != null) return feature;
-        s.How += "; " + HoleTables((int)generic, (int)fastener, s.Size);
+        s.How += "; " + HoleTables((int)generic);
         throw new SwAgentException(ErrorCode.OperationFailed,
             $"SOLIDWORKS made no {WireNames.ForEnum(s.Type)} {s.Size} hole at {s.Positions.Count} positions (hole type {generic}, standard {(swWzdHoleStandards_e)standard}, " +
             $"fastener {fastener}); check that {s.Size} is a {WireNames.ForEnum(s.Standard)} size the Hole Wizard lists for a {WireNames.ForEnum(s.Type)} hole. Tried: {s.How}",
@@ -217,38 +217,29 @@ internal sealed partial class SolidWorksDocument
     }
 
     /// <summary>
-    /// What ISldWorks.GetHoleStandardsData lists for <paramref name="generic"/>: each standard's index and name, the ISO
-    /// and ANSI metric fastener types, and every table of <paramref name="fastener"/> in each, read in-process through
-    /// the rows' own IDispatch type information (the interop declares no interface for them; round 3 printed only
-    /// System.__ComObject), with whether <paramref name="size"/> is among them. Diagnostic only: never throws.
+    /// What ISldWorks.GetHoleStandardsData lists for <paramref name="generic"/>: each standard's index and name, and the
+    /// ISO and ANSI metric fastener types, so a failed hole says whether the indexes it passed are SOLIDWORKS' own.
+    /// Diagnostic only: never throws.
     /// </summary>
-    string HoleTables(int generic, int fastener, string size)
+    string HoleTables(int generic)
     {
         var text = new List<string>();
+        static string[] Items(object? o) => o is Array a
+            ? a.Cast<object?>().Select(x => Convert.ToString(x, System.Globalization.CultureInfo.InvariantCulture) ?? "").ToArray()
+            : o == null ? new string[0] : new[] { Convert.ToString(o, System.Globalization.CultureInfo.InvariantCulture) ?? "" };
         try
         {
             if (!(_sw.GetHoleStandardsData(generic) is IHoleStandardsData data)) return $"GetHoleStandardsData({generic}) returned nothing";
             if (!data.GetHoleStandards(out object indexes, out object names)) return "GetHoleStandards returned false";
-            var ids = ComRead.Items(indexes);
-            var stds = ComRead.Items(names);
+            var ids = Items(indexes);
+            var stds = Items(names);
             text.Add("standards: " + string.Join(", ", stds.Select((n, i) => $"{(i < ids.Length ? ids[i] : "?")}={n}")));
             foreach (var std in stds.Where(n => n == "ISO" || n == "ANSI Metric"))
             {
                 if (!data.GetFastenerTypes(std, out object fIds, out object fNames)) { text.Add($"{std}: GetFastenerTypes false"); continue; }
-                var fi = ComRead.Items(fIds);
-                var fn = ComRead.Items(fNames);
+                var fi = Items(fIds);
+                var fn = Items(fNames);
                 text.Add($"{std} fasteners: " + string.Join(", ", fn.Select((n, i) => $"{(i < fi.Length ? fi[i] : "?")}={n}")));
-                if (!fi.Contains(fastener.ToString(System.Globalization.CultureInfo.InvariantCulture))) continue;
-                if (!data.GetFastenerTableTypes(std, fastener, out object tables)) { text.Add($"{std} fastener {fastener}: GetFastenerTableTypes false"); continue; }
-                foreach (var table in ComRead.Items(tables))
-                {
-                    if (!int.TryParse(table, out int tid)) continue;
-                    if (!data.GetFastenerTable(std, fastener, tid, out object rows)) { text.Add($"{std} fastener {fastener} table {tid}: GetFastenerTable false"); continue; }
-                    string read = ComRead.Describe(rows, 3);
-                    bool has = read.IndexOf(size, StringComparison.Ordinal) >= 0;
-                    text.Add($"{std} fastener {fastener} table {tid} ('{size}' {(has ? "listed" : "not listed")}; U+{string.Join(" U+", size.Select(ch => ((int)ch).ToString("X4")))}): " +
-                             (read.Length > 2500 ? read.Substring(0, 2500) + "…" : read));
-                }
             }
         }
         catch (Exception e)
