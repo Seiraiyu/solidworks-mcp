@@ -42,8 +42,8 @@ public sealed class FeatureShellOperation : ModelChangeOperation<FeatureShellReq
     }
 
     /// <summary>
-    /// Every face named in faces_to_remove is open: it no longer resolves, or (the shell's case alone, not
-    /// FeatureFacts.Gone's) it resolves to a smaller area than it had. The 3.D live run showed SOLIDWORKS keeps a shell's
+    /// Every face named in faces_to_remove is open: it no longer resolves, or (the shell's case alone, used by no other
+    /// operation) it resolves to a smaller area than it had. The 3.D live run showed SOLIDWORKS keeps a shell's
     /// removed face as the rim the walls leave of it: the block's 800 mm² top resolved to a 224 mm² rim, the volume
     /// exactly the open shell's 3392 mm³. A face of the same area or larger is still closed, and fails "gone" with what
     /// it resolves to.
