@@ -59,6 +59,20 @@ public class FeatureShellTests : FeatureTestBase
     }
 
     [Fact]
+    public void A_rim_counts_only_once_the_volume_has_moved_the_way_the_walls_go()
+    {
+        var doc = Part();
+        Block();
+        var top = Face(doc);
+        doc.ShellLeavesRim = true;
+        // The inward shell takes 2000 mm³; 4000 more makes it grow the part, the wrong way for inward walls.
+        doc.FeatureVolumeError = 4000;
+        var e = Fails(() => Shell(new FeatureShellRequest { FacesToRemove = new List<string> { top }, ThicknessMm = 2 }));
+        Assert.Equal("volume_change", e.Error.Details!["check"]);
+        Assert.DoesNotContain(doc.Tree, f => f.Name == "Shell1");
+    }
+
+    [Fact]
     public void A_face_left_closed_fails_the_check_and_the_shell_is_rolled_back()
     {
         var doc = Part();

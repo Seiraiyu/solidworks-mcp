@@ -30,15 +30,55 @@ public sealed class FeatureShellOperation : ModelChangeOperation<FeatureShellReq
         return FeatureFacts.Made(Services.References, doc, feature, tx);
     }
 
-    /// <summary>The feature is a shell, the faces named are gone, and the volume moved the way the walls go.</summary>
+    /// <summary>The feature is a shell, the volume moved the way the walls go, the faces named are open, and it made faces.</summary>
     protected override void Check(ISwDocument doc, FeatureShellRequest request, FeatureResult result)
     {
         FeatureFacts.ExpectType(doc, result, "Shell", "shell");
         double after = Volume(doc, doc.SolidBodyCount());
-        FeatureFacts.Gone(Services.References, doc, request.FacesToRemove, "faces_to_remove", ReferenceKind.Face, result, "shell",
-            FormattableString.Invariant($"the volume {VolumeBefore:0.###} -> {after:0.###} mm³"), _areasBefore);
+        // The volume first: a face kept as its rim (below) counts as opened only once the volume has moved the right way.
         FeatureFacts.VolumeChanged(result, "shell", VolumeBefore, after, request.Outward == true ? 1 : -1);
+        Opened(doc, request, result, FormattableString.Invariant($"the volume {VolumeBefore:0.###} -> {after:0.###} mm³"));
         FeatureFacts.MadeFaces(result, "shell");
+    }
+
+    /// <summary>
+    /// Every face named in faces_to_remove is open: it no longer resolves, or (the shell's case alone, not
+    /// FeatureFacts.Gone's) it resolves to a smaller area than it had. The 3.D live run showed SOLIDWORKS keeps a shell's
+    /// removed face as the rim the walls leave of it: the block's 800 mm² top resolved to a 224 mm² rim, the volume
+    /// exactly the open shell's 3392 mm³. A face of the same area or larger is still closed, and fails "gone" with what
+    /// it resolves to.
+    /// </summary>
+    void Opened(ISwDocument doc, FeatureShellRequest request, FeatureResult result, string volume)
+    {
+        var texts = request.FacesToRemove;
+        if (texts == null || texts.Count == 0) return;
+        var cutBack = new List<string>();
+        for (int i = 0; i < texts.Count; i++)
+        {
+            object face;
+            try
+            {
+                face = Services.References.Resolve(doc, texts[i], $"/faces_to_remove/{i}", ReferenceKind.Face).Entity;
+            }
+            catch (SwAgentException e) when (e.Code == ErrorCode.ReferenceUnresolved)
+            {
+                continue;
+            }
+            var now = doc.Describe(face);
+            double? before = i < _areasBefore.Count ? _areasBefore[i] : null;
+            if (before != null && now.AreaMm2 != null && now.AreaMm2 < before - 1e-6)
+            {
+                cutBack.Add(FormattableString.Invariant($"/faces_to_remove/{i}: {before:0.###} -> {now.AreaMm2:0.###} mm²"));
+                continue;
+            }
+            string described = EntityFilter.Describe(now) + (now.Normal != null ? $", normal {now.Normal}" : "") + (now.Origin != null ? $", at {now.Origin}" : "");
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"/faces_to_remove/{i} is still a face of the part after the shell: it resolves to {described}; {volume}",
+                new JsonObject { ["check"] = "gone", ["field"] = $"/faces_to_remove/{i}", ["measured"] = described });
+        }
+        result.Checks.Add(cutBack.Count == 0
+            ? $"the {texts.Count} faces named in faces_to_remove are gone"
+            : $"the {texts.Count} faces named in faces_to_remove are gone or cut back to the walls' rim ({string.Join("; ", cutBack)})");
     }
 }
 

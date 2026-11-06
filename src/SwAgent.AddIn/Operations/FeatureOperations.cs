@@ -553,16 +553,13 @@ public static class FeatureFacts
     /// <remarks>
     /// When one still resolves, the failure says what SOLIDWORKS resolves it to now (3.D live run, round 1: a shell's
     /// open face still resolved, and whether to the whole face or to what is left of it could not be read), with
-    /// <paramref name="also"/> (the volume, for a shell). Round 2 answered it: SOLIDWORKS keeps a shell's removed face
-    /// as the rim the walls leave of it (the block's 800 mm² top resolved to a 224 mm² rim, the volume exactly the open
-    /// shell's). So with <paramref name="areasBefore"/>, a face that still resolves to a smaller area than it had is
-    /// opened too; one of the same area or larger is not.
+    /// <paramref name="also"/> (the volume, for a shell). Strict: an entity that still resolves fails, whatever it now
+    /// is. The shell's own exception (a face kept as its rim) is FeatureShellOperation's, not this helper's.
     /// </remarks>
     public static void Gone(ReferenceService references, ISwDocument doc, IReadOnlyList<string>? texts, string field, ReferenceKind kind, FeatureResult result, string what,
-        string? also = null, IReadOnlyList<double?>? areasBefore = null)
+        string? also = null)
     {
         if (texts == null || texts.Count == 0) return;
-        var cutBack = new List<string>();
         for (int i = 0; i < texts.Count; i++)
         {
             object entity;
@@ -575,20 +572,12 @@ public static class FeatureFacts
                 continue;
             }
             var now = doc.Describe(entity);
-            double? before = areasBefore != null && i < areasBefore.Count ? areasBefore[i] : null;
-            if (before != null && now.AreaMm2 != null && now.AreaMm2 < before - 1e-6)
-            {
-                cutBack.Add(FormattableString.Invariant($"/{field}/{i}: {before:0.###} -> {now.AreaMm2:0.###} mm²"));
-                continue;
-            }
             string described = EntityFilter.Describe(now) + (now.Normal != null ? $", normal {now.Normal}" : "") + (now.Origin != null ? $", at {now.Origin}" : "");
             throw new SwAgentException(ErrorCode.VerificationFailed,
                 $"/{field}/{i} is still a {WireNames.ForEnum(kind)} of the part after the {what}: it resolves to {described}{(also == null ? "" : "; " + also)}",
                 new JsonObject { ["check"] = "gone", ["field"] = $"/{field}/{i}", ["measured"] = described });
         }
-        result.Checks.Add(cutBack.Count == 0
-            ? $"the {texts.Count} {WireNames.ForEnum(kind)}s named in {field} are gone"
-            : $"the {texts.Count} {WireNames.ForEnum(kind)}s named in {field} are gone or cut back to the walls' rim ({string.Join("; ", cutBack)})");
+        result.Checks.Add($"the {texts.Count} {WireNames.ForEnum(kind)}s named in {field} are gone");
     }
 
     /// <summary>The feature made at least one face.</summary>
