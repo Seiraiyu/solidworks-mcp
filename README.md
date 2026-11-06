@@ -22,10 +22,12 @@ It offers these tools:
 - Configurations: `sw_configuration_list`, `sw_configuration_add` and `sw_configuration_activate`. `sw_feature_suppress` and `sw_dimension_set` act in the active configuration.
 - Reference geometry: `sw_refgeom_plane` (offset, angle, three points, parallel through a point, normal to a curve), `sw_refgeom_axis` and `sw_refgeom_point`.
 - `sw_model_measure` gives the distance, closest points, centre distance and angle between two faces, edges, vertices, planes, axes or points.
+- `sw_export_part` writes a copy of a part as STEP (AP214 or AP242), Parasolid (`.x_t`), binary STL or 3MF.
+- `sw_api_call`, the escape hatch, calls any member of SOLIDWORKS' API the other tools do not cover yet. It can be turned off (see **The escape hatch**).
 
 There is one tool per add-in operation, named `sw_` and the operation with underscores (`document.save_as` is `sw_document_save_as`).
 
-Lengths are millimetres and angles degrees everywhere.
+Lengths are millimetres and angles degrees everywhere except in `sw_api_call`, which speaks SOLIDWORKS' own metres and radians.
 
 ### References
 
@@ -62,6 +64,36 @@ A feature SOLIDWORKS does not make (a fillet too big for its edge, a cut that mi
 ### Closing documents
 
 `sw_document_close` closes only a document the agent opened or created (with `sw_document_new` or `sw_document_open`) since it connected. Any other document is yours: closing it needs `users_document: true`, which an agent should pass only when you asked. A document with unsaved changes needs `discard: true` as well.
+
+### Export
+
+`sw_export_part` writes a copy: the part keeps its own path and its unsaved changes. A part that is not the active document is made active for the export, and the document that was active is made active again afterwards. The path's extension must be the format's (`.step` or `.stp`, `.x_t`, `.stl`, `.3mf`), in a folder that exists, and an existing file is replaced only with `overwrite: true`.
+
+- STEP is AP214 unless `options.step_schema` is `ap242`.
+- STL and 3MF are written in mm, coarse, fine (the default) or with a custom `deviation_mm` and `angle_deg`. STL is binary, in the part's own coordinates (not moved to positive space).
+- Parasolid takes no options.
+
+The options are SOLIDWORKS preferences (Tools > Options > Export). The add-in sets the ones the export needs for the call and puts them back afterwards. It writes them to `%LOCALAPPDATA%\solidworks-mcp\export-preferences-journal.json` first, so if SOLIDWORKS stops mid-export, the next load restores them.
+
+The file is then checked on disk. It must have been written by this call and not be empty, and it must start with its format's header: `ISO-10303-21;` with the schema asked for (STEP), the Parasolid transmit header, a binary STL whose size matches its triangle count, or a 3MF zip holding `3D/3dmodel.model`. The part's path and unsaved-changes flag must also be unchanged. Otherwise the call answers `verification_failed`, naming the check.
+
+### The escape hatch
+
+`sw_api_call` calls a member of SOLIDWORKS' API by late binding, for what the other tools do not cover yet.
+
+- **Its units are SOLIDWORKS' own: metres and radians.**
+- `target` is `app` (SOLIDWORKS' `ISldWorks`), `document` (the document's `IModelDoc2`), or an entity of the document: a reference such as a face from `sw_model_find`, or the name of a feature, plane, axis or point.
+- `member` is a dotted path (`Extension.GetMassProperties2`). Every part but the last is a property or a method without arguments; the last is called with `args`.
+- `args` are JSON. `{"ref": "r1..."}` passes the entity a reference (or a feature's name) names. Give a placeholder (`0`, `null`) for each out argument; its value after the call comes back in `out`.
+- A returned object comes back as its reference when SOLIDWORKS can persist it, otherwise only as its interface's name. There are no handles, so a chain of calls has to be one dotted `member`.
+- For `document` and reference targets the document is rebuilt afterwards (unless `rebuild: false`) and its rebuild errors returned. A call that rebuilds waits, like any change, while you are editing a sketch or have a command open (`busy`). A call with `rebuild: false`, or on `app`, does not wait.
+- Nothing is checked and nothing is taken back: it does what it is told.
+
+It refuses every member that ends SOLIDWORKS, closes a document or runs code: `ExitApp`, `CloseAllDocuments`, `CloseDoc`, `QuitDoc`, `CloseAndReopen`, every other `Close` or `Quit` member of `ISldWorks` and `IModelDoc2`, `RunMacro`, `RunMacro2`, `RunCommand`, `LoadAddIn` and `UnloadAddIn`. It also refuses the members that close a document under another name: every member whose name contains `Reload` (`ReloadOrReplace`, `ReloadWithReferences`, `FileReload`, ...), `ForceReleaseLocks`, `SetReadOnlyState`, the members that replace a document (`ReplaceReferencedDocument`, `ReplaceComponents`, `ReplaceComponents2`, `ReplacePLMComponents`, `ReplaceReference`, `ReplaceViewModel`), and an add-in's own `ConnectToSW` and `DisconnectFromSW`. It also refuses every other member that runs code: `RunAttachedMacro`, `RunJournalCmd`, `RunBatchSaveProcess`, `CallBack`, `AddCallback`, `SetAddinCallbackInfo` and `SetAddinCallbackInfo2`, `InsertMacroFeature` (and `2`, `3` and the `IInsertMacroFeature` forms), `ToolsMacro`, `RunXMLCommand`, `WriteJournalToMacro`, `EmbedMacroFile` and `GetAddInObject`. These are refused whatever their case and wherever they appear in the path. Documents close only through `sw_document_close`.
+
+Every call is logged in full to `api-calls.log` (see **Logs**), so its use shows which tools to add.
+
+The escape hatch is on by default. Turn it off with `swmcp serve --no-api-call` or the environment variable `SWMCP_API_CALL=0`. The server then does not offer `sw_api_call` at all, and `swmcp call api.call` is refused.
 
 Every tool takes an optional `deadline_ms`.
 
@@ -125,7 +157,7 @@ The suite ends SOLIDWORKS twice. Each time it first reads the open documents aga
 
 ### Parts suite
 
-`PartsSuite` checks documents, references, inspection, selection, sketches, dimensions and features against exact geometry: a 40 x 20 x 10 mm block must measure 8000 mm³, its top face must be the one face whose normal is +Z, a reference to it must survive a rebuild, a save as and a close and reopen, a fully dimensioned plate sketch must read back fully defined, setting the block's depth to 15 mm must make it 12000 mm³, a change that over-defines a sketch must leave it as it was, a 5 mm radius hole through the block must take 785.398 mm³, a 2 mm fillet on a 10 mm edge 8.584 mm³ and a 2 mm chamfer 20 mm³, a tube revolved from a 10 x 30 profile must be 28274.334 mm³, extrudes up to next, mid-plane, reversed, both ways, drafted and thin-walled must make exactly the box and volume asked for, a fillet too big for its edge or a cut that misses the part must leave it as it was, a circle swept 30 mm along a line must be 2356.194 mm³, a loft from a 20 mm square to a 10 mm one 10 mm above it 2333.333 mm³, the block shelled open at the top with 2 mm walls 3392 mm³, its side drafted 5° must change by 87.489 mm³, two Ø5.0 holes through it must take 392.699 mm³, patterns and a mirror of holes must take each hole's volume once per instance, the block mirrored about its side must be 16000 mm³, and a hole suppressed in one configuration must be there in the other. Two cases ask you to edit a sketch and to open a PropertyManager by hand, and are skipped after 3 minutes if nobody does. It never ends SOLIDWORKS. It needs the add-in loaded with diagnostics on, as the fault suite does (it looks after that the same way), and stops if any document it did not create is open:
+`PartsSuite` checks documents, references, inspection, selection, sketches, dimensions and features against exact geometry: a 40 x 20 x 10 mm block must measure 8000 mm³, its top face must be the one face whose normal is +Z, a reference to it must survive a rebuild, a save as and a close and reopen, a fully dimensioned plate sketch must read back fully defined, setting the block's depth to 15 mm must make it 12000 mm³, a change that over-defines a sketch must leave it as it was, a 5 mm radius hole through the block must take 785.398 mm³, a 2 mm fillet on a 10 mm edge 8.584 mm³ and a 2 mm chamfer 20 mm³, a tube revolved from a 10 x 30 profile must be 28274.334 mm³, extrudes up to next, mid-plane, reversed, both ways, drafted and thin-walled must make exactly the box and volume asked for, a fillet too big for its edge or a cut that misses the part must leave it as it was, a circle swept 30 mm along a line must be 2356.194 mm³, a loft from a 20 mm square to a 10 mm one 10 mm above it 2333.333 mm³, the block shelled open at the top with 2 mm walls 3392 mm³, its side drafted 5° must change by 87.489 mm³, two Ø5.0 holes through it must take 392.699 mm³, patterns and a mirror of holes must take each hole's volume once per instance, the block mirrored about its side must be 16000 mm³, and a hole suppressed in one configuration must be there in the other, each export format (STEP AP214 and AP242, Parasolid, STL coarse, fine and custom, 3MF) must be written with its header while the part keeps its path and unsaved changes and the export preferences read back as they were, and `sw_api_call`'s `GetMassProperties2` must agree with `sw_model_mass` in SI units, suppress a hole with its rebuild status, and refuse `CloseDoc`. Two cases ask you to edit a sketch and to open a PropertyManager by hand, and are skipped after 3 minutes if nobody does. It never ends SOLIDWORKS. It needs the add-in loaded with diagnostics on, as the fault suite does (it looks after that the same way), and stops if any document it did not create is open:
 
 ```powershell
 $env:SWMCP_LIVE = "1"
@@ -191,6 +223,8 @@ If SOLIDWORKS crashes, the calls in flight get `sw_crashed` within about a secon
 
 The add-in serves one client at a time. While an MCP client is connected, `swmcp call` from a terminal answers `busy`.
 
+To run without the escape hatch, add `--no-api-call` after `serve` (or set `SWMCP_API_CALL=0` in the server's environment).
+
 ## From a terminal
 
 ```powershell
@@ -234,6 +268,7 @@ The add-in presses a button only when asked, or for a prompt on its built-in all
 Logs are in `%LOCALAPPDATA%\solidworks-mcp\logs\` and are kept 14 days:
 
 - `addin-<yyyyMMdd>.log` is the add-in's log: load, unload, and every request with its thread.
+- `api-calls.log` holds every `sw_api_call`, one JSON line each: the target, member, arguments, result or error, and duration. Past 10 MB it becomes `api-calls.1.log` and a new one starts.
 - `server-<yyyyMMdd>.log` is the MCP server's log. It records every tool call with its outcome code and duration, every change in what the server sees (`not_running`, `starting`, `loading`, `ready`, `crashed`, ...), every `LoadAddIn` with its result and how long the add-in's pipe took, and how each connection ended (crash, close, add-in turned off), with its evidence. The server also logs to stderr.
 
 `SWMCP_LOG_LEVEL` (`trace`, `debug`, `information`, `warning`, `error`) sets the server's minimum level; the default is `information`. At `debug` the server also logs each call's parameters.
