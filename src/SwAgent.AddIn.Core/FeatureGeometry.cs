@@ -138,6 +138,15 @@ public static class FeatureChecks
             new JsonObject { ["check"] = "volume_change", ["expected"] = sign > 0 ? "more" : sign < 0 ? "less" : "same", ["before"] = before, ["measured"] = after });
     }
 
+    /// <summary>The volume changed, either way (a fillet or chamfer removes material on a convex edge and adds it on a concave one).</summary>
+    public static void VolumeMoved(string what, double before, double after)
+    {
+        if (Math.Abs(after - before) > 1e-6 * Math.Max(1, Math.Abs(before))) return;
+        throw new SwAgentException(ErrorCode.VerificationFailed,
+            FormattableString.Invariant($"the {what} left the part's volume at {after:0.###} mm³, as it was"),
+            new JsonObject { ["check"] = "volume_change", ["expected"] = "different", ["before"] = before, ["measured"] = after });
+    }
+
     /// <summary>The volume changed by <paramref name="expected"/> mm³ (signed), within <see cref="VolumeTolerance"/>; <paramref name="why"/> says where the number comes from.</summary>
     public static void VolumeChangeIs(string what, double expected, double measured, string why)
     {

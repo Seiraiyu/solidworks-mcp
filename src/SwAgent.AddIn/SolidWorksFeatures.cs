@@ -114,6 +114,32 @@ internal sealed partial class SolidWorksDocument
         return null;
     }
 
+    /// <summary>
+    /// FeatureFillet3 with the edges and faces selected with mark 1: a simple fillet of one radius, propagating along
+    /// tangent edges and keeping the features it meets (options 195, as the Fillet PropertyManager's defaults).
+    /// </summary>
+    public object? Fillet(IReadOnlyList<object> edgesAndFaces, double radiusMm)
+    {
+        Doc.ClearSelection2(true);
+        try
+        {
+            bool first = true;
+            foreach (var e in edgesAndFaces)
+            {
+                Pick(e, append: !first, mark: 1);
+                first = false;
+            }
+            int options = (int)swFeatureFilletOptions_e.swFeatureFilletPropagate | (int)swFeatureFilletOptions_e.swFeatureFilletUniformRadius
+                | (int)swFeatureFilletOptions_e.swFeatureFilletAttachEdges | (int)swFeatureFilletOptions_e.swFeatureFilletKeepFeatures;
+            return Doc.FeatureManager.FeatureFillet3(options, radiusMm / Mm, 0, 0, (int)swFeatureFilletType_e.swFeatureFilletType_Simple, 0, 0,
+                null, null, null, null, null, null, null);
+        }
+        finally
+        {
+            Doc.ClearSelection2(true);
+        }
+    }
+
     public IReadOnlyList<object> FacesOf(object feature) =>
         ((IFeature)feature).GetFaces() is object[] faces ? faces.Where(f => f != null).ToList() : new List<object>();
 

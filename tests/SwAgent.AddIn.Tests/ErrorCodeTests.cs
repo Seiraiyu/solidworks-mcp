@@ -380,4 +380,56 @@ public class ErrorCodeTests : DocumentTestBase
         Assert.Equal(code, Fails(() => Run(new FeatureRevolveOperation(Services), request)).Code);
         Assert.DoesNotContain(doc.Tree, f => f.Type == "Revolution");
     }
+
+    /// <summary>A part with a 40 x 20 x 10 block (Sketch1, Boss-Extrude1) and one of its edges.</summary>
+    (FakeDocument Doc, string Edge) Blocked()
+    {
+        var doc = Profiled();
+        Run(new FeatureExtrudeOperation(Services), new FeatureExtrudeRequest { Sketch = "Sketch1", DepthMm = 10 });
+        var edge = doc.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, LengthMm = 10 });
+        return (doc, Services.References.Describe(doc, edge).Reference!);
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_fillet_reaches_every_listed_code(ErrorCode code)
+    {
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Fails(() => Run(new FeatureFilletOperation(Services), new FeatureFilletRequest { Edges = new List<string> { "Edge1" }, RadiusMm = 2 })).Code);
+            return;
+        }
+        var (doc, edge) = Blocked();
+        var request = new FeatureFilletRequest { Edges = new List<string> { edge }, RadiusMm = 2 };
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.RadiusMm = -1;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                doc.Entities.Single(e => e.Kind == ReferenceKind.Edge).State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                Sw.OpenCommandTitle = "Fillet";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.EdgesSurvive = true;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Run(new FeatureFilletOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "Fillet");
+    }
 }

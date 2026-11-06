@@ -68,6 +68,30 @@ sealed partial class FakeDocument
         return MakeFeature(spec.Cut ? "Cut-Revolve" : "Revolve", spec.Cut ? "RevCut" : "Revolution", (spec.Cut ? -1 : 1) * volume, contents.Segments.Count(s => !s.Construction));
     }
 
+    /// <summary>Fillets and chamfers leave the edges they were given in the part (SOLIDWORKS not rounding them).</summary>
+    public bool EdgesSurvive { get; set; }
+
+    /// <summary>The volume a fillet or chamfer removes per edge, mm³.</summary>
+    public double EdgeVolume { get; set; } = 8.584;
+
+    public List<(IReadOnlyList<object> Targets, double RadiusMm)> Fillets { get; } = new List<(IReadOnlyList<object>, double)>();
+
+    public object? Fillet(IReadOnlyList<object> edgesAndFaces, double radiusMm)
+    {
+        Fillets.Add((edgesAndFaces, radiusMm));
+        return EdgeFeature("Fillet", edgesAndFaces);
+    }
+
+    /// <summary>A fillet or chamfer: one face per edge or face it was given, its edges consumed, EdgeVolume removed per edge.</summary>
+    FakeEntity? EdgeFeature(string type, IReadOnlyList<object> targets)
+    {
+        if (FeatureSelectFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the edge a feature needs");
+        if (FeatureRefuses) return null;
+        var edges = targets.Cast<FakeEntity>().Where(e => e.Kind == ReferenceKind.Edge).ToList();
+        if (!EdgesSurvive) edges.ForEach(e => e.State = PersistState.Deleted);
+        return MakeFeature(type, type, -EdgeVolume * Math.Max(1, edges.Count), targets.Count);
+    }
+
     /// <summary>A new feature named as SOLIDWORKS names them (Boss-Extrude1, Boss-Extrude2 …), with <paramref name="faces"/> planar faces of its own.</summary>
     FakeEntity MakeFeature(string prefix, string type, double volume, int faces, ReferenceKind kind = ReferenceKind.Feature)
     {

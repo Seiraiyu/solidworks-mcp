@@ -45,6 +45,16 @@ public abstract class FeatureTestBase : DocumentTestBase
         CenterLines = new List<SketchCenterLine> { new SketchCenterLine { Id = "axis", Start = P(0, 0), End = P(0, 40) } },
     });
 
+    internal FeatureResult Fillet(FeatureFilletRequest request) => Run(new FeatureFilletOperation(Services), request);
+
+    /// <summary>A straight edge of the part, as model.find would name it.</summary>
+    internal string Edge(FakeDocument doc) =>
+        Services.References.Describe(doc, doc.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, LengthMm = 10, Feature = "Boss-Extrude1" })).Reference!;
+
+    /// <summary>A planar face of the part, as model.find would name it.</summary>
+    internal string Face(FakeDocument doc) =>
+        Services.References.Describe(doc, doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Plane, AreaMm2 = 800, Feature = "Boss-Extrude1" })).Reference!;
+
     /// <summary>A 5 mm radius circle at (20, 10), the next sketch.</summary>
     internal SketchCreateResult Hole() => Sketch(new SketchGeometry { Circles = new List<SketchCircle> { new SketchCircle { Id = "hole", Center = P(20, 10), RadiusMm = 5 } } });
 }
@@ -344,5 +354,76 @@ public class FeatureRevolveTests : FeatureTestBase
         Assert.True(cut.Change.VolumeAfterMm3 < cut.Change.VolumeBeforeMm3);
         Assert.True(doc.Revolves.Single().Cut);
         Assert.Equal("merge", Fails(() => Revolve(new FeatureRevolveRequest { Sketch = "Sketch2", Axis = Axis(tube), Mode = FeatureMode.Cut, Merge = false })).Error.Details!["field"]);
+    }
+}
+
+public class FeatureFilletTests : FeatureTestBase
+{
+    [Fact]
+    public void Rounds_the_edges_named_and_checks_they_are_gone()
+    {
+        var doc = Part();
+        Block();
+        var edges = new List<string> { Edge(doc), Edge(doc) };
+        var made = Fillet(new FeatureFilletRequest { Edges = edges, RadiusMm = 2 });
+        Assert.Equal("Fillet1", made.Feature.Name);
+        Assert.Equal(2, made.Faces.Count);
+        Assert.Contains("the 2 edges named are gone, and the fillet made 2 faces", made.Checks);
+        Assert.Equal(8000 - 2 * 8.584, made.Change.VolumeAfterMm3, 6);
+        Assert.Equal(2, doc.Fillets.Single().RadiusMm);
+        Assert.Equal(ErrorCode.ReferenceUnresolved, Fails(() => Services.References.Resolve(doc, edges[0], "edge", ReferenceKind.Edge)).Code);
+    }
+
+    [Fact]
+    public void Faces_alone_round_their_edges()
+    {
+        var doc = Part();
+        Block();
+        Fillet(new FeatureFilletRequest { Faces = new List<string> { Face(doc) }, RadiusMm = 1 });
+        Assert.Equal(ReferenceKind.Face, doc.KindOf(doc.Fillets.Single().Targets.Single()));
+    }
+
+    [Theory]
+    [InlineData("nothing", "edges")]
+    [InlineData("no_radius", "radius_mm")]
+    [InlineData("twice", "/edges/1")]
+    [InlineData("face_as_edge", "/edges/0")]
+    public void A_request_that_names_nothing_or_names_it_wrongly_is_refused(string wrong, string field)
+    {
+        var doc = Part();
+        Block();
+        string edge = Edge(doc);
+        var request = new FeatureFilletRequest { Edges = new List<string> { edge }, RadiusMm = 2 };
+        switch (wrong)
+        {
+            case "nothing": request.Edges = null; break;
+            case "no_radius": request.RadiusMm = null; break;
+            case "twice": request.Edges.Add(edge); break;
+            case "face_as_edge": request.Edges = new List<string> { Face(doc) }; break;
+        }
+        Assert.Equal(field, Fails(() => Fillet(request)).Error.Details!["field"]);
+        Assert.Empty(doc.Fillets);
+    }
+
+    [Fact]
+    public void An_edge_still_there_afterwards_rolls_the_fillet_back()
+    {
+        var doc = Part();
+        Block();
+        doc.EdgesSurvive = true;
+        var e = Fails(() => Fillet(new FeatureFilletRequest { Edges = new List<string> { Edge(doc) }, RadiusMm = 2 }));
+        Assert.Equal("edges_gone", e.Error.Details!["check"]);
+        Assert.DoesNotContain(doc.Tree, f => f.Name == "Fillet1");
+        Assert.Equal(8000, doc.MassProperties!.VolumeMm3, 6);
+    }
+
+    [Fact]
+    public void A_fillet_that_leaves_the_volume_as_it_was_is_rolled_back()
+    {
+        var doc = Part();
+        Block();
+        doc.FeatureAddsNothing = true;
+        Assert.Equal("volume_change", Fails(() => Fillet(new FeatureFilletRequest { Edges = new List<string> { Edge(doc) }, RadiusMm = 2 })).Error.Details!["check"]);
+        Assert.DoesNotContain(doc.Tree, f => f.Name == "Fillet1");
     }
 }

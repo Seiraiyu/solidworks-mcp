@@ -126,6 +126,9 @@ public interface ISwDocument
     /// <summary>Revolves <paramref name="sketch"/> about <see cref="RevolveSpec.Axis"/>; the new feature, or null when SOLIDWORKS made none.</summary>
     object? Revolve(object sketch, RevolveSpec spec);
 
+    /// <summary>A constant-radius fillet on these edges and faces; the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Fillet(System.Collections.Generic.IReadOnlyList<object> edgesAndFaces, double radiusMm);
+
     /// <summary>The faces <paramref name="feature"/> made.</summary>
     System.Collections.Generic.IReadOnlyList<object> FacesOf(object feature);
 }

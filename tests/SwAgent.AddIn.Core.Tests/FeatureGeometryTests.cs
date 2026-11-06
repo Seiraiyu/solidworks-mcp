@@ -103,4 +103,14 @@ public class FeatureGeometryTests
         Assert.Equal(15, FeatureChecks.Offset(new Point3(0, 0, 10), new Vector3(0, 0, 1), new Point3(3, 4, 25)), 9);
         Assert.Equal(0, FeatureChecks.Offset(new Point3(0, 0, 0), new Vector3(1, 0, 0), new Point3(0, 7, 9)), 9);
     }
+
+    [Fact]
+    public void A_volume_that_must_move_either_way_fails_only_when_it_stayed()
+    {
+        FeatureChecks.VolumeMoved("fillet", 8000, 7991.4);
+        FeatureChecks.VolumeMoved("fillet", 8000, 8008.6);
+        var e = Assert.Throws<SwAgentException>(() => FeatureChecks.VolumeMoved("fillet", 8000, 8000));
+        Assert.Equal("volume_change", e.Error.Details!["check"]);
+        Assert.Equal("different", e.Error.Details["expected"]);
+    }
 }

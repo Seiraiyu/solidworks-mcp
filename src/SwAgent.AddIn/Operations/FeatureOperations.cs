@@ -176,6 +176,38 @@ public sealed class FeatureRevolveOperation : ModelChangeOperation<FeatureRevolv
     }
 }
 
+public sealed class FeatureFilletOperation : ModelChangeOperation<FeatureFilletRequest, FeatureResult>
+{
+    public FeatureFilletOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(FeatureFilletRequest request) => request.Document;
+
+    protected override FeatureResult Change(ISwDocument doc, FeatureFilletRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        double radius = FeatureFacts.Length(request.RadiusMm, "radius_mm", "a fillet");
+        if ((request.Edges?.Count ?? 0) + (request.Faces?.Count ?? 0) == 0) throw FeatureFacts.Invalid("edges", "a fillet needs edges, faces or both to round");
+        var edges = FeatureFacts.Entities(Services.References, doc, request.Edges, "edges", ReferenceKind.Edge);
+        var faces = FeatureFacts.Entities(Services.References, doc, request.Faces, "faces", ReferenceKind.Face);
+        var feature = doc.Fillet(edges.Concat(faces).ToList(), radius)
+            ?? throw FeatureFacts.NotMade(doc, "fillet", FormattableString.Invariant($"of {radius:0.###} mm"), "check that the radius fits the edges and faces it rounds");
+        return FeatureFacts.Made(Services.References, doc, feature, tx);
+    }
+
+    /// <summary>The feature is a fillet, the edges named are gone and faces replaced them, and the volume changed.</summary>
+    protected override void Check(ISwDocument doc, FeatureFilletRequest request, FeatureResult result)
+    {
+        FeatureFacts.ExpectType(doc, result, "Fillet", "fillet");
+        FeatureFacts.EdgesGone(Services.References, doc, request.Edges, result, "fillet");
+        double after = Volume(doc, doc.SolidBodyCount());
+        FeatureChecks.VolumeMoved("fillet", VolumeBefore, after);
+        result.Checks.Add(FormattableString.Invariant($"the volume changed: {VolumeBefore:0.###} -> {after:0.###} mm³"));
+        FeatureFacts.MadeFaces(result, "fillet");
+    }
+}
+
 /// <summary>What every feature operation shares: request checks, the feature recorded in the transaction, the result filled, and the common checks.</summary>
 public static class FeatureFacts
 {
@@ -190,6 +222,46 @@ public static class FeatureFacts
         if (double.IsNaN(v) || double.IsInfinity(v) || v <= 0 || v > SketchDraft.Reach)
             throw Invalid(field, $"{field} must be more than 0 and at most {SketchDraft.Reach} mm, not {v}");
         return v;
+    }
+
+    /// <summary>Every reference in <paramref name="texts"/> resolved to its entity, of <paramref name="kind"/>, each once; fields /<paramref name="field"/>/i.</summary>
+    public static List<object> Entities(ReferenceService references, ISwDocument doc, IReadOnlyList<string>? texts, string field, ReferenceKind kind)
+    {
+        var list = new List<object>();
+        if (texts == null) return list;
+        for (int i = 0; i < texts.Count; i++)
+        {
+            string at = $"/{field}/{i}";
+            int seen = texts.Take(i).ToList().IndexOf(texts[i]);
+            if (seen >= 0) throw Invalid(at, $"{at} names the same {WireNames.ForEnum(kind)} as /{field}/{seen}");
+            list.Add(references.Resolve(doc, texts[i], at, kind).Entity);
+        }
+        return list;
+    }
+
+    /// <summary>Every edge named no longer resolves (the feature consumed it), and the feature made at least one face for each.</summary>
+    public static void EdgesGone(ReferenceService references, ISwDocument doc, IReadOnlyList<string>? edges, FeatureResult result, string what)
+    {
+        if (edges == null) return;
+        for (int i = 0; i < edges.Count; i++)
+        {
+            try
+            {
+                references.Resolve(doc, edges[i], $"/edges/{i}", ReferenceKind.Edge);
+            }
+            catch (SwAgentException e) when (e.Code == ErrorCode.ReferenceUnresolved)
+            {
+                continue;
+            }
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"/edges/{i} is still an edge of the part after the {what}: SOLIDWORKS did not {what} it",
+                new JsonObject { ["check"] = "edges_gone", ["field"] = $"/edges/{i}" });
+        }
+        if (result.Faces.Count < edges.Count)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"the {what} made {result.Faces.Count} faces for {edges.Count} edges",
+                new JsonObject { ["check"] = "faces", ["expected"] = edges.Count, ["measured"] = result.Faces.Count });
+        }
+        result.Checks.Add($"the {edges.Count} edges named are gone, and the {what} made {result.Faces.Count} faces");
     }
 
     /// <summary>The sketch's contents, which must hold something that is not construction geometry.</summary>

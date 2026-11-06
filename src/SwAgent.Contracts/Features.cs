@@ -128,6 +128,22 @@ public sealed class FeatureRevolveRequest
     [Description("For a boss: merge it with the bodies it touches. Default true. Not for a cut.")]
     public bool? Merge { get; set; }
 }
+[Operation("feature.fillet", typeof(FeatureResult))]
+[Description("Rounds edges with a constant-radius fillet: the edges named, and every edge of the faces named; tangent edges are rounded with them. Radius in mm. Checked: the feature exists as a fillet, rebuilds without error, every edge named is gone (it no longer resolves), the fillet made at least one face per edge named, and the part's volume changed. Otherwise the fillet is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class FeatureFilletRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("The edges to round: their references (model.find kind edge). Give edges, faces or both.")]
+    public List<string>? Edges { get; set; }
+
+    [Description("Faces whose every edge is rounded: their references.")]
+    public List<string>? Faces { get; set; }
+
+    [Description("The radius, mm: more than 0.")]
+    public double? RadiusMm { get; set; }
+}
 [Description("A feature made, with references to it and the faces it made, and the part after it.")]
 public sealed class FeatureResult : IModelChangeResult
 {
