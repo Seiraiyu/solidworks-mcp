@@ -234,6 +234,25 @@ public class FeatureExtrudeTests : FeatureTestBase
         Assert.Equal(new[] { false }, doc.Rebuilds);
     }
 
+    [Theory]
+    [InlineData("ICE")]
+    [InlineData("Boss")]
+    public void A_boss_SOLIDWORKS_names_like_a_cut_must_still_add_material(string type)
+    {
+        // An extrude's type name does not tell a boss from a cut (3.C live run: a second boss was ICE), so the volume
+        // check must: a boss onto the body that adds nothing is refused and taken back.
+        var doc = Part();
+        Block();
+        Hole();
+        doc.FeatureTypeOverride = type;
+        doc.FeatureAddsNothing = true;
+        var e = Fails(() => Extrude(new FeatureExtrudeRequest { Sketch = "Sketch2", DepthMm = 5 }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("volume_change", e.Error.Details!["check"]);
+        Assert.DoesNotContain(doc.Tree, f => f.Name == "Boss-Extrude2");
+        Assert.Single(doc.Tree, f => f.Name == "Boss-Extrude1");
+    }
+
     [Fact]
     public void A_cut_that_removes_nothing_is_rolled_back()
     {
