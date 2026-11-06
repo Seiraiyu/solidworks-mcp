@@ -144,6 +144,12 @@ public interface ISwDocument
     /// <summary>Hole Wizard holes at <see cref="HoleSpec.Points"/>; the new feature, or null when SOLIDWORKS made none.</summary>
     object? Hole(HoleSpec spec);
 
+    /// <summary>A linear pattern of <see cref="LinearPatternSpec.Seeds"/>; the new feature, or null when SOLIDWORKS made none.</summary>
+    object? LinearPattern(LinearPatternSpec spec);
+
+    /// <summary>How many instances a pattern or mirror feature has, the seed included, as SOLIDWORKS reads its definition back.</summary>
+    int PatternInstances(object feature);
+
     /// <summary>A constant-radius fillet on these edges and faces; the new feature, or null when SOLIDWORKS made none.</summary>
     object? Fillet(System.Collections.Generic.IReadOnlyList<object> edgesAndFaces, double radiusMm);
 

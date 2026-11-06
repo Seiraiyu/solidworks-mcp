@@ -161,3 +161,27 @@ public sealed class HoleSpec
     /// <summary>For blind; 0 for through_all.</summary>
     public double DepthMm { get; set; }
 }
+
+/// <summary>A linear pattern as ISwDocument.LinearPattern makes it: the seeds and directions resolved, mm.</summary>
+public sealed class LinearPatternSpec
+{
+    public System.Collections.Generic.List<object> Seeds { get; } = new System.Collections.Generic.List<object>();
+
+    /// <summary>Faces to repeat instead of seeds (a geometry pattern).</summary>
+    public System.Collections.Generic.List<object> Faces { get; } = new System.Collections.Generic.List<object>();
+
+    public object Direction { get; set; } = new object();
+    public double SpacingMm { get; set; }
+    public int Count { get; set; }
+    public bool Reverse { get; set; }
+
+    /// <summary>The second direction, or null for one row.</summary>
+    public object? Direction2 { get; set; }
+
+    public double SpacingMm2 { get; set; }
+
+    /// <summary>1 without a second direction.</summary>
+    public int Count2 { get; set; } = 1;
+
+    public bool Reverse2 { get; set; }
+}

@@ -1,0 +1,70 @@
+{
+  "type": "object",
+  "description": "Repeats features, or faces, in rows along a direction, and optionally in columns along a second one. Lengths in mm. Faces are repeated as SOLIDWORKS' geometry pattern and checked by the instances and that the volume moved. For features, the seeds' own volume is measured first by suppressing them for a moment and putting them back, unless another feature is built on them. Checked: the feature exists as a linear pattern with the instances asked, rebuilds without error, and the volume changed by the seeds' volume once for each new instance (or, when it could not be measured, changed at all); an instance that runs off the part or into another changes it by a different amount and is refused. Otherwise the pattern is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The features to repeat (the seeds): their names (Cut-Extrude1) or references. Give features or faces."
+    },
+    "faces": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Faces to repeat instead of features (a face pattern: SOLIDWORKS' geometry pattern): their references (model.find kind face)."
+    },
+    "direction": {
+      "type": "string",
+      "description": "The first direction: a straight edge, a reference axis, or a plane or planar face (along its normal): its name or reference."
+    },
+    "spacing_mm": {
+      "type": "number",
+      "description": "The distance between instances, mm, more than 0."
+    },
+    "count": {
+      "type": "integer",
+      "description": "How many instances along the direction, the seed included: 2 to 500."
+    },
+    "reverse": {
+      "type": "boolean",
+      "description": "Go the other way along the direction. Default false."
+    },
+    "direction2": {
+      "type": "object",
+      "properties": {
+        "direction": {
+          "type": "string",
+          "description": "The direction: a straight edge, a reference axis, or a plane or planar face (along its normal): its name or reference."
+        },
+        "spacing_mm": {
+          "type": "number",
+          "description": "The distance between instances, mm, more than 0."
+        },
+        "count": {
+          "type": "integer",
+          "description": "How many instances in this direction, the seed's row included: 2 to 500."
+        },
+        "reverse": {
+          "type": "boolean",
+          "description": "Go the other way along the direction. Default false."
+        }
+      },
+      "required": [
+        "direction"
+      ],
+      "additionalProperties": false,
+      "description": "A second direction, making a grid."
+    }
+  },
+  "required": [
+    "direction"
+  ],
+  "additionalProperties": false
+}

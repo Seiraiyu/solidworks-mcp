@@ -289,4 +289,84 @@ public class MoreErrorCodeTests : FeatureTestBase
         Assert.Equal(code, Reach(() => Run(new FeatureHoleOperation(Services), request)).Code);
         Assert.DoesNotContain(doc.Tree, f => f.Type == "HoleWzd" || f.Name == "Sketch2");
     }
+
+    /// <summary>The block with a through hole (Cut-Extrude1) and a straight edge to pattern it along.</summary>
+    (FakeDocument Doc, string Edge) Holed()
+    {
+        var doc = Part();
+        Block();
+        Sketch(new SketchGeometry { Circles = new List<SketchCircle> { new SketchCircle { Id = "hole", Center = P(20, 10), RadiusMm = 5 } } });
+        Extrude(new FeatureExtrudeRequest { Sketch = "Sketch2", Mode = FeatureMode.Cut, End = ExtrudeEnd.ThroughAll });
+        var edge = doc.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, LengthMm = 40 });
+        return (doc, Services.References.Describe(doc, edge).Reference!);
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_linear_pattern_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureLinearPatternRequest { Features = new List<string> { "Cut-Extrude1" }, Direction = "Edge1", SpacingMm = 8, Count = 3 };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new FeatureLinearPatternOperation(Services), request)).Code);
+            return;
+        }
+        var (doc, edge) = Holed();
+        request.Direction = edge;
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Count = 0;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                doc.Entities.Last(e => e.Kind == ReferenceKind.Edge).State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch2";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.InstanceError = -1;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureLinearPatternOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "LPattern");
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    public void A_linear_face_pattern_reaches_the_codes_its_faces_add(ErrorCode code)
+    {
+        var (doc, edge) = Holed();
+        var bore = doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Cylinder });
+        var request = new FeatureLinearPatternRequest { Faces = new List<string> { Services.References.Describe(doc, bore).Reference! }, Direction = edge, SpacingMm = 8, Count = 3 };
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Features = new List<string> { "Cut-Extrude1" };
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                bore.State = PersistState.Deleted;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.FaceInstanceVolume = 0;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureLinearPatternOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "LPattern");
+    }
 }

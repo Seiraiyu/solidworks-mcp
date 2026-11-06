@@ -162,4 +162,42 @@ internal sealed partial class SolidWorksDocument
             Doc.ClearSelection2(true);
         }
     }
+
+    /// <summary>
+    /// FeatureLinearPattern5 with the first direction selected with mark 1, the second with mark 2, the seeds with mark 4
+    /// or the faces with mark 128 (a face pattern is a geometry pattern): spacing and count in each direction, no
+    /// offsets or skipped instances.
+    /// </summary>
+    public object? LinearPattern(LinearPatternSpec s)
+    {
+        Doc.ClearSelection2(true);
+        try
+        {
+            Pick(s.Direction, append: false, mark: 1);
+            if (s.Direction2 != null) Pick(s.Direction2, append: true, mark: 2);
+            foreach (var seed in s.Seeds) Pick(seed, append: true, mark: 4);
+            foreach (var face in s.Faces) Pick(face, append: true, mark: 128);
+            return Doc.FeatureManager.FeatureLinearPattern5(s.Count, s.SpacingMm / Mm, s.Count2, s.Direction2 == null ? 0 : s.SpacingMm2 / Mm,
+                s.Reverse, s.Reverse2, "NULL", "NULL", s.Faces.Count > 0, false, false, false, false, false, false, false, false, false, 0, 0, false, false);
+        }
+        finally
+        {
+            Doc.ClearSelection2(true);
+        }
+    }
+
+    /// <summary>How many instances a pattern or mirror has, the seed included, as its definition reads back (less any skipped).</summary>
+    public int PatternInstances(object feature)
+    {
+        var f = (IFeature)feature;
+        object definition = f.GetDefinition();
+        int skipped(object? array) => array is object[] items ? items.Length : array is int[] ints ? ints.Length : 0;
+        return definition switch
+        {
+            ILinearPatternFeatureData l => l.D1TotalInstances * Math.Max(1, l.D2TotalInstances) - skipped(l.SkippedItemArray),
+            ICircularPatternFeatureData c => c.TotalInstances * (c.Direction2 ? Math.Max(1, c.TotalInstances2) : 1) - skipped(c.SkippedItemArray),
+            IMirrorPatternFeatureData _ => 2,
+            _ => 0,
+        };
+    }
 }

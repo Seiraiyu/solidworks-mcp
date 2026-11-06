@@ -154,4 +154,35 @@ sealed partial class FakeDocument
         }
         return hole;
     }
+
+    public List<LinearPatternSpec> LinearPatterns { get; } = new List<LinearPatternSpec>();
+
+    /// <summary>The instances each pattern was made with, by its name.</summary>
+    readonly Dictionary<string, int> _instances = new Dictionary<string, int>(StringComparer.Ordinal);
+
+    /// <summary>Added to what PatternInstances reports (a pattern that is not what was asked).</summary>
+    public int InstanceError { get; set; }
+
+    /// <summary>Each new instance adds the seeds' own volume again, and two faces per seed.</summary>
+    public object? LinearPattern(LinearPatternSpec spec)
+    {
+        LinearPatterns.Add(spec);
+        return Pattern("LPattern", "LPattern", spec.Seeds, spec.Count * spec.Count2, spec.Faces);
+    }
+
+    /// <summary>The volume each patterned face takes per instance, mm³ (the fake's faces carry no volume of their own).</summary>
+    public double FaceInstanceVolume { get; set; } = 50;
+
+    FakeEntity? Pattern(string prefix, string type, IReadOnlyList<object> seeds, int instances, IReadOnlyList<object>? faces = null)
+    {
+        if (FeatureSelectFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the seed a feature needs");
+        if (FeatureRefuses) return null;
+        double seed = seeds.Cast<FakeEntity>().Sum(s => _volumeOf.TryGetValue(s, out double v) ? v : 0) - FaceInstanceVolume * (faces?.Count ?? 0);
+        var made = MakeFeature(prefix, type, seed * (instances - 1), 2 * (seeds.Count + (faces?.Count ?? 0)) * (instances - 1));
+        _instances[made.Info.Name!] = instances;
+        return made;
+    }
+
+    public int PatternInstances(object feature) =>
+        (_instances.TryGetValue(((FakeEntity)feature).Info.Name ?? "", out int n) ? n : 0) + InstanceError;
 }
