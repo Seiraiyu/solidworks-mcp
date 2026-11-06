@@ -698,7 +698,22 @@ public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
         string path = block.Path!;
         int before = (await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = path })).Features.Count;
         var edge = await At(path, TopologyKind.Edge, new Point3(40, 20, 5));
-        var big = await Refused(() => Call<FeatureFilletRequest, FeatureResult>(new FeatureFilletRequest { Document = path, Edges = new List<string> { edge.Reference! }, RadiusMm = 50 }));
+        // 3.C round 2: SOLIDWORKS made this fillet and every check passed. Until that is understood, a fillet that is made
+        // fails the case with what SOLIDWORKS made, so the next round reads it rather than guesses.
+        FeatureResult? madeBig = null;
+        var bigError = await Record.ExceptionAsync(async () =>
+            madeBig = await Call<FeatureFilletRequest, FeatureResult>(new FeatureFilletRequest { Document = path, Edges = new List<string> { edge.Reference! }, RadiusMm = 50 }));
+        if (madeBig != null)
+        {
+            var tree50 = (await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = path })).Features;
+            var box50 = await BoxOf(path);
+            Assert.Fail($"a 50 mm fillet on the block's 10 mm edge at (40, 20, 5) was made, not refused: {madeBig.Feature.Name}; " +
+                $"checks: {string.Join("; ", madeBig.Checks)}; faces: {string.Join(", ", madeBig.Faces.Select(f => f.Geometry))}; " +
+                $"volume {madeBig.Change.VolumeBeforeMm3:0.###} -> {madeBig.Change.VolumeAfterMm3:0.###} mm³; bodies {madeBig.Change.BodiesBefore} -> {madeBig.Change.BodiesAfter}; " +
+                $"rebuild errors {madeBig.Change.Rebuild.Errors}, warnings {madeBig.Change.Rebuild.Warnings}; box {box50.Min} to {box50.Max}; " +
+                $"tree: {string.Join(", ", tree50.Select(f => $"{f.Name} ({f.Type})"))}");
+        }
+        var big = Assert.IsType<SwAgentException>(bigError);
         Assert.Contains(big.Code, new[] { ErrorCode.OperationFailed, ErrorCode.VerificationFailed });
         Assert.False(big.Error.Details!.ContainsKey("rollback_failed"));
         var away = await Call<SketchCreateRequest, SketchCreateResult>(new SketchCreateRequest
