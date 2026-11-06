@@ -156,6 +156,21 @@ public interface ISwDocument
     /// <summary>A mirror of features or of the body (<see cref="MirrorSpec"/>); the new feature, or null when SOLIDWORKS made none.</summary>
     object? Mirror(MirrorSpec spec);
 
+    /// <summary>Every configuration's name, in SOLIDWORKS' order.</summary>
+    System.Collections.Generic.IReadOnlyList<string> ConfigurationNames();
+
+    /// <summary>The active configuration's name.</summary>
+    string ActiveConfiguration();
+
+    /// <summary>Adds a configuration copied from the active one (SOLIDWORKS makes it active); false when SOLIDWORKS added none.</summary>
+    bool AddConfiguration(string name);
+
+    /// <summary>Makes a configuration active, rebuilding the part as it has it; false when SOLIDWORKS refused.</summary>
+    bool ShowConfiguration(string name);
+
+    /// <summary>Deletes a configuration that is not active; false when SOLIDWORKS refused.</summary>
+    bool DeleteConfiguration(string name);
+
     /// <summary>A constant-radius fillet on these edges and faces; the new feature, or null when SOLIDWORKS made none.</summary>
     object? Fillet(System.Collections.Generic.IReadOnlyList<object> edgesAndFaces, double radiusMm);
 

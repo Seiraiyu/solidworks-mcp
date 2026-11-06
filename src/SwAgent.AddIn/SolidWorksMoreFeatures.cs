@@ -251,4 +251,16 @@ internal sealed partial class SolidWorksDocument
             Doc.ClearSelection2(true);
         }
     }
+
+    public IReadOnlyList<string> ConfigurationNames() =>
+        Doc.GetConfigurationNames() is object names ? ((System.Collections.IEnumerable)names).OfType<string>().ToList() : new List<string>();
+
+    public string ActiveConfiguration() => ((IConfiguration)Doc.GetActiveConfiguration()).Name;
+
+    /// <summary>IConfigurationManager.AddConfiguration2: a copy of the active configuration, rebuilt.</summary>
+    public bool AddConfiguration(string name) => Doc.ConfigurationManager.AddConfiguration2(name, "", "", 0, "", "", true) != null;
+
+    public bool ShowConfiguration(string name) => Doc.ShowConfiguration2(name);
+
+    public bool DeleteConfiguration(string name) => Doc.DeleteConfiguration2(name);
 }

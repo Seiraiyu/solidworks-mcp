@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "description": "Adds a configuration to a part, a copy of copy_of (the active configuration when absent), and makes it active, as SOLIDWORKS does. Checked: the part lists it and it is active, and the part rebuilds without a new error. Otherwise it is deleted and the configuration that was active is active again (rolled back). Busy with user_editing while the user is editing a sketch or has a command open.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "name": {
+      "type": "string",
+      "description": "The new configuration's name: not one the part has already."
+    },
+    "copy_of": {
+      "type": "string",
+      "description": "The configuration to copy: its name. The active one when absent."
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "additionalProperties": false
+}

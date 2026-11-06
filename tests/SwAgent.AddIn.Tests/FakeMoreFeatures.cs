@@ -205,4 +205,42 @@ sealed partial class FakeDocument
         if (FeatureRefuses) return null;
         return MakeFeature("Mirror", "MirrorSolid", MassProperties?.VolumeMm3 ?? 0, 6);
     }
+
+    /// <summary>The part's configurations; SOLIDWORKS' templates start with one, Default.</summary>
+    public List<string> Configurations { get; } = new List<string> { "Default" };
+
+    public string Active { get; set; } = "Default";
+
+    /// <summary>AddConfiguration adds nothing and returns false.</summary>
+    public bool ConfigurationAddFails { get; set; }
+
+    /// <summary>AddConfiguration adds the configuration but leaves the one before active.</summary>
+    public bool ConfigurationAddStaysPut { get; set; }
+
+    /// <summary>ShowConfiguration returns true and changes nothing.</summary>
+    public bool ShowConfigurationIgnored { get; set; }
+
+    public IReadOnlyList<string> ConfigurationNames() => Configurations.ToList();
+
+    public string ActiveConfiguration() => Active;
+
+    public bool AddConfiguration(string name)
+    {
+        if (ConfigurationAddFails) return false;
+        Configurations.Add(name);
+        if (!ConfigurationAddStaysPut) Active = name;
+        return true;
+    }
+
+    /// <summary>ShowConfiguration returns false.</summary>
+    public bool ShowConfigurationRefuses { get; set; }
+
+    public bool ShowConfiguration(string name)
+    {
+        if (ShowConfigurationRefuses || !Configurations.Contains(name)) return false;
+        if (!ShowConfigurationIgnored) Active = name;
+        return true;
+    }
+
+    public bool DeleteConfiguration(string name) => name != Active && Configurations.Remove(name);
 }

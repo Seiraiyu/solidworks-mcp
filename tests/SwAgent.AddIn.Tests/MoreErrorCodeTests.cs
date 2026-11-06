@@ -458,4 +458,95 @@ public class MoreErrorCodeTests : FeatureTestBase
         Assert.Equal(code, Reach(() => Run(new FeatureMirrorOperation(Services), request)).Code);
         Assert.DoesNotContain(doc.Tree, f => f.Type == "MirrorPattern");
     }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    public void Configuration_list_reaches_every_listed_code(ErrorCode code)
+    {
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new ConfigurationListOperation(Services), new ConfigurationListRequest())).Code);
+            return;
+        }
+        var doc = Part();
+        var request = new ConfigurationListRequest();
+        if (code == ErrorCode.InvalidArgument) request.Document = "Nope";
+        else doc.Active = "Gone";
+        Assert.Equal(code, Reach(() => Run(new ConfigurationListOperation(Services), request)).Code);
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    public void Configuration_add_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new ConfigurationAddRequest { Name = "Long" };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new ConfigurationAddOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Part();
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Name = "Default";
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch1";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.ConfigurationAddFails = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.ConfigurationAddStaysPut = true;
+                doc.ShowConfigurationIgnored = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new ConfigurationAddOperation(Services), request)).Code);
+        Assert.Equal(new[] { "Default" }, doc.Configurations.ToArray());
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    public void Configuration_activate_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new ConfigurationActivateRequest { Name = "Long" };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new ConfigurationActivateOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Part();
+        doc.Configurations.Add("Long");
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Name = "Short";
+                break;
+            case ErrorCode.Busy:
+                Sw.OpenCommandTitle = "Configuration Properties";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.ShowConfigurationRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.ShowConfigurationIgnored = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new ConfigurationActivateOperation(Services), request)).Code);
+        Assert.Equal("Default", doc.Active);
+    }
 }
