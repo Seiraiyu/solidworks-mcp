@@ -173,3 +173,51 @@ public sealed class FeatureLinearPatternOperation : ModelChangeOperation<Feature
         PatternFacts.Check(doc, result, "LPattern", "linear pattern", instances, instances, _seed, VolumeBefore, Volume(doc, doc.SolidBodyCount()));
     }
 }
+
+public sealed class FeatureCircularPatternOperation : ModelChangeOperation<FeatureCircularPatternRequest, FeatureResult>
+{
+    double? _seed;
+
+    public FeatureCircularPatternOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(FeatureCircularPatternRequest request) => request.Document;
+
+    protected override FeatureResult Change(ISwDocument doc, FeatureCircularPatternRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        var spec = new CircularPatternSpec
+        {
+            Count = PatternFacts.Count(request.Count, "count"),
+            EqualSpacing = request.EqualSpacing ?? true,
+            AngleDeg = request.AngleDeg ?? 360,
+            Reverse = request.Reverse == true,
+        };
+        if (double.IsNaN(spec.AngleDeg) || !(spec.AngleDeg > 0 && spec.AngleDeg <= 360))
+            throw FeatureFacts.Invalid("angle_deg", "angle_deg must be more than 0 and at most 360 degrees");
+        if (!spec.EqualSpacing && request.AngleDeg == null)
+            throw FeatureFacts.Invalid("angle_deg", "without equal_spacing, angle_deg is needed: the angle from one instance to the next");
+        if (!spec.EqualSpacing && spec.AngleDeg * (spec.Count - 1) >= 360 - 1e-9)
+            throw FeatureFacts.Invalid("angle_deg", FormattableString.Invariant($"{spec.Count} instances {spec.AngleDeg:0.###}° apart go all the way round and onto the seed again"));
+        var references = Services.References;
+        var (seeds, faces) = PatternFacts.Targets(references, doc, request.Features, request.Faces);
+        var (axis, kind) = references.Resolve(doc, request.Axis, "axis", ReferenceKind.Axis, ReferenceKind.Edge, ReferenceKind.Face);
+        var info = doc.Describe(axis);
+        bool turns = kind == ReferenceKind.Axis
+            || (kind == ReferenceKind.Edge && (info.Geometry == GeometryType.Line || info.Geometry == GeometryType.Circle))
+            || (kind == ReferenceKind.Face && info.Geometry == GeometryType.Cylinder);
+        if (!turns) throw FeatureFacts.Invalid("axis", $"axis: a circular pattern turns about an axis, a straight or circular edge or a cylindrical face, and this is a {WireNames.ForEnum(info.Geometry)} {WireNames.ForEnum(kind)}");
+        spec.Axis = axis;
+        spec.Seeds.AddRange(seeds.Select(s => s.Feature));
+        spec.Faces.AddRange(faces);
+        _seed = faces.Count > 0 ? null : PatternFacts.SeedVolume(doc, seeds, VolumeBefore);
+        string of = faces.Count > 0 ? $"of {faces.Count} faces" : $"of {string.Join(", ", seeds.Select(s => s.Name))}";
+        var feature = doc.CircularPattern(spec)
+            ?? throw FeatureFacts.NotMade(doc, "circular pattern", of, "check that the axis is one the seeds can turn about and that the instances land on the part");
+        return FeatureFacts.Made(references, doc, feature, tx);
+    }
+
+    protected override void Check(ISwDocument doc, FeatureCircularPatternRequest request, FeatureResult result) =>
+        PatternFacts.Check(doc, result, "CirPattern", "circular pattern", request.Count!.Value, request.Count!.Value, _seed, VolumeBefore, Volume(doc, doc.SolidBodyCount()));
+}

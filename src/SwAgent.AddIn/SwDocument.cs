@@ -150,6 +150,9 @@ public interface ISwDocument
     /// <summary>How many instances a pattern or mirror feature has, the seed included, as SOLIDWORKS reads its definition back.</summary>
     int PatternInstances(object feature);
 
+    /// <summary>A circular pattern of <see cref="CircularPatternSpec.Seeds"/>; the new feature, or null when SOLIDWORKS made none.</summary>
+    object? CircularPattern(CircularPatternSpec spec);
+
     /// <summary>A constant-radius fillet on these edges and faces; the new feature, or null when SOLIDWORKS made none.</summary>
     object? Fillet(System.Collections.Generic.IReadOnlyList<object> edgesAndFaces, double radiusMm);
 

@@ -200,4 +200,25 @@ internal sealed partial class SolidWorksDocument
             _ => 0,
         };
     }
+
+    /// <summary>
+    /// FeatureCircularPattern5 with the axis selected with mark 1, the seeds with mark 4 or the faces with mark 128 (a
+    /// geometry pattern): one direction, the angle total (equal spacing) or between neighbours, no skipped instances.
+    /// </summary>
+    public object? CircularPattern(CircularPatternSpec s)
+    {
+        Doc.ClearSelection2(true);
+        try
+        {
+            Pick(s.Axis, append: false, mark: 1);
+            foreach (var seed in s.Seeds) Pick(seed, append: true, mark: 4);
+            foreach (var face in s.Faces) Pick(face, append: true, mark: 128);
+            return Doc.FeatureManager.FeatureCircularPattern5(s.Count, s.AngleDeg * Rad, s.Reverse, "NULL", s.Faces.Count > 0, s.EqualSpacing, false, false,
+                false, false, 1, 0, "NULL", false);
+        }
+        finally
+        {
+            Doc.ClearSelection2(true);
+        }
+    }
 }

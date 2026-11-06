@@ -369,4 +369,48 @@ public class MoreErrorCodeTests : FeatureTestBase
         Assert.Equal(code, Reach(() => Run(new FeatureLinearPatternOperation(Services), request)).Code);
         Assert.DoesNotContain(doc.Tree, f => f.Type == "LPattern");
     }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_circular_pattern_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureCircularPatternRequest { Features = new List<string> { "Cut-Extrude1" }, Axis = "Edge1", Count = 4 };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new FeatureCircularPatternOperation(Services), request)).Code);
+            return;
+        }
+        var (doc, edge) = Holed();
+        request.Axis = edge;
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.AngleDeg = 0;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                doc.Entities.Last(e => e.Kind == ReferenceKind.Edge).State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                Sw.OpenCommandTitle = "Circular Pattern";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.FeatureVolumeError = 1;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureCircularPatternOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "CirPattern");
+    }
 }

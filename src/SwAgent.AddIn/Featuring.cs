@@ -185,3 +185,21 @@ public sealed class LinearPatternSpec
 
     public bool Reverse2 { get; set; }
 }
+
+/// <summary>A circular pattern as ISwDocument.CircularPattern makes it: the seeds and axis resolved, degrees.</summary>
+public sealed class CircularPatternSpec
+{
+    public System.Collections.Generic.List<object> Seeds { get; } = new System.Collections.Generic.List<object>();
+
+    /// <summary>Faces to repeat instead of seeds (a geometry pattern).</summary>
+    public System.Collections.Generic.List<object> Faces { get; } = new System.Collections.Generic.List<object>();
+
+    public object Axis { get; set; } = new object();
+    public int Count { get; set; }
+
+    /// <summary>The total angle with equal spacing; the angle between neighbours without.</summary>
+    public double AngleDeg { get; set; } = 360;
+
+    public bool EqualSpacing { get; set; } = true;
+    public bool Reverse { get; set; }
+}

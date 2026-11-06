@@ -185,4 +185,12 @@ sealed partial class FakeDocument
 
     public int PatternInstances(object feature) =>
         (_instances.TryGetValue(((FakeEntity)feature).Info.Name ?? "", out int n) ? n : 0) + InstanceError;
+
+    public List<CircularPatternSpec> CircularPatterns { get; } = new List<CircularPatternSpec>();
+
+    public object? CircularPattern(CircularPatternSpec spec)
+    {
+        CircularPatterns.Add(spec);
+        return Pattern("CirPattern", "CirPattern", spec.Seeds, spec.Count, spec.Faces);
+    }
 }

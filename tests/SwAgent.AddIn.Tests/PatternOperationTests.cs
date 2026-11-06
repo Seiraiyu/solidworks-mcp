@@ -157,3 +157,83 @@ public class FeatureLinearPatternTests : PatternTestBase
         Assert.Equal("/features/0", Field(_ => { }));
     }
 }
+
+public class FeatureCircularPatternTests : PatternTestBase
+{
+    internal FeatureResult Pattern(FeatureCircularPatternRequest request) => Run(new FeatureCircularPatternOperation(Services), request);
+
+    /// <summary>A reference axis of the part, as refgeom.axis would make it.</summary>
+    internal string Axis(FakeDocument doc)
+    {
+        var axis = doc.AddFeature("Axis1", "RefAxis", ReferenceKind.Axis);
+        axis.Info.Geometry = GeometryType.Line;
+        axis.Info.Axis = new Vector3(0, 0, 1);
+        axis.Info.Origin = new Point3(20, 10, 0);
+        return Services.References.Describe(doc, axis).Reference!;
+    }
+
+    [Fact]
+    public void Instances_shared_round_the_axis_take_the_seeds_volume_each()
+    {
+        var doc = Holed();
+        var made = Pattern(new FeatureCircularPatternRequest { Features = new List<string> { "Cut-Extrude1" }, Axis = Axis(doc), Count = 4 });
+        Assert.Equal("CirPattern1", made.Feature.Name);
+        Assert.Equal(8000 - 4 * HoleVolume, made.Change.VolumeAfterMm3, 6);
+        Assert.Contains(made.Checks, c => c == "4 instances, the seed included");
+        var spec = doc.CircularPatterns.Single();
+        Assert.Equal((4, 360.0, true, false), (spec.Count, spec.AngleDeg, spec.EqualSpacing, spec.Reverse));
+        Assert.Equal("Axis1", doc.Describe(spec.Axis).Name);
+    }
+
+    [Fact]
+    public void Without_equal_spacing_the_angle_is_between_neighbours()
+    {
+        var doc = Holed();
+        var cylinder = Services.References.Describe(doc, doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Cylinder, Axis = new Vector3(0, 0, 1) })).Reference!;
+        Pattern(new FeatureCircularPatternRequest { Features = new List<string> { "Cut-Extrude1" }, Axis = cylinder, Count = 3, AngleDeg = 30, EqualSpacing = false, Reverse = true });
+        var spec = doc.CircularPatterns.Single();
+        Assert.Equal((3, 30.0, false, true), (spec.Count, spec.AngleDeg, spec.EqualSpacing, spec.Reverse));
+    }
+
+    [Fact]
+    public void A_face_pattern_round_an_axis_is_a_geometry_pattern()
+    {
+        var doc = Holed();
+        var bore = Services.References.Describe(doc, doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Cylinder })).Reference!;
+        var made = Pattern(new FeatureCircularPatternRequest { Faces = new List<string> { bore }, Axis = Axis(doc), Count = 4 });
+        Assert.Equal(8000 - HoleVolume - 3 * 50, made.Change.VolumeAfterMm3, 6);
+        Assert.Single(doc.CircularPatterns.Single().Faces);
+        Assert.Equal("features", Fails(() => Pattern(new FeatureCircularPatternRequest { Axis = Axis(doc), Count = 4 })).Error.Details!["field"]);
+    }
+
+    [Fact]
+    public void A_pattern_of_another_volume_is_rolled_back()
+    {
+        var doc = Holed();
+        doc.FeatureVolumeError = -10;
+        var e = Fails(() => Pattern(new FeatureCircularPatternRequest { Features = new List<string> { "Cut-Extrude1" }, Axis = Axis(doc), Count = 4 }));
+        Assert.Equal("volume_exact", e.Error.Details!["check"]);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "CirPattern");
+    }
+
+    [Fact]
+    public void Requests_that_cannot_be_patterned_name_their_field()
+    {
+        var doc = Holed();
+        var axis = Axis(doc);
+        var plane = Services.References.Describe(doc, doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Plane })).Reference!;
+        FeatureCircularPatternRequest R() => new FeatureCircularPatternRequest { Features = new List<string> { "Cut-Extrude1" }, Axis = axis, Count = 4 };
+        string Field(Action<FeatureCircularPatternRequest> change)
+        {
+            var r = R();
+            change(r);
+            return (string)Fails(() => Pattern(r)).Error.Details!["field"]!;
+        }
+        Assert.Equal("count", Field(r => r.Count = null));
+        Assert.Equal("angle_deg", Field(r => r.AngleDeg = 361));
+        Assert.Equal("angle_deg", Field(r => r.EqualSpacing = false));
+        Assert.Equal("angle_deg", Field(r => { r.EqualSpacing = false; r.AngleDeg = 120; }));
+        Assert.Equal("axis", Field(r => r.Axis = plane));
+        Assert.Equal("/features/0", Field(r => r.Features = new List<string> { "Axis1" }));
+    }
+}
