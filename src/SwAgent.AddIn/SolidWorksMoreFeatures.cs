@@ -148,26 +148,34 @@ internal sealed partial class SolidWorksDocument
         double depth = s.End == HoleEnd.ThroughAll ? -1 : s.DepthMm / Mm;
         var before = new HashSet<string>(AllFeatures().Select(f => f.Name));
         var tried = new List<string>();
+        var points = s.Points.Cast<ISketchPoint>().ToList();
+        // The size's nominal, mm (5 for Ø5.0 or M5), for the try that gives the diameter rather than -1.
+        var nominal = System.Text.RegularExpressions.Regex.Match(s.Size, @"\d+(\.\d+)?");
+        double? nominalMm = nominal.Success ? double.Parse(nominal.Value, System.Globalization.CultureInfo.InvariantCulture) : (double?)null;
 
-        // 3.D live run, round 1: HoleWizard5 made nothing with the sketch points selected and the cause could not be read,
-        // so each way of telling it where the holes go is tried in turn, and what SOLIDWORKS did with each is reported.
-        object? Attempt(string how, Action select)
+        // 3.D live run: HoleWizard5 returned null in rounds 1 to 3 with the sketch points, the position sketch and the face
+        // selected, the standard (8) and fastener table (143) indexes being SOLIDWORKS' own. So, with the sketch points
+        // selected each time (mark 0), the call is tried as before, then (a simple hole) with its diameter given instead of
+        // -1, then through CreateDefinition / InitializeHole / CreateFeature, reading back what the definition took.
+        object? Attempt(string how, Func<(object? Made, string Said)> make)
         {
             Doc.ClearSelection2(true);
             try
             {
-                select();
+                for (int i = 0; i < points.Count; i++)
+                {
+                    if (!points[i].Select4(i > 0, Marked(0)))
+                        throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the sketch point a hole goes at");
+                }
                 int selected = SelectionCount();
-                object? made = Doc.FeatureManager.HoleWizard5((int)generic, standard, (int)fastener, s.Size, end, -1, depth, -1,
-                    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, "", false, true, true, true, true, false);
+                var (made, said) = make();
                 var found = made as IFeature ?? AllFeatures().FirstOrDefault(f => f.GetTypeName2() == "HoleWzd" && !before.Contains(f.Name));
-                tried.Add($"{how}: {selected} selected, HoleWizard5 returned {(made == null ? "null" : "a feature")}" +
-                          (made == null && found != null ? $", yet {found.Name} was made" : ""));
+                tried.Add($"{how}: {selected} selected, {said}" + (made == null && found != null ? $", yet {found.Name} was made" : ""));
                 return found;
             }
-            catch (SwAgentException e)
+            catch (Exception e) when (e is SwAgentException || e is System.Runtime.InteropServices.COMException || e is InvalidCastException)
             {
-                tried.Add($"{how}: {e.Message}");
+                tried.Add($"{how}: {e.GetType().Name}: {e.Message}");
                 return null;
             }
             finally
@@ -176,30 +184,31 @@ internal sealed partial class SolidWorksDocument
             }
         }
 
-        var points = s.Points.Cast<ISketchPoint>().ToList();
-        var feature = Attempt("the sketch points (mark 0)", () =>
+        (object?, string) Wizard5(double diameter, double value)
+        {
+            object? made = Doc.FeatureManager.HoleWizard5((int)generic, standard, (int)fastener, s.Size, end, diameter, depth, -1,
+                value, value, value, value, value, value, value, value, value, value, value, value, "", false, true, true, true, true, false);
+            return (made, $"HoleWizard5 returned {(made == null ? "null" : "a feature")}");
+        }
+
+        var feature = Attempt("HoleWizard5, every table value -1", () => Wizard5(-1, -1));
+        if (feature == null && s.Type == HoleType.Simple && nominalMm != null)
+            feature = Attempt(FormattableString.Invariant($"HoleWizard5 with the diameter {nominalMm} mm and the other values 0"), () => Wizard5(nominalMm.Value / Mm, 0));
+        if (feature == null)
+        {
+            feature = Attempt("CreateDefinition(swFmHoleWzd) + InitializeHole + CreateFeature", () =>
             {
-                for (int i = 0; i < points.Count; i++)
-                {
-                    if (!points[i].Select4(i > 0, Marked(0)))
-                        throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the sketch point a hole goes at");
-                }
-            })
-            ?? Attempt("the position sketch (mark 0)", () =>
-            {
-                if (!(points.Count > 0 && points[0].GetSketch() is IFeature sketch && sketch.Select2(false, 0)))
-                    throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the position sketch");
-            })
-            ?? Attempt("the face at the first position (SelectByID2 FACE)", () =>
-            {
-                var p = s.Positions[0];
-                if (!Doc.Extension.SelectByID2("", "FACE", p.X / Mm, p.Y / Mm, p.Z / Mm, false, 0, null, 0))
-                    throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the face at the first position");
+                if (!(Doc.FeatureManager.CreateDefinition((int)swFeatureNameID_e.swFmHoleWzd) is IWizardHoleFeatureData2 data))
+                    return (null, "CreateDefinition returned no hole definition");
+                data.InitializeHole((int)generic, standard, (int)fastener, s.Size, end);
+                if (s.End == HoleEnd.Blind) data.HoleDepth = depth;
+                string took = FormattableString.Invariant($"the definition took size '{data.FastenerSize}', standard {data.Standard2}, fastener {data.FastenerType2}, hole diameter {data.HoleDiameter * Mm:0.###} mm");
+                object? made = Doc.FeatureManager.CreateFeature(data);
+                return (made, $"{took}; CreateFeature returned {(made == null ? "null" : "a feature")}");
             });
+        }
         s.How = string.Join("; ", tried);
         if (feature != null) return feature;
-        // Round 2: null all three ways, the face selected too, so the size or the table indexes are in doubt: say what
-        // SOLIDWORKS' Hole Wizard tables list for this hole type.
         s.How += "; " + HoleTables((int)generic, s.Size);
         throw new SwAgentException(ErrorCode.OperationFailed,
             $"SOLIDWORKS made no {WireNames.ForEnum(s.Type)} {s.Size} hole at {s.Positions.Count} positions (hole type {generic}, standard {(swWzdHoleStandards_e)standard}, " +
