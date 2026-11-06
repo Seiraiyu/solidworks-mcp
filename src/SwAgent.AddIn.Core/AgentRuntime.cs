@@ -1,4 +1,5 @@
 using System;
+using SwAgent.Contracts;
 
 namespace SwAgent.AddIn.Core;
 
@@ -66,6 +67,14 @@ public sealed class AgentRuntime
 
     /// <summary>SOLIDWORKS' main frame window, read on the UI thread at load; zero when unknown (then no dialog watch).</summary>
     public IntPtr MainWindow { get; set; }
+
+    DiagDialogRequest? _armed;
+
+    /// <summary>diag.arm_dialog: the message box the next model change shows mid-change.</summary>
+    public void ArmDialog(DiagDialogRequest box) => System.Threading.Interlocked.Exchange(ref _armed, box);
+
+    /// <summary>The armed message box, once: null when none is armed, and null again after it is taken.</summary>
+    public DiagDialogRequest? TakeArmedDialog() => System.Threading.Interlocked.Exchange(ref _armed, null);
 
     /// <summary>Set by the host when <see cref="MainWindow"/> is known; null otherwise.</summary>
     public DialogWatch? Dialogs { get; set; }

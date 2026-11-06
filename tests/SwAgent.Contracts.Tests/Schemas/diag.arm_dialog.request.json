@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "description": "Fault testing only: the next model change shows this message box, owned by SOLIDWORKS' main window, after it has made its change and before it checks it, as a feature that raises a prompt mid-operation would. ok or yes lets the change go on; cancel or no rolls it back. Shown once. Refused unless diagnostics are on.",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "The message box title."
+    },
+    "text": {
+      "type": "string",
+      "description": "The message box text."
+    },
+    "buttons": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "ok_cancel",
+        "yes_no"
+      ],
+      "description": "Which buttons it shows: ok, ok_cancel or yes_no."
+    }
+  },
+  "required": [
+    "title",
+    "text",
+    "buttons"
+  ],
+  "additionalProperties": false
+}

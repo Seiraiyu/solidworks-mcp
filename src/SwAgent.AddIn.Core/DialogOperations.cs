@@ -48,15 +48,8 @@ public sealed class DiagDialogOperation : Operation<DiagDialogRequest, DiagDialo
         }
         if (_runtime.MainWindow == IntPtr.Zero)
             throw new SwAgentException(ErrorCode.InvalidArgument, "diag.dialog needs SOLIDWORKS' main window, which the add-in could not read at load");
-        var buttons = request.Buttons switch
-        {
-            DiagDialogButtons.OkCancel => MessageBoxButtons.OKCancel,
-            DiagDialogButtons.YesNo => MessageBoxButtons.YesNo,
-            _ => MessageBoxButtons.OK,
-        };
         context.Log.Warn($"diag.dialog: showing \"{request.Title}\" ({request.Buttons}) over SOLIDWORKS");
-        var pressed = MessageBox.Show(new OwnerWindow(_runtime.MainWindow), request.Text, request.Title, buttons);
-        return new DiagDialogResult { Pressed = WireName(pressed) };
+        return new DiagDialogResult { Pressed = DiagBoxes.Show(_runtime.MainWindow, request) };
     }
 
     protected override void Verify(DiagDialogRequest request, DiagDialogResult result, IOperationContext context)
@@ -69,6 +62,22 @@ public sealed class DiagDialogOperation : Operation<DiagDialogRequest, DiagDialo
         };
         if (!expected)
             throw new SwAgentException(ErrorCode.VerificationFailed, $"the {request.Buttons} message box reported '{result.Pressed}'");
+    }
+}
+
+/// <summary>The diagnostic message box diag.dialog and diag.arm_dialog show: modal, owned by SOLIDWORKS' main window, on the calling (UI) thread.</summary>
+public static class DiagBoxes
+{
+    /// <summary>Shows it and waits; the button that closed it: ok, cancel, yes or no.</summary>
+    public static string Show(IntPtr owner, DiagDialogRequest request)
+    {
+        var buttons = request.Buttons switch
+        {
+            DiagDialogButtons.OkCancel => MessageBoxButtons.OKCancel,
+            DiagDialogButtons.YesNo => MessageBoxButtons.YesNo,
+            _ => MessageBoxButtons.OK,
+        };
+        return WireName(MessageBox.Show(new OwnerWindow(owner), request.Text, request.Title, buttons));
     }
 
     static string WireName(DialogResult result) => result switch
@@ -88,5 +97,35 @@ public sealed class DiagDialogOperation : Operation<DiagDialogRequest, DiagDialo
         }
 
         public IntPtr Handle { get; }
+    }
+}
+
+/// <summary>diag.arm_dialog: arms the message box the next model change shows mid-change (see ModelChangeOperation).</summary>
+public sealed class DiagArmDialogOperation : Operation<DiagArmDialogRequest, DiagArmDialogResult>
+{
+    readonly AgentRuntime _runtime;
+
+    public DiagArmDialogOperation(AgentRuntime runtime)
+    {
+        _runtime = runtime;
+    }
+
+    protected override DiagArmDialogResult Run(DiagArmDialogRequest request, IOperationContext context)
+    {
+        if (!_runtime.DiagnosticsEnabled)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                @"diagnostic operations are off; set HKCU\Software\solidworks-mcp\Diagnostics (DWORD) to 1 and reload the add-in to use them");
+        }
+        if (_runtime.MainWindow == IntPtr.Zero)
+            throw new SwAgentException(ErrorCode.InvalidArgument, "diag.arm_dialog needs SOLIDWORKS' main window, which the add-in could not read at load");
+        _runtime.ArmDialog(new DiagDialogRequest { Title = request.Title, Text = request.Text, Buttons = request.Buttons });
+        context.Log.Warn($"diag.arm_dialog: the next model change shows \"{request.Title}\" ({request.Buttons})");
+        return new DiagArmDialogResult { Armed = request.Title };
+    }
+
+    /// <summary>Nothing to check: the box is shown by the next model change, not by this.</summary>
+    protected override void Verify(DiagArmDialogRequest request, DiagArmDialogResult result, IOperationContext context)
+    {
     }
 }

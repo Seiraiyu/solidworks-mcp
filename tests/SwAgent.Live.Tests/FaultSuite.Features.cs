@@ -97,4 +97,50 @@ public sealed partial class FaultSuite
         await CloseAsync(path);
         return $"busy ({busy.Message}); after the sketch was exited, {made.Feature.Name} was made ({string.Join("; ", made.Checks)})";
     });
+
+    /// <summary>
+    /// Design 371's "a feature that raises a dialog mid-operation answered through sw_dialog_respond, then rolled back or
+    /// completed". SOLIDWORKS' feature calls raise no prompt of their own through the API, so diag.arm_dialog makes the
+    /// next model change show one after it has made the fillet and before it checks it, as a prompt would. Answered OK,
+    /// the fillet is completed and checked; answered Cancel, the second fillet is rolled back to the volume before it.
+    /// </summary>
+    [SkippableFact, Step(15)]
+    public Task A_dialog_during_a_feature_is_answered_then_completed_or_rolled_back() => _run.CaseAsync(15, "a dialog during feature.fillet answered with sw_dialog_respond: OK completes the fillet, Cancel rolls the next one back", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string path = await BlockAsync("dialog-feature");
+        var edges = (await Call<ModelFindRequest, ModelFindResult>(new ModelFindRequest { Document = path, Kind = TopologyKind.Edge, Geometry = GeometryType.Line }, Long)).Entities
+            .Where(e => Math.Abs((e.LengthMm ?? 0) - 10) < 1e-6).Take(2).ToList();
+        Assert.Equal(2, edges.Count);
+
+        async Task<DialogRespondResult> FilletAnswering(string edge, string title, string button)
+        {
+            await Call<DiagArmDialogRequest, DiagArmDialogResult>(new DiagArmDialogRequest { Title = title, Text = "Fault suite: a dialog during a feature", Buttons = DiagDialogButtons.OkCancel }, Short);
+            var fillet = Call<FeatureFilletRequest, FeatureResult>(new FeatureFilletRequest { Document = path, Edges = new List<string> { edge }, RadiusMm = 2 }, Long);
+            var open = await Assert.ThrowsAsync<SwAgentException>(() => fillet);
+            Assert.Equal(ErrorCode.DialogOpen, open.Code);
+            Assert.Equal(true, open.Error.Details!["started"]);
+            var dialog = (await _run.AddinStateAsync()).Dialog!;
+            Assert.Equal(title, dialog.Title);
+            Assert.False(dialog.NeedsPerson);
+            return await Call<DialogRespondRequest, DialogRespondResult>(new DialogRespondRequest { Dialog = dialog.Id, Button = button, WaitMs = 30000 }, TimeSpan.FromSeconds(45));
+        }
+
+        var ok = await FilletAnswering(edges[0].Reference!, "swmcp live 3.D ok", "OK");
+        Assert.Equal(DialogOutcome.Result, ok.Outcome);
+        double afterFirst = (await Call<ModelMassRequest, ModelMassResult>(new ModelMassRequest { Document = path }, Long)).VolumeMm3;
+        double fillet = 8000 - 10 * (4 - Math.PI);
+        Assert.True(Math.Abs(afterFirst - fillet) < 1e-6 * fillet, $"volume {afterFirst} mm³ after the fillet answered OK, not {fillet}");
+
+        var cancel = await FilletAnswering(edges[1].Reference!, "swmcp live 3.D cancel", "Cancel");
+        Assert.Equal(DialogOutcome.Error, cancel.Outcome);
+        Assert.Equal(ErrorCode.OperationFailed, cancel.Error!.Code);
+        var tree = await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = path }, Long);
+        double afterSecond = (await Call<ModelMassRequest, ModelMassResult>(new ModelMassRequest { Document = path }, Long)).VolumeMm3;
+        Assert.True(Math.Abs(afterSecond - afterFirst) < 1e-6 * afterFirst, $"volume {afterSecond} mm³ after the fillet answered Cancel, not {afterFirst}");
+        Assert.Equal(1, tree.Features.Count(f => f.Type == "Fillet"));
+        await CloseAsync(path);
+        return $"OK: {ok.Pressed}, outcome {ok.Outcome}, volume {afterFirst:0.###} mm³; Cancel: outcome {cancel.Outcome} ({cancel.Error.Message}), " +
+               $"volume back to {afterSecond:0.###} mm³, {tree.Features.Count(f => f.Type == "Fillet")} fillet in the tree";
+    });
 }

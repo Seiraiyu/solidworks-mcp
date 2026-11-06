@@ -57,6 +57,7 @@ public abstract class ModelChangeOperation<TRequest, TResult> : Operation<TReque
         try
         {
             result = Change(doc, request, tx, context);
+            ArmedDialog(context);
         }
         catch (Exception e)
         {
@@ -73,6 +74,24 @@ public abstract class ModelChangeOperation<TRequest, TResult> : Operation<TReque
         }
         _pending = new Pending(doc, tx, errorsBefore);
         return result;
+    }
+
+    /// <summary>
+    /// diag.arm_dialog's message box, if one is armed: shown once, after the change and before its check, as a feature
+    /// that raises a prompt mid-operation would (design 371, Testing: the dialog-during-feature fault case). The dialog
+    /// watch answers the request dialog_open meanwhile; cancel or no rolls the change back.
+    /// </summary>
+    void ArmedDialog(IOperationContext context)
+    {
+        var box = Services.Runtime.TakeArmedDialog();
+        if (box == null) return;
+        context.Log.Warn($"{Name}: showing the armed dialog \"{box.Title}\" mid-change (diag.arm_dialog)");
+        string pressed = Services.ShowBox(box);
+        if (pressed == "cancel" || pressed == "no")
+        {
+            throw new SwAgentException(ErrorCode.OperationFailed, $"the dialog \"{box.Title}\" was answered {pressed} mid-change, so {Name} was taken back",
+                new JsonObject { ["dialog"] = box.Title, ["pressed"] = pressed });
+        }
     }
 
     /// <summary>No feature has a rebuild error it did not have before the change.</summary>

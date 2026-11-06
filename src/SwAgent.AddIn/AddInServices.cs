@@ -13,7 +13,11 @@ public sealed class AddInServices
         Runtime = runtime ?? new AgentRuntime(addinVersion, 0, NullLog.Instance);
         QueuedRequests = () => Runtime.Ledger.QueuedCount;
         References = new ReferenceService(Runtime.Renames);
+        ShowBox = box => DiagBoxes.Show(Runtime.MainWindow, box);
     }
+
+    /// <summary>Shows diag.arm_dialog's message box and waits for its answer (ok, cancel, yes, no); replaced by tests.</summary>
+    public Func<SwAgent.Contracts.DiagDialogRequest, string> ShowBox { get; set; }
 
     public ISolidWorksApplication SolidWorks { get; }
 

@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "description": "The message box the next model change will show.",
+  "properties": {
+    "armed": {
+      "type": "string",
+      "description": "Its title."
+    }
+  },
+  "required": [
+    "armed"
+  ],
+  "additionalProperties": false
+}
