@@ -70,7 +70,7 @@ public sealed class SwAgentAddIn : ISwAddin
             {
                 Preferences = _preferences,
                 ExportPreferences = exportPreferences,
-                ApiBinder = new SolidWorksBinder(),
+                ApiBinder = new SolidWorksBinder(_log),
                 ApiCalls = new ApiCallLog(ApiCallLog.DefaultPath),
             };
             runtime.Documents = new DocumentTracker(app.OpenDocuments, runtime.Events, _log);

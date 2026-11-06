@@ -48,6 +48,24 @@ public class ApiBindingTests
         Assert.Equal(new[] { "ISldWorks", "IModelDoc2" }, Call(App(), "ActiveDoc.GetTitle").Interfaces);
     }
 
+    [Fact]
+    public void The_interop_interfaces_that_declare_a_member_are_found_in_any_case()
+    {
+        // 3.E live run, round 1: IDispatch's type information named no interface, so the binder looks the member up here.
+        Assert.Contains("IModelDocExtension", SolidWorksBinder.InterfacesDeclaring("GetMassProperties2").Select(t => t.Name));
+        Assert.Contains("IModelDocExtension", SolidWorksBinder.InterfacesDeclaring("getmassproperties2").Select(t => t.Name));
+        Assert.Contains("IFeature", SolidWorksBinder.InterfacesDeclaring("SetSuppression2").Select(t => t.Name));
+        Assert.Contains("IFace2", SolidWorksBinder.InterfacesDeclaring("GetFeature").Select(t => t.Name));
+        Assert.Empty(SolidWorksBinder.InterfacesDeclaring("NoSuchMemberAnywhere"));
+    }
+
+    [Fact]
+    public void GetMassProperties2_found_through_the_interop_marks_Status_out()
+    {
+        var type = SolidWorksBinder.InterfacesDeclaring("GetMassProperties2").Single(t => t.Name == "IModelDocExtension");
+        Assert.Equal("GetMassProperties2(int Accuracy, out int Status, bool UseSelected)", ApiSignature.Find(type, "getmassproperties2")!.ToString());
+    }
+
     [Theory]
     [InlineData("CloseDoc")]
     [InlineData("closedoc")]
