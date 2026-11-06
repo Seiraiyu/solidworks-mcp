@@ -129,10 +129,14 @@ sealed partial class FakeDocument
     /// <summary>The fake's hole makes no cylinder for its last position (SOLIDWORKS drilling fewer holes than asked).</summary>
     public bool HoleSkipsOne { get; set; }
 
+    /// <summary>What the fake says it tried to place the holes, as SolidWorksDocument.Hole reports it; null for nothing.</summary>
+    public string? HoleHow { get; set; }
+
     /// <summary>A 2.5 mm radius cylinder per position, on the face's normal (its axis), each taking π r² × depth (or ThroughMm).</summary>
     public object? Hole(HoleSpec spec)
     {
         Holes.Add(spec);
+        spec.How = HoleHow;
         if (FeatureSelectFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the sketch point a hole goes at");
         if (FeatureRefuses) return null;
         const double r = 2.5;

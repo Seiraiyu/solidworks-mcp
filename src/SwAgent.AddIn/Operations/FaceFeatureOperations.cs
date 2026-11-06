@@ -30,8 +30,10 @@ public sealed class FeatureShellOperation : ModelChangeOperation<FeatureShellReq
     protected override void Check(ISwDocument doc, FeatureShellRequest request, FeatureResult result)
     {
         FeatureFacts.ExpectType(doc, result, "Shell", "shell");
-        FeatureFacts.Gone(Services.References, doc, request.FacesToRemove, "faces_to_remove", ReferenceKind.Face, result, "shell");
-        FeatureFacts.VolumeChanged(result, "shell", VolumeBefore, Volume(doc, doc.SolidBodyCount()), request.Outward == true ? 1 : -1);
+        double after = Volume(doc, doc.SolidBodyCount());
+        FeatureFacts.Gone(Services.References, doc, request.FacesToRemove, "faces_to_remove", ReferenceKind.Face, result, "shell",
+            FormattableString.Invariant($"the volume {VolumeBefore:0.###} -> {after:0.###} mm³"));
+        FeatureFacts.VolumeChanged(result, "shell", VolumeBefore, after, request.Outward == true ? 1 : -1);
         FeatureFacts.MadeFaces(result, "shell");
     }
 }
@@ -167,7 +169,9 @@ public sealed class FeatureHoleOperation : ModelChangeOperation<FeatureHoleReque
         string what = $"{WireNames.ForEnum(spec.Type)} {spec.Size} hole";
         var feature = doc.Hole(spec)
             ?? throw FeatureFacts.NotMade(doc, what, $"at {spec.Positions.Count} positions", $"check that {spec.Size} is a {WireNames.ForEnum(spec.Standard)} size the Hole Wizard lists for a {WireNames.ForEnum(spec.Type)} hole");
-        return FeatureFacts.Made(Services.References, doc, feature, tx);
+        var made = FeatureFacts.Made(Services.References, doc, feature, tx);
+        if (spec.How != null) made.Checks.Add($"placed with {spec.How}");
+        return made;
     }
 
     /// <summary>The request as SOLIDWORKS takes it, every field checked: invalid_argument names the first that is wrong.</summary>

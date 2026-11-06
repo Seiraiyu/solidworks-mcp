@@ -56,6 +56,10 @@ public class FeatureShellTests : FeatureTestBase
         var e = Fails(() => Shell(new FeatureShellRequest { FacesToRemove = new List<string> { top }, ThicknessMm = 2 }));
         Assert.Equal(ErrorCode.VerificationFailed, e.Code);
         Assert.Equal("gone", e.Error.Details!["check"]);
+        // What the face resolves to now, and the volume, so a live failure says which of the two it is.
+        Assert.Contains("it resolves to plane face", e.Message);
+        Assert.Contains("the volume 8000 -> 6000 mm³", e.Message);
+        Assert.StartsWith("plane face", (string)e.Error.Details!["measured"]!);
         Assert.DoesNotContain(doc.Tree, f => f.Name == "Shell1");
         Assert.Equal(8000, doc.MassProperties!.VolumeMm3, 6);
     }
@@ -157,6 +161,18 @@ public class FeatureHoleTests : FeatureTestBase
         Assert.Same(face, sketch.On);
         Assert.Equal(new[] { (10.0, 10.0), (30.0, 10.0) }, sketch.Points.Select(p => (p.At.X, p.At.Y)).ToArray());
         Assert.True(doc.Editors.Last().Closed);
+    }
+
+    [Fact]
+    public void What_placing_the_holes_took_is_reported_in_the_checks()
+    {
+        var doc = Part();
+        Block();
+        var (_, top) = Top(doc);
+        Assert.DoesNotContain(Hole(new FeatureHoleRequest { Face = top, Positions = Two(), Size = "Ø5.0", DepthMm = 6 }).Checks, c => c.StartsWith("placed with"));
+        doc.HoleHow = "the sketch points (mark 0): 2 selected, HoleWizard5 returned a feature";
+        var hole = Hole(new FeatureHoleRequest { Face = top, Positions = Two(), Size = "Ø5.0", DepthMm = 2 });
+        Assert.Contains(hole.Checks, c => c == "placed with the sketch points (mark 0): 2 selected, HoleWizard5 returned a feature");
     }
 
     [Fact]

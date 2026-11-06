@@ -153,6 +153,9 @@ public sealed class HoleSpec
     /// <summary>The positions in model space, mm, in the same order.</summary>
     public System.Collections.Generic.List<Point3> Positions { get; } = new System.Collections.Generic.List<Point3>();
 
+    /// <summary>What ISwDocument.Hole tried to place the holes and what SOLIDWORKS did with each try; null when it says nothing.</summary>
+    public string? How { get; set; }
+
     public HoleType Type { get; set; }
     public HoleStandard Standard { get; set; }
     public string Size { get; set; } = "";

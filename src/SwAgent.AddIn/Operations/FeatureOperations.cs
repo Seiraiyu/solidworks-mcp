@@ -550,21 +550,30 @@ public static class FeatureFacts
     public static double Dot(Vector3 a, Vector3 b) => a.X * b.X + a.Y * b.Y + a.Z * b.Z;
 
     /// <summary>Every entity named in <paramref name="field"/> no longer resolves: the feature consumed it (a shell's open faces).</summary>
-    public static void Gone(ReferenceService references, ISwDocument doc, IReadOnlyList<string>? texts, string field, ReferenceKind kind, FeatureResult result, string what)
+    /// <remarks>
+    /// When one still resolves, the failure says what SOLIDWORKS resolves it to now (3.D live run, round 1: a shell's
+    /// open face still resolved, and whether to the whole face or to what is left of it could not be read), with
+    /// <paramref name="also"/> (the volume, for a shell).
+    /// </remarks>
+    public static void Gone(ReferenceService references, ISwDocument doc, IReadOnlyList<string>? texts, string field, ReferenceKind kind, FeatureResult result, string what, string? also = null)
     {
         if (texts == null || texts.Count == 0) return;
         for (int i = 0; i < texts.Count; i++)
         {
+            object entity;
             try
             {
-                references.Resolve(doc, texts[i], $"/{field}/{i}", kind);
+                (entity, _) = references.Resolve(doc, texts[i], $"/{field}/{i}", kind);
             }
             catch (SwAgentException e) when (e.Code == ErrorCode.ReferenceUnresolved)
             {
                 continue;
             }
-            throw new SwAgentException(ErrorCode.VerificationFailed, $"/{field}/{i} is still a {WireNames.ForEnum(kind)} of the part after the {what}",
-                new JsonObject { ["check"] = "gone", ["field"] = $"/{field}/{i}" });
+            var now = doc.Describe(entity);
+            string described = EntityFilter.Describe(now) + (now.Normal != null ? $", normal {now.Normal}" : "") + (now.Origin != null ? $", at {now.Origin}" : "");
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"/{field}/{i} is still a {WireNames.ForEnum(kind)} of the part after the {what}: it resolves to {described}{(also == null ? "" : "; " + also)}",
+                new JsonObject { ["check"] = "gone", ["field"] = $"/{field}/{i}", ["measured"] = described });
         }
         result.Checks.Add($"the {texts.Count} {WireNames.ForEnum(kind)}s named in {field} are gone");
     }

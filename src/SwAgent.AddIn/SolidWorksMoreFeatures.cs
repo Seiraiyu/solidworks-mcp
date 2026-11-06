@@ -146,21 +146,62 @@ internal sealed partial class SolidWorksDocument
         int standard = (int)(iso ? swWzdHoleStandards_e.swStandardISO : swWzdHoleStandards_e.swStandardAnsiMetric);
         short end = (short)(s.End == HoleEnd.ThroughAll ? swEndConditions_e.swEndCondThroughAll : swEndConditions_e.swEndCondBlind);
         double depth = s.End == HoleEnd.ThroughAll ? -1 : s.DepthMm / Mm;
-        Doc.ClearSelection2(true);
-        try
-        {
-            for (int i = 0; i < s.Points.Count; i++)
-            {
-                if (!((ISketchPoint)s.Points[i]).Select4(i > 0, Marked(0)))
-                    throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the sketch point a hole goes at");
-            }
-            return Doc.FeatureManager.HoleWizard5((int)generic, standard, (int)fastener, s.Size, end, -1, depth, -1,
-                -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, "", false, true, true, true, true, false);
-        }
-        finally
+        var before = new HashSet<string>(AllFeatures().Select(f => f.Name));
+        var tried = new List<string>();
+
+        // 3.D live run, round 1: HoleWizard5 made nothing with the sketch points selected and the cause could not be read,
+        // so each way of telling it where the holes go is tried in turn, and what SOLIDWORKS did with each is reported.
+        object? Attempt(string how, Action select)
         {
             Doc.ClearSelection2(true);
+            try
+            {
+                select();
+                int selected = SelectionCount();
+                object? made = Doc.FeatureManager.HoleWizard5((int)generic, standard, (int)fastener, s.Size, end, -1, depth, -1,
+                    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, "", false, true, true, true, true, false);
+                var found = made as IFeature ?? AllFeatures().FirstOrDefault(f => f.GetTypeName2() == "HoleWzd" && !before.Contains(f.Name));
+                tried.Add($"{how}: {selected} selected, HoleWizard5 returned {(made == null ? "null" : "a feature")}" +
+                          (made == null && found != null ? $", yet {found.Name} was made" : ""));
+                return found;
+            }
+            catch (SwAgentException e)
+            {
+                tried.Add($"{how}: {e.Message}");
+                return null;
+            }
+            finally
+            {
+                Doc.ClearSelection2(true);
+            }
         }
+
+        var points = s.Points.Cast<ISketchPoint>().ToList();
+        var feature = Attempt("the sketch points (mark 0)", () =>
+            {
+                for (int i = 0; i < points.Count; i++)
+                {
+                    if (!points[i].Select4(i > 0, Marked(0)))
+                        throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the sketch point a hole goes at");
+                }
+            })
+            ?? Attempt("the position sketch (mark 0)", () =>
+            {
+                if (!(points.Count > 0 && points[0].GetSketch() is IFeature sketch && sketch.Select2(false, 0)))
+                    throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the position sketch");
+            })
+            ?? Attempt("the face at the first position (SelectByID2 FACE)", () =>
+            {
+                var p = s.Positions[0];
+                if (!Doc.Extension.SelectByID2("", "FACE", p.X / Mm, p.Y / Mm, p.Z / Mm, false, 0, null, 0))
+                    throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the face at the first position");
+            });
+        s.How = string.Join("; ", tried);
+        if (feature != null) return feature;
+        throw new SwAgentException(ErrorCode.OperationFailed,
+            $"SOLIDWORKS made no {WireNames.ForEnum(s.Type)} {s.Size} hole at {s.Positions.Count} positions (hole type {generic}, standard {(swWzdHoleStandards_e)standard}, " +
+            $"fastener {fastener}); check that {s.Size} is a {WireNames.ForEnum(s.Standard)} size the Hole Wizard lists for a {WireNames.ForEnum(s.Type)} hole. Tried: {s.How}",
+            new SwAgent.Contracts.Serialization.JsonObject { ["tried"] = s.How });
     }
 
     /// <summary>
