@@ -299,6 +299,84 @@ public sealed class FeatureSuppressOperation : ModelChangeOperation<FeatureSuppr
     static string Text(bool suppressed) => suppressed ? "suppressed" : "unsuppressed";
 }
 
+public sealed class FeatureDeleteOperation : ModelChangeOperation<FeatureDeleteRequest, FeatureDeleteResult>
+{
+    public FeatureDeleteOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(FeatureDeleteRequest request) => request.Document;
+
+    protected override FeatureDeleteResult Change(ISwDocument doc, FeatureDeleteRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        bool withChildren = request.Children == DeleteChildren.Delete;
+        var features = FeatureFacts.Features(Services.References, doc, request.Features);
+        var named = new HashSet<string>(features.Select(f => f.Name), StringComparer.Ordinal);
+        var children = features.ToDictionary(f => f.Name, f => Descendants(doc, f.Feature).Where(c => !named.Contains(c)).ToList());
+        var refused = children.Where(c => c.Value.Count > 0).ToList();
+        if (!withChildren && refused.Count > 0)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{string.Join("; ", refused.Select(r => $"{r.Key} has features built on it ({string.Join(", ", r.Value)})"))}: give children: delete to delete them too, or delete them first. Nothing was deleted",
+                new JsonObject { ["field"] = "children", ["children"] = refused.SelectMany(r => r.Value).Distinct().Select(n => (object?)n).ToList() });
+        }
+        var result = new FeatureDeleteResult();
+        foreach (var (feature, name) in features)
+        {
+            if (doc.FeatureByName(name) == null)
+            {
+                // Built on a feature named earlier, and deleted with it.
+                if (!result.Deleted.Contains(name)) result.Deleted.Add(name);
+                continue;
+            }
+            var gone = new List<string> { name };
+            if (withChildren) gone.AddRange(children[name]);
+            doc.Delete(feature, withChildren, absorbed: request.KeepAbsorbed != true);
+            foreach (var g in gone.Where(g => !result.Deleted.Contains(g)))
+            {
+                result.Deleted.Add(g);
+                tx.Edited(new ChangedItem { Name = g, Property = "deleted", Before = "present", After = "deleted" },
+                    () => throw new SwAgentException(ErrorCode.OperationFailed, $"{g} was deleted and cannot be made again from its reference"));
+            }
+        }
+        if (!doc.Rebuild(false)) throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS could not rebuild {doc.Info().Title} after deleting {string.Join(", ", result.Deleted)}");
+        return result;
+    }
+
+    /// <summary>
+    /// Every feature built on <paramref name="feature"/>, at any depth (children, their children …), by name, each once:
+    /// swDelete_Children deletes them all, so all are refused, reported and checked.
+    /// </summary>
+    static List<string> Descendants(ISwDocument doc, object feature)
+    {
+        var seen = new List<string>();
+        var queue = new Queue<object>();
+        queue.Enqueue(feature);
+        while (queue.Count > 0)
+        {
+            foreach (var name in doc.ChildrenOf(queue.Dequeue()))
+            {
+                if (seen.Contains(name)) continue;
+                seen.Add(name);
+                if (doc.FeatureByName(name) is object child) queue.Enqueue(child);
+            }
+        }
+        return seen;
+    }
+
+    /// <summary>Every feature deleted is gone from the tree.</summary>
+    protected override void Check(ISwDocument doc, FeatureDeleteRequest request, FeatureDeleteResult result)
+    {
+        var left = result.Deleted.Where(n => doc.FeatureByName(n) != null).ToList();
+        if (left.Count > 0)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"{string.Join(", ", left)} is still in the part after it was deleted",
+                new JsonObject { ["check"] = "deleted", ["left"] = left.Select(n => (object?)n).ToList() });
+        }
+    }
+}
+
 /// <summary>What every feature operation shares: request checks, the feature recorded in the transaction, the result filled, and the common checks.</summary>
 public static class FeatureFacts
 {

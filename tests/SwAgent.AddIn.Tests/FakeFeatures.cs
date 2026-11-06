@@ -266,11 +266,32 @@ sealed partial class FakeDocument
     public IReadOnlyList<object> FacesOf(object feature) =>
         _facesOf.TryGetValue((FakeEntity)feature, out var faces) ? faces.Where(Entities.Contains).Cast<object>().ToList() : new List<object>();
 
+    /// <summary>The features built on each feature, by name (what ChildrenOf reports).</summary>
+    public Dictionary<string, List<string>> Children { get; } = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+
+    public IReadOnlyList<string> ChildrenOf(object feature) =>
+        Children.TryGetValue(((FakeEntity)feature).Info.Name ?? "", out var names) ? names.ToList() : new List<string>();
+
+    /// <summary>Delete fails as SolidWorksDocument does when SOLIDWORKS does not select or delete (api_error).</summary>
+    public bool DeleteThrowsApiError { get; set; }
+
+    /// <summary>Delete reports success and deletes nothing.</summary>
+    public bool DeleteIgnored { get; set; }
+
+    /// <summary>Features a delete with children leaves in the part (SOLIDWORKS not deleting a grandchild).</summary>
+    public HashSet<string> DeleteSpares { get; } = new HashSet<string>(StringComparer.Ordinal);
+
     public void Delete(object feature, bool children, bool absorbed)
     {
         var f = (FakeEntity)feature;
         Deletes.Add((f.Info.Name ?? "?", children, absorbed));
         if (DeleteFails) throw new InvalidOperationException("SOLIDWORKS did not delete it");
+        if (DeleteThrowsApiError) throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS did not select {f.Info.Name} to delete it");
+        if (DeleteIgnored) return;
+        if (children)
+        {
+            foreach (var child in ChildrenOf(f).Where(n => !DeleteSpares.Contains(n)).Select(FeatureByName).OfType<FakeEntity>().ToList()) Delete(child, true, absorbed);
+        }
         RemoveFeature(f);
         if (_facesOf.TryGetValue(f, out var faces)) Entities.RemoveAll(faces.Contains);
         if (_volumeOf.TryGetValue(f, out double v))

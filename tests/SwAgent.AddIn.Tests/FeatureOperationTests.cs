@@ -558,3 +558,104 @@ public class FeatureSuppressTests : FeatureTestBase
         Assert.False(doc.Tree.Single(f => f.Name == "Boss-Extrude1").Suppressed);
     }
 }
+
+public class FeatureDeleteTests : FeatureTestBase
+{
+    FeatureDeleteResult Delete(FeatureDeleteRequest request) => Run(new FeatureDeleteOperation(Services), request);
+
+    [Fact]
+    public void Deletes_a_feature_with_its_sketch_and_reports_it()
+    {
+        var doc = Part();
+        Block();
+        Hole();
+        Extrude(new FeatureExtrudeRequest { Sketch = "Sketch2", Mode = FeatureMode.Cut, End = ExtrudeEnd.ThroughAll });
+        var result = Delete(new FeatureDeleteRequest { Features = new List<string> { "Cut-Extrude1" } });
+        Assert.Equal(new[] { "Cut-Extrude1" }, result.Deleted);
+        Assert.Equal(("Cut-Extrude1", false, true), doc.Deletes.Last());
+        Assert.Equal(8000, result.Change.VolumeAfterMm3, 6);
+        Assert.Equal("deleted", result.Change.Changed.Single().Property);
+    }
+
+    [Fact]
+    public void A_feature_with_children_is_refused_unless_they_go_too()
+    {
+        var doc = Part();
+        Block();
+        doc.AddFeature("Fillet1", "Fillet");
+        doc.Children["Boss-Extrude1"] = new List<string> { "Fillet1" };
+        var e = Fails(() => Delete(new FeatureDeleteRequest { Features = new List<string> { "Boss-Extrude1" } }));
+        Assert.Equal("children", e.Error.Details!["field"]);
+        Assert.Equal(new List<object?> { "Fillet1" }, e.Error.Details["children"]);
+        Assert.Empty(doc.Deletes);
+        var result = Delete(new FeatureDeleteRequest { Features = new List<string> { "Boss-Extrude1" }, Children = DeleteChildren.Delete, KeepAbsorbed = true });
+        Assert.Equal(new[] { "Boss-Extrude1", "Fillet1" }, result.Deleted);
+        Assert.Equal(("Boss-Extrude1", true, false), doc.Deletes.First());
+        Assert.DoesNotContain(doc.Tree, f => f.Name == "Fillet1");
+    }
+
+    [Fact]
+    public void Grandchildren_are_refused_reported_and_checked_like_children()
+    {
+        var doc = Part();
+        Block();
+        doc.AddFeature("Fillet1", "Fillet");
+        doc.AddFeature("Chamfer1", "Chamfer");
+        doc.Children["Boss-Extrude1"] = new List<string> { "Fillet1" };
+        doc.Children["Fillet1"] = new List<string> { "Chamfer1" };
+        var e = Fails(() => Delete(new FeatureDeleteRequest { Features = new List<string> { "Boss-Extrude1" } }));
+        Assert.Equal(new List<object?> { "Fillet1", "Chamfer1" }, e.Error.Details!["children"]);
+        var result = Delete(new FeatureDeleteRequest { Features = new List<string> { "Boss-Extrude1" }, Children = DeleteChildren.Delete });
+        Assert.Equal(new[] { "Boss-Extrude1", "Fillet1", "Chamfer1" }, result.Deleted);
+        Assert.DoesNotContain(doc.Tree, f => f.Name == "Chamfer1");
+    }
+
+    [Fact]
+    public void A_grandchild_left_behind_is_rollback_failed_naming_it()
+    {
+        var doc = Part();
+        Block();
+        doc.AddFeature("Fillet1", "Fillet");
+        doc.AddFeature("Chamfer1", "Chamfer");
+        doc.Children["Boss-Extrude1"] = new List<string> { "Fillet1" };
+        doc.Children["Fillet1"] = new List<string> { "Chamfer1" };
+        doc.DeleteSpares.Add("Chamfer1");
+        var e = Fails(() => Delete(new FeatureDeleteRequest { Features = new List<string> { "Boss-Extrude1" }, Children = DeleteChildren.Delete }));
+        Assert.True((bool)e.Error.Details!["rollback_failed"]!);
+        Assert.Contains("Chamfer1", e.Message);
+    }
+
+    [Fact]
+    public void A_feature_named_after_one_it_is_built_on_is_reported_once()
+    {
+        var doc = Part();
+        Block();
+        doc.AddFeature("Fillet1", "Fillet");
+        doc.Children["Boss-Extrude1"] = new List<string> { "Fillet1" };
+        var result = Delete(new FeatureDeleteRequest { Features = new List<string> { "Boss-Extrude1", "Fillet1" }, Children = DeleteChildren.Delete });
+        Assert.Equal(new[] { "Boss-Extrude1", "Fillet1" }, result.Deleted);
+    }
+
+    [Fact]
+    public void Children_that_are_named_too_are_not_refused()
+    {
+        var doc = Part();
+        Block();
+        doc.AddFeature("Fillet1", "Fillet");
+        doc.Children["Boss-Extrude1"] = new List<string> { "Fillet1" };
+        var result = Delete(new FeatureDeleteRequest { Features = new List<string> { "Fillet1", "Boss-Extrude1" } });
+        Assert.Equal(new[] { "Fillet1", "Boss-Extrude1" }, result.Deleted);
+    }
+
+    [Fact]
+    public void A_feature_still_there_afterwards_is_rollback_failed_naming_it()
+    {
+        var doc = Part();
+        Block();
+        doc.DeleteIgnored = true;
+        var e = Fails(() => Delete(new FeatureDeleteRequest { Features = new List<string> { "Boss-Extrude1" } }));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.True((bool)e.Error.Details!["rollback_failed"]!);
+        Assert.Contains("Boss-Extrude1", e.Message);
+    }
+}

@@ -144,6 +144,9 @@ public interface ISwDocument
     /// <summary>Suppresses or unsuppresses a feature in the active configuration, without rebuilding; false when SOLIDWORKS refuses.</summary>
     bool Suppress(object feature, bool suppressed);
 
+    /// <summary>The names of the features built on <paramref name="feature"/> (IFeature.GetChildren), in SOLIDWORKS' order.</summary>
+    System.Collections.Generic.IReadOnlyList<string> ChildrenOf(object feature);
+
     /// <summary>The faces <paramref name="feature"/> made.</summary>
     System.Collections.Generic.IReadOnlyList<object> FacesOf(object feature);
 }

@@ -241,6 +241,9 @@ internal sealed partial class SolidWorksDocument
             suppressed ? (int)swFeatureSuppressionAction_e.swSuppressFeature : (int)swFeatureSuppressionAction_e.swUnSuppressFeature,
             (int)swInConfigurationOpts_e.swThisConfiguration, null);
 
+    public IReadOnlyList<string> ChildrenOf(object feature) =>
+        ((IFeature)feature).GetChildren() is object[] children ? children.OfType<IFeature>().Select(c => c.Name).ToList() : new List<string>();
+
     public IReadOnlyList<object> FacesOf(object feature) =>
         ((IFeature)feature).GetFaces() is object[] faces ? faces.Where(f => f != null).ToList() : new List<object>();
 

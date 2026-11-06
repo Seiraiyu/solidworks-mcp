@@ -194,6 +194,42 @@ public sealed class FeatureSuppressResult : IModelChangeResult
     [Description("Features named that were already as asked, and left alone.")]
     public List<string> Unchanged { get; set; } = new List<string>();
 }
+/// <summary>What feature.delete does with the features built on the ones it deletes.</summary>
+public enum DeleteChildren
+{
+    Refuse,
+    Delete,
+}
+
+[Operation("feature.delete", typeof(FeatureDeleteResult))]
+[Description("Deletes features, with the sketches they absorbed unless keep_absorbed. A feature that others are built on (its children, their children and so on) is refused unless children is delete, which deletes them all too. Checked: every feature named, and every feature built on it when deleted, is gone from the tree, and no feature has a new rebuild error. A deleted feature cannot be made again from its reference, so a check that fails after the delete answers operation_failed with rollback_failed, naming what is gone. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class FeatureDeleteRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The features: their names (Fillet1) or references.")]
+    public List<string> Features { get; set; } = new List<string>();
+
+    [Description("refuse (the default: a feature that others are built on is not deleted) or delete (they are deleted with it, at any depth).")]
+    public DeleteChildren? Children { get; set; }
+
+    [Description("Keep the sketches the features absorbed, as top-level sketches. Default false: they are deleted with them.")]
+    public bool? KeepAbsorbed { get; set; }
+}
+
+[Description("Features deleted, and the part after it.")]
+public sealed class FeatureDeleteResult : IModelChangeResult
+{
+    [Required]
+    [Description("The evidence: what was deleted, and the part rebuilt.")]
+    public ModelChange Change { get; set; } = new ModelChange();
+
+    [Required]
+    [Description("The features deleted, by name: those named, and every feature built on them.")]
+    public List<string> Deleted { get; set; } = new List<string>();
+}
 [Description("A feature made, with references to it and the faces it made, and the part after it.")]
 public sealed class FeatureResult : IModelChangeResult
 {

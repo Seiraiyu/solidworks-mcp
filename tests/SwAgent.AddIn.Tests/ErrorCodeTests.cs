@@ -650,4 +650,45 @@ public class ErrorCodeTests : DocumentTestBase
         Assert.Equal(code, Fails(() => Run(new FeatureSuppressOperation(Services), request)).Code);
         Assert.False(doc.Tree.Single(f => f.Name == "Boss-Extrude1").Suppressed);
     }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_delete_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureDeleteRequest { Features = new List<string> { "Boss-Extrude1" } };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Fails(() => Run(new FeatureDeleteOperation(Services), request)).Code);
+            return;
+        }
+        var (doc, _) = Blocked();
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                doc.Children["Boss-Extrude1"] = new List<string> { "Fillet1" };
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                var boss = doc.Entities.Single(e => e.Info.Name == "Boss-Extrude1");
+                request.Features = new List<string> { Services.References.Describe(doc, boss).Reference! };
+                boss.State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                Sw.OpenCommandTitle = "Delete";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.RebuildSucceeds = false;
+                break;
+            case ErrorCode.ApiError:
+                doc.DeleteThrowsApiError = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Run(new FeatureDeleteOperation(Services), request)).Code);
+        if (code != ErrorCode.OperationFailed) Assert.Contains(doc.Tree, f => f.Name == "Boss-Extrude1");
+    }
 }
