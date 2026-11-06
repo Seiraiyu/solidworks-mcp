@@ -123,6 +123,9 @@ public interface ISwDocument
     /// <summary>Extrudes <paramref name="sketch"/>; the new feature, or null when SOLIDWORKS made none. Selects what it needs and clears the selection.</summary>
     object? Extrude(object sketch, ExtrudeSpec spec);
 
+    /// <summary>Revolves <paramref name="sketch"/> about <see cref="RevolveSpec.Axis"/>; the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Revolve(object sketch, RevolveSpec spec);
+
     /// <summary>The faces <paramref name="feature"/> made.</summary>
     System.Collections.Generic.IReadOnlyList<object> FacesOf(object feature);
 }

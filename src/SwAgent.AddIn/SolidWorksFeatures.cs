@@ -88,6 +88,32 @@ internal sealed partial class SolidWorksDocument
         _ => (int)swEndConditions_e.swEndCondBlind,
     };
 
+    /// <summary>
+    /// FeatureRevolve2 with the sketch (mark 0) and the axis selected: with mark 4, and again with mark 16 when SOLIDWORKS
+    /// made nothing with 4 (which mark FeatureRevolve2 reads is measured by the parts live suite).
+    /// </summary>
+    public object? Revolve(object sketch, RevolveSpec s)
+    {
+        foreach (int mark in new[] { 4, 16 })
+        {
+            Doc.ClearSelection2(true);
+            try
+            {
+                Pick(sketch, append: false, mark: 0);
+                Pick(s.Axis, append: true, mark: mark);
+                var made = Doc.FeatureManager.FeatureRevolve2(true, true, false, s.Cut, s.Reverse, false,
+                    (int)swEndConditions_e.swEndCondBlind, (int)swEndConditions_e.swEndCondBlind, s.AngleDeg * Rad, 0,
+                    false, false, 0, 0, 0, 0, 0, s.Merge, true, true);
+                if (made != null) return made;
+            }
+            finally
+            {
+                Doc.ClearSelection2(true);
+            }
+        }
+        return null;
+    }
+
     public IReadOnlyList<object> FacesOf(object feature) =>
         ((IFeature)feature).GetFaces() is object[] faces ? faces.Where(f => f != null).ToList() : new List<object>();
 
@@ -101,14 +127,22 @@ internal sealed partial class SolidWorksDocument
                 selected = feature.Select2(append, mark);
                 break;
             case IEntity e:
-                var data = ((ISelectionMgr)Doc.SelectionManager).CreateSelectData();
-                data.Mark = mark;
-                selected = e.Select4(append, data);
+                selected = e.Select4(append, Marked(mark));
+                break;
+            case ISketchSegment segment:
+                selected = segment.Select4(append, Marked(mark));
                 break;
             default:
                 selected = false;
                 break;
         }
         if (!selected) throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS did not select the {Describe(entity).Kind.ToString().ToLowerInvariant()} a feature needs");
+    }
+
+    SelectData Marked(int mark)
+    {
+        var data = ((ISelectionMgr)Doc.SelectionManager).CreateSelectData();
+        data.Mark = mark;
+        return data;
     }
 }

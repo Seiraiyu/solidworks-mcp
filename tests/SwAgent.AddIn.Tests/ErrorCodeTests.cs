@@ -331,4 +331,53 @@ public class ErrorCodeTests : DocumentTestBase
         Assert.Equal(code, Fails(() => Run(new FeatureExtrudeOperation(Services), request)).Code);
         Assert.DoesNotContain(doc.Tree, f => f.Type == "Extrusion");
     }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_revolve_reaches_every_listed_code(ErrorCode code)
+    {
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Fails(() => Run(new FeatureRevolveOperation(Services), new FeatureRevolveRequest { Sketch = "Sketch1", Axis = "Axis1" })).Code);
+            return;
+        }
+        var doc = Part();
+        var made = Create(new SketchCreateRequest
+        {
+            On = "front",
+            Rectangles = new List<SketchRectangle> { new SketchRectangle { Id = "r", Corner1 = P(10, 0), Corner2 = P(20, 30) } },
+            CenterLines = new List<SketchCenterLine> { new SketchCenterLine { Id = "axis", Start = P(0, 0), End = P(0, 40) } },
+        });
+        var request = new FeatureRevolveRequest { Sketch = "Sketch1", Axis = made.Ids.Single(i => i.Id == "axis").References[0] };
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.AngleDeg = 0;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                doc.Entities.Single(e => Services.References.Describe(doc, e).Reference == request.Axis).State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch1";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.FeatureVolumeError = 1;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Run(new FeatureRevolveOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "Revolution");
+    }
 }

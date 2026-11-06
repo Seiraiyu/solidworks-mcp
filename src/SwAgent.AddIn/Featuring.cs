@@ -45,3 +45,16 @@ public sealed class ThinSpec
     public double ThicknessMm { get; set; }
     public double Thickness2Mm { get; set; }
 }
+
+/// <summary>A revolve as ISwDocument.Revolve makes it: degrees, the axis resolved to SOLIDWORKS' object.</summary>
+public sealed class RevolveSpec
+{
+    public bool Cut { get; set; }
+
+    /// <summary>A line or centerline in the sketch, a reference axis or a straight edge.</summary>
+    public object Axis { get; set; } = new object();
+
+    public double AngleDeg { get; set; } = 360;
+    public bool Reverse { get; set; }
+    public bool Merge { get; set; } = true;
+}

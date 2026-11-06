@@ -101,6 +101,33 @@ public sealed class FeatureExtrudeRequest
     public ExtrudeThin? Thin { get; set; }
 }
 
+[Operation("feature.revolve", typeof(FeatureResult))]
+[Description("Revolves a sketch's closed profile about an axis: a boss adds material, a cut removes it. Angles in degrees. The axis is a line or centerline in the sketch, a reference axis or a straight edge. Checked: the feature exists with its type, rebuilds without error, and the part's volume grew (boss) or shrank (cut); for a boss on a part with no body yet, about a line in its own sketch, the volume is exactly Pappus' (angle × the profile's area × its centroid's distance from the axis). Otherwise the feature is deleted and the part is as it was (rolled back); the sketch stays. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class FeatureRevolveRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The sketch to revolve: its name or reference. Its closed loops are the profile, all on one side of the axis.")]
+    public string Sketch { get; set; } = "";
+
+    [Required]
+    [Description("The axis: the reference of a line or centerline in the sketch (sketch.create gave it), or a reference axis's name or reference, or a straight edge's reference.")]
+    public string Axis { get; set; } = "";
+
+    [Description("boss (adds material) or cut (removes it). Default boss.")]
+    public FeatureMode? Mode { get; set; }
+
+    [Description("How far it turns, degrees: more than 0 and at most 360. Default 360.")]
+    public double? AngleDeg { get; set; }
+
+    [Description("Turn the other way. Default false.")]
+    public bool? Reverse { get; set; }
+
+    [Description("For a boss: merge it with the bodies it touches. Default true. Not for a cut.")]
+    public bool? Merge { get; set; }
+}
 [Description("A feature made, with references to it and the faces it made, and the part after it.")]
 public sealed class FeatureResult : IModelChangeResult
 {

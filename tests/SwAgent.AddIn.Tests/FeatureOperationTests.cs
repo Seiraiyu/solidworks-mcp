@@ -36,6 +36,15 @@ public abstract class FeatureTestBase : DocumentTestBase
     /// <summary>Sketch1 as a 10 mm blind boss: a block of 8000 mm³.</summary>
     internal FeatureResult Block() => Extrude(new FeatureExtrudeRequest { Sketch = "Sketch1", DepthMm = 10 });
 
+    internal FeatureResult Revolve(FeatureRevolveRequest request) => Run(new FeatureRevolveOperation(Services), request);
+
+    /// <summary>A 10 x 30 rectangle from x = 10 to 20 beside a centerline on the y axis, the next sketch; turned about it, a tube.</summary>
+    internal SketchCreateResult Tube() => Sketch(new SketchGeometry
+    {
+        Rectangles = new List<SketchRectangle> { new SketchRectangle { Id = "wall", Corner1 = P(10, 0), Corner2 = P(20, 30) } },
+        CenterLines = new List<SketchCenterLine> { new SketchCenterLine { Id = "axis", Start = P(0, 0), End = P(0, 40) } },
+    });
+
     /// <summary>A 5 mm radius circle at (20, 10), the next sketch.</summary>
     internal SketchCreateResult Hole() => Sketch(new SketchGeometry { Circles = new List<SketchCircle> { new SketchCircle { Id = "hole", Center = P(20, 10), RadiusMm = 5 } } });
 }
@@ -253,5 +262,87 @@ public class FeatureExtrudeTests : FeatureTestBase
         doc.EditingSketchName = "Sketch1";
         Assert.Equal(ErrorCode.Busy, Fails(() => Block()).Code);
         Assert.Empty(doc.Extrudes);
+    }
+}
+
+public class FeatureRevolveTests : FeatureTestBase
+{
+    string Axis(SketchCreateResult sketch) => sketch.Ids.Single(i => i.Id == "axis").References[0];
+
+    [Fact]
+    public void A_full_turn_about_the_sketchs_centerline_is_exactly_Pappus_volume()
+    {
+        var doc = Part();
+        var tube = Tube();
+        var made = Revolve(new FeatureRevolveRequest { Sketch = "Sketch2", Axis = Axis(tube) });
+        Assert.Equal("Revolve1", made.Feature.Name);
+        Assert.Equal(Math.PI * (400 - 100) * 30, made.Change.VolumeAfterMm3, 6);
+        Assert.Contains(made.Checks, c => c.Contains("Pappus") && c.Contains("360°"));
+        var spec = doc.Revolves.Single();
+        Assert.Equal(360, spec.AngleDeg);
+        Assert.False(spec.Cut);
+        Assert.Equal(Axis(tube), Services.References.Describe(doc, spec.Axis).Reference);
+    }
+
+    [Fact]
+    public void A_quarter_turn_is_a_quarter_of_the_volume()
+    {
+        Part();
+        var tube = Tube();
+        var made = Revolve(new FeatureRevolveRequest { Sketch = tube.Sketch.Name, Axis = Axis(tube), AngleDeg = 90 });
+        Assert.Equal(Math.PI * (400 - 100) * 30 / 4, made.Change.VolumeAfterMm3, 6);
+    }
+
+    [Fact]
+    public void An_axis_in_another_sketch_or_not_straight_is_refused()
+    {
+        var doc = Part();
+        var first = Tube();
+        Tube();
+        var e = Fails(() => Revolve(new FeatureRevolveRequest { Sketch = "Sketch3", Axis = Axis(first) }));
+        Assert.Equal("axis", e.Error.Details!["field"]);
+        Assert.Contains("Sketch2", e.Message);
+        var round = doc.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Circle });
+        e = Fails(() => Revolve(new FeatureRevolveRequest { Sketch = "Sketch3", Axis = Services.References.Describe(doc, round).Reference! }));
+        Assert.Equal("axis", e.Error.Details!["field"]);
+        Assert.Contains("circle", e.Message);
+        Assert.Equal("axis", Fails(() => Revolve(new FeatureRevolveRequest { Sketch = "Sketch3", Axis = "front" })).Error.Details!["field"]);
+        Assert.Empty(doc.Revolves);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(361)]
+    public void An_angle_outside_0_to_360_is_refused(double angle)
+    {
+        var doc = Part();
+        var tube = Tube();
+        Assert.Equal("angle_deg", Fails(() => Revolve(new FeatureRevolveRequest { Sketch = "Sketch2", Axis = Axis(tube), AngleDeg = angle })).Error.Details!["field"]);
+        Assert.Empty(doc.Revolves);
+    }
+
+    [Fact]
+    public void A_revolve_off_Pappus_volume_is_deleted_and_its_sketch_kept()
+    {
+        var doc = Part();
+        var tube = Tube();
+        doc.FeatureVolumeError = -3;
+        var e = Fails(() => Revolve(new FeatureRevolveRequest { Sketch = "Sketch2", Axis = Axis(tube) }));
+        Assert.Equal("volume_exact", e.Error.Details!["check"]);
+        Assert.DoesNotContain(doc.Tree, f => f.Name == "Revolve1");
+        Assert.Contains(doc.Tree, f => f.Name == "Sketch2");
+    }
+
+    [Fact]
+    public void A_cut_revolve_removes_material_and_is_a_RevCut()
+    {
+        var doc = Part();
+        Block();
+        var tube = Tube();
+        var cut = Revolve(new FeatureRevolveRequest { Sketch = "Sketch2", Axis = Axis(tube), Mode = FeatureMode.Cut });
+        Assert.Equal("Cut-Revolve1", cut.Feature.Name);
+        Assert.True(cut.Change.VolumeAfterMm3 < cut.Change.VolumeBeforeMm3);
+        Assert.True(doc.Revolves.Single().Cut);
+        Assert.Equal("merge", Fails(() => Revolve(new FeatureRevolveRequest { Sketch = "Sketch2", Axis = Axis(tube), Mode = FeatureMode.Cut, Merge = false })).Error.Details!["field"]);
     }
 }

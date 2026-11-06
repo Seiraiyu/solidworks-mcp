@@ -53,6 +53,21 @@ sealed partial class FakeDocument
         return MakeFeature(spec.Cut ? "Cut-Extrude" : "Boss-Extrude", spec.Cut ? "Cut" : "Extrusion", (spec.Cut ? -1 : 1) * area * depth, contents.Segments.Count + 2);
     }
 
+    public List<RevolveSpec> Revolves { get; } = new List<RevolveSpec>();
+
+    /// <summary>Pappus' volume when the axis is a line of the sketch, else 1000 mm³; negative for a cut.</summary>
+    public object? Revolve(object sketch, RevolveSpec spec)
+    {
+        Revolves.Add(spec);
+        if (FeatureSelectFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the axis a feature needs");
+        if (FeatureRefuses) return null;
+        var contents = ReadSketch(sketch);
+        var region = FeatureFacts.Region(contents);
+        var line = contents.Segments.FirstOrDefault(s => s.Entity == spec.Axis);
+        double volume = region != null && line != null ? SwAgent.AddIn.Core.FeatureChecks.PappusVolume(region, line.Start!, line.End!, spec.AngleDeg) : 1000;
+        return MakeFeature(spec.Cut ? "Cut-Revolve" : "Revolve", spec.Cut ? "RevCut" : "Revolution", (spec.Cut ? -1 : 1) * volume, contents.Segments.Count(s => !s.Construction));
+    }
+
     /// <summary>A new feature named as SOLIDWORKS names them (Boss-Extrude1, Boss-Extrude2 …), with <paramref name="faces"/> planar faces of its own.</summary>
     FakeEntity MakeFeature(string prefix, string type, double volume, int faces, ReferenceKind kind = ReferenceKind.Feature)
     {

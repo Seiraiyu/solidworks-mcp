@@ -116,6 +116,66 @@ public sealed class FeatureExtrudeOperation : ModelChangeOperation<FeatureExtrud
     }
 }
 
+public sealed class FeatureRevolveOperation : ModelChangeOperation<FeatureRevolveRequest, FeatureResult>
+{
+    public FeatureRevolveOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(FeatureRevolveRequest request) => request.Document;
+
+    static string What(FeatureRevolveRequest request) => request.Mode == FeatureMode.Cut ? "cut revolve" : "boss revolve";
+
+    protected override FeatureResult Change(ISwDocument doc, FeatureRevolveRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        double angle = request.AngleDeg ?? 360;
+        if (double.IsNaN(angle) || !(angle > 0 && angle <= 360)) throw FeatureFacts.Invalid("angle_deg", "angle_deg must be more than 0 and at most 360 degrees");
+        bool cut = request.Mode == FeatureMode.Cut;
+        if (cut && request.Merge != null) throw FeatureFacts.Invalid("merge", "merge is for a boss; a cut always removes material from the bodies it meets");
+        var references = Services.References;
+        var (sketch, _) = references.Resolve(doc, request.Sketch, "sketch", ReferenceKind.Sketch);
+        var profile = FeatureFacts.Profile(doc, sketch, "sketch", What(request));
+        var (axis, kind) = references.Resolve(doc, request.Axis, "axis", ReferenceKind.SketchEntity, ReferenceKind.Axis, ReferenceKind.Edge);
+        var info = doc.Describe(axis);
+        if (kind == ReferenceKind.SketchEntity && info.Feature != profile.Name)
+            throw FeatureFacts.Invalid("axis", $"axis: that line is in {info.Feature}, not {profile.Name}; give a line or centerline of the sketch being revolved, a reference axis or a straight edge");
+        if (kind != ReferenceKind.Axis && info.Geometry != GeometryType.Line)
+            throw FeatureFacts.Invalid("axis", $"axis: a revolve turns about a straight line, and this is a {WireNames.ForEnum(info.Geometry)}");
+        var spec = new RevolveSpec { Cut = cut, Axis = axis, AngleDeg = angle, Reverse = request.Reverse == true, Merge = request.Merge ?? true };
+        var feature = doc.Revolve(sketch, spec)
+            ?? throw FeatureFacts.NotMade(doc, What(request), $"from {profile.Name}", "check that its profile is closed and lies wholly on one side of the axis");
+        return FeatureFacts.Made(references, doc, feature, tx);
+    }
+
+    /// <summary>The feature is a revolution, the volume moved the right way, and a boss on an empty part about a line of its own sketch is exactly Pappus' volume.</summary>
+    protected override void Check(ISwDocument doc, FeatureRevolveRequest request, FeatureResult result)
+    {
+        bool cut = request.Mode == FeatureMode.Cut;
+        FeatureFacts.ExpectType(doc, result, cut ? "RevCut" : "Revolution", What(request));
+        double after = Volume(doc, doc.SolidBodyCount());
+        FeatureFacts.VolumeChanged(result, What(request), VolumeBefore, after, cut ? -1 : 1);
+        if (!cut && BodiesBefore == 0)
+        {
+            var (sketch, _) = Services.References.Resolve(doc, request.Sketch, "sketch", ReferenceKind.Sketch);
+            var (axis, kind) = Services.References.Resolve(doc, request.Axis, "axis", ReferenceKind.SketchEntity, ReferenceKind.Axis, ReferenceKind.Edge);
+            var contents = doc.ReadSketch(sketch);
+            var region = FeatureFacts.Region(contents);
+            string? axisName = kind == ReferenceKind.SketchEntity ? doc.Describe(axis).Name : null;
+            var line = axisName == null ? null : contents.Segments.FirstOrDefault(s => s.Name == axisName && s.Start != null && s.End != null);
+            if (region != null && line != null)
+            {
+                double angle = request.AngleDeg ?? 360;
+                double expected = FeatureChecks.PappusVolume(region, line.Start!, line.End!, angle);
+                string why = FormattableString.Invariant($"{angle:0.###}° × {region.AreaMm2:0.###} mm² about {line.Name}");
+                FeatureChecks.VolumeChangeIs(What(request), expected, after - VolumeBefore, why);
+                result.Checks.Add(FormattableString.Invariant($"the volume grew by {after - VolumeBefore:0.###} mm³, Pappus' {why}"));
+            }
+        }
+        FeatureFacts.MadeFaces(result, What(request));
+    }
+}
+
 /// <summary>What every feature operation shares: request checks, the feature recorded in the transaction, the result filled, and the common checks.</summary>
 public static class FeatureFacts
 {
