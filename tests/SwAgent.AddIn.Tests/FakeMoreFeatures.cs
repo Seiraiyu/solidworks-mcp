@@ -58,20 +58,39 @@ sealed partial class FakeDocument
     /// <summary>Faces handed to a shell stay in the part (SOLIDWORKS not opening them).</summary>
     public bool FacesSurvive { get; set; }
 
+    /// <summary>
+    /// What SOLIDWORKS did in the 3.D live run: a removed face's reference still resolves, to the rim the walls leave of
+    /// it (the block's 800 mm² top became a 224 mm² rim), so its area shrinks instead of the face going.
+    /// </summary>
+    public bool ShellLeavesRim { get; set; }
+
     /// <summary>The faces removed are deleted; inward takes 1000 mm³ per mm of thickness, outward adds as much.</summary>
     public object? Shell(IReadOnlyList<object> facesToRemove, double thicknessMm, bool outward)
     {
         Shells.Add((facesToRemove, thicknessMm, outward));
         if (FeatureSelectFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the face a feature needs");
         if (FeatureRefuses) return null;
-        if (!FacesSurvive) foreach (var f in facesToRemove.Cast<FakeEntity>()) f.State = PersistState.Deleted;
-        return MakeFeature("Shell", "Shell", (outward ? 1 : -1) * 1000 * thicknessMm, 6);
+        if (!FacesSurvive && !ShellLeavesRim) foreach (var f in facesToRemove.Cast<FakeEntity>()) f.State = PersistState.Deleted;
+        var shell = MakeFeature("Shell", "Shell", (outward ? 1 : -1) * 1000 * thicknessMm, 6);
+        if (ShellLeavesRim)
+        {
+            foreach (var f in facesToRemove.Cast<FakeEntity>())
+            {
+                var area = f.Info.AreaMm2;
+                f.Info.AreaMm2 = area * 0.28;
+                Undo(shell, () => f.Info.AreaMm2 = area);
+            }
+        }
+        return shell;
     }
 
     public List<DraftSpec> Drafts { get; } = new List<DraftSpec>();
 
     /// <summary>Added to the angle every drafted face is tilted by, degrees (a draft that is not what was asked).</summary>
     public double DraftAngleError { get; set; }
+
+    /// <summary>The draft tilts the faces in place and lists none as its own, as SOLIDWORKS did in the 3.D live run.</summary>
+    public bool DraftOwnsNoFaces { get; set; }
 
     /// <summary>The drafted faces are made anew (their references no longer resolve), as the draft's own faces.</summary>
     public bool DraftRemakesFaces { get; set; }
@@ -95,13 +114,14 @@ sealed partial class FakeDocument
             if (DraftRemakesFaces)
             {
                 face.State = PersistState.Deleted;
-                _facesOf[draft].Add(Add(ReferenceKind.Face, new EntityInfo { Feature = draft.Info.Name, Geometry = GeometryType.Plane, Normal = tilted, AreaMm2 = face.Info.AreaMm2 }));
+                var remade = Add(ReferenceKind.Face, new EntityInfo { Feature = draft.Info.Name, Geometry = GeometryType.Plane, Normal = tilted, AreaMm2 = face.Info.AreaMm2 });
+                if (!DraftOwnsNoFaces) _facesOf[draft].Add(remade);
             }
             else
             {
                 var before = face.Info.Normal;
                 face.Info.Normal = tilted;
-                _facesOf[draft].Add(face);
+                if (!DraftOwnsNoFaces) _facesOf[draft].Add(face);
                 Undo(draft, () =>
                 {
                     face.Info.Normal = before;

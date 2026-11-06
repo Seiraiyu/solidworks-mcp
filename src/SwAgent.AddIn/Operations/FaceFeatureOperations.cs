@@ -16,11 +16,15 @@ public sealed class FeatureShellOperation : ModelChangeOperation<FeatureShellReq
 
     protected override string? DocumentOf(FeatureShellRequest request) => request.Document;
 
+    /// <summary>The faces to remove's areas before the shell, in order, for the gone check.</summary>
+    List<double?> _areasBefore = new List<double?>();
+
     protected override FeatureResult Change(ISwDocument doc, FeatureShellRequest request, ModelTransaction tx, IOperationContext context)
     {
         double thickness = FeatureFacts.Length(request.ThicknessMm, "thickness_mm", "a shell");
         if (BodiesBefore == 0) throw FeatureFacts.Invalid("faces_to_remove", "a shell hollows a body, and this part has none yet");
         var faces = FeatureFacts.Entities(Services.References, doc, request.FacesToRemove, "faces_to_remove", ReferenceKind.Face);
+        _areasBefore = faces.Select(f => doc.Describe(f).AreaMm2).ToList();
         var feature = doc.Shell(faces, thickness, request.Outward == true)
             ?? throw FeatureFacts.NotMade(doc, "shell", FormattableString.Invariant($"of {thickness:0.###} mm"), "check that the walls fit: a wall thicker than the smallest radius of curvature inside the body cannot be made");
         return FeatureFacts.Made(Services.References, doc, feature, tx);
@@ -32,7 +36,7 @@ public sealed class FeatureShellOperation : ModelChangeOperation<FeatureShellReq
         FeatureFacts.ExpectType(doc, result, "Shell", "shell");
         double after = Volume(doc, doc.SolidBodyCount());
         FeatureFacts.Gone(Services.References, doc, request.FacesToRemove, "faces_to_remove", ReferenceKind.Face, result, "shell",
-            FormattableString.Invariant($"the volume {VolumeBefore:0.###} -> {after:0.###} mm³"));
+            FormattableString.Invariant($"the volume {VolumeBefore:0.###} -> {after:0.###} mm³"), _areasBefore);
         FeatureFacts.VolumeChanged(result, "shell", VolumeBefore, after, request.Outward == true ? 1 : -1);
         FeatureFacts.MadeFaces(result, "shell");
     }
@@ -83,11 +87,12 @@ public sealed class FeatureDraftOperation : ModelChangeOperation<FeatureDraftReq
         double after = Volume(doc, doc.SolidBodyCount());
         FeatureChecks.VolumeMoved("draft", VolumeBefore, after);
         result.Checks.Add(FormattableString.Invariant($"the volume changed: {VolumeBefore:0.###} -> {after:0.###} mm³"));
-        FeatureFacts.MadeFaces(result, "draft");
+        // No MadeFaces: a draft tilts faces in place, and SOLIDWORKS lists none as the draft's own (3.D live run). The
+        // faces it tilted are measured below, and a draft with none to measure fails there.
         var (neutral, _) = Services.References.Resolve(doc, request.NeutralPlane, "neutral_plane", ReferenceKind.Plane, ReferenceKind.Face);
         var normal = NeutralNormal(doc, neutral);
         double expected = 90 - request.AngleDeg!.Value;
-        int measured = 0;
+        int measured = 0, gone = 0;
         for (int i = 0; i < request.Faces.Count; i++)
         {
             object face;
@@ -97,6 +102,7 @@ public sealed class FeatureDraftOperation : ModelChangeOperation<FeatureDraftReq
             }
             catch (SwAgentException e) when (e.Code == ErrorCode.ReferenceUnresolved)
             {
+                gone++;
                 continue; // SOLIDWORKS made the drafted face anew; the draft's own faces are measured below
             }
             var info = doc.Describe(face);
@@ -114,6 +120,12 @@ public sealed class FeatureDraftOperation : ModelChangeOperation<FeatureDraftReq
                     new JsonObject { ["check"] = "draft_angle", ["expected"] = expected, ["measured"] = planar.Select(f => (object?)FeatureChecks.AngleDeg(f.Normal!, normal)).ToList() });
             }
             measured = planar.Count;
+        }
+        if (gone == request.Faces.Count && result.Faces.Count == 0)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"no planar face {result.Feature.Name} drafted could be measured: the faces named no longer resolve and the draft lists none of its own",
+                new JsonObject { ["check"] = "draft_angle", ["expected"] = expected, ["measured"] = 0 });
         }
         result.Checks.Add(FormattableString.Invariant($"{measured} drafted planar faces stand at {expected:0.###}° to the neutral plane's normal"));
     }

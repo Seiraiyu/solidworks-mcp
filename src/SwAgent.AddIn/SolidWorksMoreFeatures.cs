@@ -198,10 +198,61 @@ internal sealed partial class SolidWorksDocument
             });
         s.How = string.Join("; ", tried);
         if (feature != null) return feature;
+        // Round 2: null all three ways, the face selected too, so the size or the table indexes are in doubt: say what
+        // SOLIDWORKS' Hole Wizard tables list for this hole type.
+        s.How += "; " + HoleTables((int)generic, s.Size);
         throw new SwAgentException(ErrorCode.OperationFailed,
             $"SOLIDWORKS made no {WireNames.ForEnum(s.Type)} {s.Size} hole at {s.Positions.Count} positions (hole type {generic}, standard {(swWzdHoleStandards_e)standard}, " +
             $"fastener {fastener}); check that {s.Size} is a {WireNames.ForEnum(s.Standard)} size the Hole Wizard lists for a {WireNames.ForEnum(s.Type)} hole. Tried: {s.How}",
             new SwAgent.Contracts.Serialization.JsonObject { ["tried"] = s.How });
+    }
+
+    /// <summary>
+    /// What ISldWorks.GetHoleStandardsData lists for <paramref name="generic"/>: each standard's index and name, the
+    /// fastener types of the ISO and ANSI metric ones, and the first sizes of each of their tables, with whether
+    /// <paramref name="size"/> is among them. Diagnostic only: any failure is reported, never thrown.
+    /// </summary>
+    string HoleTables(int generic, string size)
+    {
+        var text = new List<string>();
+        static string[] Items(object? o) => o switch
+        {
+            null => new string[0],
+            Array a => a.Cast<object?>().Select(x => x is Array inner ? "[" + string.Join(", ", Items(inner)) + "]" : Convert.ToString(x, System.Globalization.CultureInfo.InvariantCulture) ?? "").ToArray(),
+            _ => new[] { Convert.ToString(o, System.Globalization.CultureInfo.InvariantCulture) ?? "" },
+        };
+        try
+        {
+            if (!(_sw.GetHoleStandardsData(generic) is IHoleStandardsData data)) return $"GetHoleStandardsData({generic}) returned nothing";
+            if (!data.GetHoleStandards(out object indexes, out object names)) return "GetHoleStandards returned false";
+            var ids = Items(indexes);
+            var stds = Items(names);
+            text.Add("standards: " + string.Join(", ", stds.Select((n, i) => $"{(i < ids.Length ? ids[i] : "?")}={n}")));
+            foreach (var std in stds.Where(n => n.IndexOf("ISO", StringComparison.OrdinalIgnoreCase) >= 0 || n.IndexOf("Metric", StringComparison.OrdinalIgnoreCase) >= 0).Take(2))
+            {
+                if (!data.GetFastenerTypes(std, out object fIds, out object fNames)) { text.Add($"{std}: GetFastenerTypes false"); continue; }
+                var fi = Items(fIds);
+                var fn = Items(fNames);
+                text.Add($"{std} fasteners: " + string.Join(", ", fn.Select((n, i) => $"{(i < fi.Length ? fi[i] : "?")}={n}")));
+                foreach (var id in fi.Take(3))
+                {
+                    if (!int.TryParse(id, out int fastener)) continue;
+                    if (!data.GetFastenerTableTypes(std, fastener, out object tables)) continue;
+                    foreach (var table in Items(tables).Take(1))
+                    {
+                        if (!int.TryParse(table, out int tid) || !data.GetFastenerTable(std, fastener, tid, out object rows)) continue;
+                        var all = Items(rows);
+                        bool has = all.Any(r => r.IndexOf(size, StringComparison.Ordinal) >= 0);
+                        text.Add($"{std} fastener {id} table {tid} ({all.Length} entries, '{size}' {(has ? "listed" : "not listed")}): {string.Join(" | ", all.Take(6))}");
+                    }
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            text.Add($"reading the hole tables failed: {e.GetType().Name}: {e.Message}");
+        }
+        return "Hole Wizard tables: " + string.Join("; ", text);
     }
 
     /// <summary>

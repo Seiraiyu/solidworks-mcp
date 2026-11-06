@@ -47,6 +47,18 @@ public class FeatureShellTests : FeatureTestBase
     }
 
     [Fact]
+    public void A_face_cut_back_to_the_walls_rim_counts_as_opened()
+    {
+        var doc = Part();
+        Block();
+        var top = Face(doc);
+        doc.ShellLeavesRim = true;
+        var shell = Shell(new FeatureShellRequest { FacesToRemove = new List<string> { top }, ThicknessMm = 2 });
+        Assert.Equal(6000, shell.Change.VolumeAfterMm3, 6);
+        Assert.Contains(shell.Checks, c => c == "the 1 faces named in faces_to_remove are gone or cut back to the walls' rim (/faces_to_remove/0: 800 -> 224 mm²)");
+    }
+
+    [Fact]
     public void A_face_left_closed_fails_the_check_and_the_shell_is_rolled_back()
     {
         var doc = Part();
@@ -85,6 +97,30 @@ public class FeatureDraftTests : FeatureTestBase
         var spec = doc.Drafts.Single();
         Assert.Equal((5.0, false, 1), (spec.AngleDeg, spec.Reverse, spec.Faces.Count));
         Assert.Equal("Ebene vorne", doc.Describe(spec.Neutral).Name);
+    }
+
+    [Fact]
+    public void A_draft_that_owns_no_faces_is_checked_on_the_faces_it_tilted()
+    {
+        var doc = Part();
+        Block();
+        var side = Side(doc);
+        doc.DraftOwnsNoFaces = true;
+        var draft = Draft(new FeatureDraftRequest { NeutralPlane = "front", Faces = new List<string> { side }, AngleDeg = 5 });
+        Assert.Contains(draft.Checks, c => c == "1 drafted planar faces stand at 85° to the neutral plane's normal");
+    }
+
+    [Fact]
+    public void A_draft_with_no_face_left_to_measure_is_rolled_back()
+    {
+        var doc = Part();
+        Block();
+        var side = Side(doc);
+        doc.DraftOwnsNoFaces = true;
+        doc.DraftRemakesFaces = true;
+        var e = Fails(() => Draft(new FeatureDraftRequest { NeutralPlane = "front", Faces = new List<string> { side }, AngleDeg = 5 }));
+        Assert.Equal("draft_angle", e.Error.Details!["check"]);
+        Assert.DoesNotContain(doc.Tree, f => f.Name == "Draft1");
     }
 
     [Fact]
