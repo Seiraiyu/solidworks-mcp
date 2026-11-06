@@ -52,4 +52,19 @@ sealed partial class FakeDocument
         double length = ReadSketch(sketch).Segments.Where(x => !x.Construction).Sum(x => x.LengthMm > 0 ? x.LengthMm : Length(x));
         return MakeFeature("Rib", "Rib", length * spec.ThicknessMm * ThroughMm, 4);
     }
+
+    public List<(IReadOnlyList<object> Faces, double ThicknessMm, bool Outward)> Shells { get; } = new List<(IReadOnlyList<object>, double, bool)>();
+
+    /// <summary>Faces handed to a shell stay in the part (SOLIDWORKS not opening them).</summary>
+    public bool FacesSurvive { get; set; }
+
+    /// <summary>The faces removed are deleted; inward takes 1000 mm³ per mm of thickness, outward adds as much.</summary>
+    public object? Shell(IReadOnlyList<object> facesToRemove, double thicknessMm, bool outward)
+    {
+        Shells.Add((facesToRemove, thicknessMm, outward));
+        if (FeatureSelectFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the face a feature needs");
+        if (FeatureRefuses) return null;
+        if (!FacesSurvive) foreach (var f in facesToRemove.Cast<FakeEntity>()) f.State = PersistState.Deleted;
+        return MakeFeature("Shell", "Shell", (outward ? 1 : -1) * 1000 * thicknessMm, 6);
+    }
 }

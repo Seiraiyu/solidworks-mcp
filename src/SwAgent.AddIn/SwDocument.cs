@@ -135,6 +135,9 @@ public interface ISwDocument
     /// <summary>A rib from an open sketch (<see cref="RibSpec"/>); the new feature, or null when SOLIDWORKS made none.</summary>
     object? Rib(object sketch, RibSpec spec);
 
+    /// <summary>A shell of <paramref name="thicknessMm"/> leaving <paramref name="facesToRemove"/> open; the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Shell(System.Collections.Generic.IReadOnlyList<object> facesToRemove, double thicknessMm, bool outward);
+
     /// <summary>A constant-radius fillet on these edges and faces; the new feature, or null when SOLIDWORKS made none.</summary>
     object? Fillet(System.Collections.Generic.IReadOnlyList<object> edgesAndFaces, double radiusMm);
 

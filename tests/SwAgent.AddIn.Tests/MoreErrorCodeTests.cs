@@ -151,4 +151,49 @@ public class MoreErrorCodeTests : FeatureTestBase
         Assert.Equal(code, Reach(() => Run(new FeatureRibOperation(Services), request)).Code);
         Assert.DoesNotContain(doc.Tree, f => f.Type == "Rib");
     }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_shell_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureShellRequest { ThicknessMm = 2 };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new FeatureShellOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Part();
+        Block();
+        request.FacesToRemove = new List<string> { Face(doc) };
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.ThicknessMm = 0;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                doc.Entities.Last(e => e.Kind == ReferenceKind.Face).State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch1";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.FacesSurvive = true;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureShellOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "Shell");
+    }
 }

@@ -20,7 +20,7 @@ public class OperationCatalogTests
     [Fact]
     public void Catalog_holds_the_phase_3D_operations()
     {
-        Assert.Equal(new[] { "addin.events", "addin.state", "diag.dialog", "diag.edit_sketch", "diag.editing", "diag.scratch_block", "diag.scratch_part", "diag.select", "diag.sleep", "dialog.respond", "dimension.set", "document.close", "document.new", "document.open", "document.rebuild", "document.save", "document.save_as", "feature.chamfer", "feature.delete", "feature.extrude", "feature.fillet", "feature.loft", "feature.revolve", "feature.rib", "feature.suppress", "feature.sweep", "model.bounding_box", "model.dimensions", "model.find", "model.mass", "model.measure", "model.rebuild_status", "model.tree", "refgeom.axis", "refgeom.plane", "refgeom.point", "selection.get", "session.hello", "session.status", "sketch.create", "sketch.modify", "sketch.read" },
+        Assert.Equal(new[] { "addin.events", "addin.state", "diag.dialog", "diag.edit_sketch", "diag.editing", "diag.scratch_block", "diag.scratch_part", "diag.select", "diag.sleep", "dialog.respond", "dimension.set", "document.close", "document.new", "document.open", "document.rebuild", "document.save", "document.save_as", "feature.chamfer", "feature.delete", "feature.extrude", "feature.fillet", "feature.loft", "feature.revolve", "feature.rib", "feature.shell", "feature.suppress", "feature.sweep", "model.bounding_box", "model.dimensions", "model.find", "model.mass", "model.measure", "model.rebuild_status", "model.tree", "refgeom.axis", "refgeom.plane", "refgeom.point", "selection.get", "session.hello", "session.status", "sketch.create", "sketch.modify", "sketch.read" },
             OperationCatalog.All.Select(o => o.Name).ToArray());
         var status = OperationCatalog.Find("session.status")!;
         Assert.Equal("session", status.Family);
@@ -76,6 +76,7 @@ public class OperationCatalogTests
         Assert.Equal("Ui/tool", Shape("feature.sweep"));
         Assert.Equal("Ui/tool", Shape("feature.loft"));
         Assert.Equal("Ui/tool", Shape("feature.rib"));
+        Assert.Equal("Ui/tool", Shape("feature.shell"));
     }
 
     [Fact]

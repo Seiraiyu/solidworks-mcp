@@ -93,4 +93,14 @@ internal sealed partial class SolidWorksDocument
         }
         return AllFeatures().FirstOrDefault(f => f.GetTypeName2() == type && !before.Contains(f.Name));
     }
+
+    /// <summary>IModelDoc2.InsertFeatureShell with the faces to remove selected (mark 0); it returns nothing, so the new shell is the Shell feature that was not in the tree before.</summary>
+    public object? Shell(IReadOnlyList<object> facesToRemove, double thicknessMm, bool outward)
+    {
+        return NewFeature("Shell", () =>
+        {
+            for (int i = 0; i < facesToRemove.Count; i++) Pick(facesToRemove[i], append: i > 0, mark: 0);
+            Doc.InsertFeatureShell(thicknessMm / Mm, outward);
+        });
+    }
 }

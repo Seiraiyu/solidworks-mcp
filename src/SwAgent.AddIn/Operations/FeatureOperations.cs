@@ -549,6 +549,26 @@ public static class FeatureFacts
 
     public static double Dot(Vector3 a, Vector3 b) => a.X * b.X + a.Y * b.Y + a.Z * b.Z;
 
+    /// <summary>Every entity named in <paramref name="field"/> no longer resolves: the feature consumed it (a shell's open faces).</summary>
+    public static void Gone(ReferenceService references, ISwDocument doc, IReadOnlyList<string>? texts, string field, ReferenceKind kind, FeatureResult result, string what)
+    {
+        if (texts == null || texts.Count == 0) return;
+        for (int i = 0; i < texts.Count; i++)
+        {
+            try
+            {
+                references.Resolve(doc, texts[i], $"/{field}/{i}", kind);
+            }
+            catch (SwAgentException e) when (e.Code == ErrorCode.ReferenceUnresolved)
+            {
+                continue;
+            }
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"/{field}/{i} is still a {WireNames.ForEnum(kind)} of the part after the {what}",
+                new JsonObject { ["check"] = "gone", ["field"] = $"/{field}/{i}" });
+        }
+        result.Checks.Add($"the {texts.Count} {WireNames.ForEnum(kind)}s named in {field} are gone");
+    }
+
     /// <summary>The feature made at least one face.</summary>
     public static void MadeFaces(FeatureResult result, string what)
     {
