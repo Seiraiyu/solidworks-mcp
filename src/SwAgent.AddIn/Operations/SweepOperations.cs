@@ -67,3 +67,47 @@ public sealed class FeatureSweepOperation : ModelChangeOperation<FeatureSweepReq
         FeatureFacts.MadeFaces(result, What(request));
     }
 }
+
+public sealed class FeatureLoftOperation : ModelChangeOperation<FeatureLoftRequest, FeatureResult>
+{
+    public FeatureLoftOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(FeatureLoftRequest request) => request.Document;
+
+    static string What(FeatureLoftRequest request) => request.Mode == FeatureMode.Cut ? "cut loft" : "boss loft";
+
+    protected override FeatureResult Change(ISwDocument doc, FeatureLoftRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        bool cut = request.Mode == FeatureMode.Cut;
+        if (cut && request.Merge != null) throw FeatureFacts.Invalid("merge", "merge is for a boss; a cut always removes material from the bodies it meets");
+        if (request.Profiles.Count < 2) throw FeatureFacts.Invalid("profiles", "a loft needs at least two profiles, in the order it passes through them");
+        var references = Services.References;
+        var spec = new LoftSpec { Cut = cut, Merge = request.Merge ?? true };
+        spec.Profiles.AddRange(FeatureFacts.Entities(references, doc, request.Profiles, "profiles", ReferenceKind.Sketch));
+        for (int i = 0; i < spec.Profiles.Count; i++) FeatureFacts.Profile(doc, spec.Profiles[i], $"/profiles/{i}", What(request));
+        var guides = FeatureFacts.Entities(references, doc, request.Guides, "guides", ReferenceKind.Sketch);
+        for (int i = 0; i < guides.Count; i++)
+        {
+            if (spec.Profiles.Any(p => ReferenceEquals(p, guides[i])))
+                throw FeatureFacts.Invalid($"/guides/{i}", $"/guides/{i} is one of the profiles; a guide is a sketch of its own");
+        }
+        spec.Guides.AddRange(guides);
+        var feature = doc.Loft(spec)
+            ?? throw FeatureFacts.NotMade(doc, What(request), $"through {spec.Profiles.Count} profiles", "check that each profile is closed and on its own plane, and that every guide touches every profile");
+        return FeatureFacts.Made(references, doc, feature, tx);
+    }
+
+    /// <summary>The feature is a loft, there is a body, and the volume moved the right way.</summary>
+    protected override void Check(ISwDocument doc, FeatureLoftRequest request, FeatureResult result)
+    {
+        bool cut = request.Mode == FeatureMode.Cut;
+        FeatureFacts.ExpectType(doc, result, cut ? "BlendCut" : "Blend", What(request));
+        int bodies = doc.SolidBodyCount();
+        FeatureFacts.HasBody(bodies, What(request));
+        FeatureFacts.VolumeChanged(result, What(request), VolumeBefore, Volume(doc, bodies), cut ? -1 : 1);
+        FeatureFacts.MadeFaces(result, What(request));
+    }
+}

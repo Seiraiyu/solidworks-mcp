@@ -27,3 +27,24 @@ public sealed class FeatureSweepRequest
     [Description("For a boss: merge it with the bodies it touches. Default true. Not for a cut.")]
     public bool? Merge { get; set; }
 }
+
+[Operation("feature.loft", typeof(FeatureResult))]
+[Description("Lofts between two or more sketch profiles in order, optionally following guide curves: a boss adds material, a cut removes it. Checked: the feature exists as a loft, rebuilds without error, the part has a solid body, and its volume grew (boss) or shrank (cut). Otherwise the loft is deleted and the part is as it was (rolled back); the sketches stay. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class FeatureLoftRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The profiles, in the order the loft passes through them: at least two sketches, by name or reference, each a closed profile on its own plane.")]
+    public List<string> Profiles { get; set; } = new List<string>();
+
+    [Description("Guide curves the loft follows between its profiles: sketches, by name or reference, each touching every profile.")]
+    public List<string>? Guides { get; set; }
+
+    [Description("boss (adds material) or cut (removes it). Default boss.")]
+    public FeatureMode? Mode { get; set; }
+
+    [Description("For a boss: merge it with the bodies it touches. Default true. Not for a cut.")]
+    public bool? Merge { get; set; }
+}

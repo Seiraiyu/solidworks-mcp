@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "description": "Lofts between two or more sketch profiles in order, optionally following guide curves: a boss adds material, a cut removes it. Checked: the feature exists as a loft, rebuilds without error, the part has a solid body, and its volume grew (boss) or shrank (cut). Otherwise the loft is deleted and the part is as it was (rolled back); the sketches stay. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The profiles, in the order the loft passes through them: at least two sketches, by name or reference, each a closed profile on its own plane."
+    },
+    "guides": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Guide curves the loft follows between its profiles: sketches, by name or reference, each touching every profile."
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "boss",
+        "cut"
+      ],
+      "description": "boss (adds material) or cut (removes it). Default boss."
+    },
+    "merge": {
+      "type": "boolean",
+      "description": "For a boss: merge it with the bodies it touches. Default true. Not for a cut."
+    }
+  },
+  "required": [
+    "profiles"
+  ],
+  "additionalProperties": false
+}

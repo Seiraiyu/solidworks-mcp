@@ -28,4 +28,16 @@ sealed partial class FakeDocument
 
     static double Length(SketchSegmentRecord s) =>
         s.Start == null || s.End == null ? 0 : Math.Sqrt(Math.Pow(s.End.X - s.Start.X, 2) + Math.Pow(s.End.Y - s.Start.Y, 2));
+
+    public List<LoftSpec> Lofts { get; } = new List<LoftSpec>();
+
+    /// <summary>The profiles' mean area times ThroughMm (how far apart the fake takes its profiles to be).</summary>
+    public object? Loft(LoftSpec spec)
+    {
+        Lofts.Add(spec);
+        if (FeatureSelectFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the profiles a feature needs");
+        if (FeatureRefuses) return null;
+        double area = spec.Profiles.Average(p => FeatureFacts.Region(ReadSketch(p))?.AreaMm2 ?? 100);
+        return MakeFeature(spec.Cut ? "Cut-Loft" : "Loft", spec.Cut ? "BlendCut" : "Blend", (spec.Cut ? -1 : 1) * area * ThroughMm, 2 + spec.Profiles.Count * 4);
+    }
 }

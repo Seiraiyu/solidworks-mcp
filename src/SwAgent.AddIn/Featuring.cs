@@ -107,3 +107,12 @@ public sealed class SweepSpec
 
     public bool Merge { get; set; } = true;
 }
+
+/// <summary>A loft as ISwDocument.Loft makes it: the profiles and guides resolved, in order.</summary>
+public sealed class LoftSpec
+{
+    public bool Cut { get; set; }
+    public System.Collections.Generic.List<object> Profiles { get; } = new System.Collections.Generic.List<object>();
+    public System.Collections.Generic.List<object> Guides { get; } = new System.Collections.Generic.List<object>();
+    public bool Merge { get; set; } = true;
+}

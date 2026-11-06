@@ -40,4 +40,27 @@ internal sealed partial class SolidWorksDocument
             Doc.ClearSelection2(true);
         }
     }
+
+    /// <summary>
+    /// InsertProtrusionBlend2 or InsertCutBlend with the profiles selected in order with mark 1 and the guides with
+    /// mark 2: an open loft, no start or end tangency, no thin wall.
+    /// </summary>
+    public object? Loft(LoftSpec s)
+    {
+        Doc.ClearSelection2(true);
+        try
+        {
+            for (int i = 0; i < s.Profiles.Count; i++) Pick(s.Profiles[i], append: i > 0, mark: 1);
+            foreach (var guide in s.Guides) Pick(guide, append: true, mark: 2);
+            var fm = Doc.FeatureManager;
+            const short none = (short)swTangencyType_e.swTangencyNone;
+            return s.Cut
+                ? fm.InsertCutBlend(false, true, false, 1, none, none, false, 0, 0, 0, true, true)
+                : fm.InsertProtrusionBlend2(false, true, false, 1, none, none, 1, 1, true, true, false, 0, 0, 0, s.Merge, true, true, 0);
+        }
+        finally
+        {
+            Doc.ClearSelection2(true);
+        }
+    }
 }
