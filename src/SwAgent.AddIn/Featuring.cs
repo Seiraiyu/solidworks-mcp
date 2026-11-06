@@ -141,3 +141,23 @@ public sealed class DraftSpec
     public double AngleDeg { get; set; }
     public bool Reverse { get; set; }
 }
+
+/// <summary>A Hole Wizard hole as ISwDocument.Hole makes it: the face, the sketch points at its positions, mm.</summary>
+public sealed class HoleSpec
+{
+    public object Face { get; set; } = new object();
+
+    /// <summary>The sketch points the operation drew at the positions, in their order.</summary>
+    public System.Collections.Generic.List<object> Points { get; } = new System.Collections.Generic.List<object>();
+
+    /// <summary>The positions in model space, mm, in the same order.</summary>
+    public System.Collections.Generic.List<Point3> Positions { get; } = new System.Collections.Generic.List<Point3>();
+
+    public HoleType Type { get; set; }
+    public HoleStandard Standard { get; set; }
+    public string Size { get; set; } = "";
+    public HoleEnd End { get; set; }
+
+    /// <summary>For blind; 0 for through_all.</summary>
+    public double DepthMm { get; set; }
+}

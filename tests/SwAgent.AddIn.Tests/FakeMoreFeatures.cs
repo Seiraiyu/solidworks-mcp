@@ -120,4 +120,38 @@ sealed partial class FakeDocument
         if (!_undo.TryGetValue(feature, out var list)) _undo[feature] = list = new List<Action>();
         list.Add(undo);
     }
+
+    public List<HoleSpec> Holes { get; } = new List<HoleSpec>();
+
+    /// <summary>The fake's holes are made this far, mm, along x from their positions (a hole in the wrong place).</summary>
+    public double HoleOffsetMm { get; set; }
+
+    /// <summary>The fake's hole makes no cylinder for its last position (SOLIDWORKS drilling fewer holes than asked).</summary>
+    public bool HoleSkipsOne { get; set; }
+
+    /// <summary>A 2.5 mm radius cylinder per position, on the face's normal (its axis), each taking π r² × depth (or ThroughMm).</summary>
+    public object? Hole(HoleSpec spec)
+    {
+        Holes.Add(spec);
+        if (FeatureSelectFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the sketch point a hole goes at");
+        if (FeatureRefuses) return null;
+        const double r = 2.5;
+        double depth = spec.End == HoleEnd.Blind ? spec.DepthMm : ThroughMm;
+        int made = spec.Positions.Count - (HoleSkipsOne ? 1 : 0);
+        var hole = MakeFeature("Hole", "HoleWzd", -Math.PI * r * r * depth * made, 0);
+        var axis = ((FakeEntity)spec.Face).Info.Normal ?? new Vector3(0, 0, 1);
+        foreach (var p in spec.Positions.Take(made))
+        {
+            _facesOf[hole].Add(Add(ReferenceKind.Face, new EntityInfo
+            {
+                Feature = hole.Info.Name,
+                Geometry = GeometryType.Cylinder,
+                Axis = axis,
+                Origin = new Point3(p.X + HoleOffsetMm, p.Y, p.Z),
+                RadiusMm = r,
+            }));
+            _facesOf[hole].Add(Add(ReferenceKind.Face, new EntityInfo { Feature = hole.Info.Name, Geometry = GeometryType.Plane, Normal = axis }));
+        }
+        return hole;
+    }
 }

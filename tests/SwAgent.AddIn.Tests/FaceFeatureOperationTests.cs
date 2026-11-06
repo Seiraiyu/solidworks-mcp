@@ -124,3 +124,96 @@ public class FeatureDraftTests : FeatureTestBase
         Assert.Equal("/faces/0", Fails(() => Draft(new FeatureDraftRequest { NeutralPlane = side, Faces = new List<string> { side }, AngleDeg = 5 })).Error.Details!["field"]);
     }
 }
+
+public class FeatureHoleTests : FeatureTestBase
+{
+    internal FeatureResult Hole(FeatureHoleRequest request) => Run(new FeatureHoleOperation(Services), request);
+
+    /// <summary>The block's top face at z = 10, as model.find would name it: planar, normal +z, and every point asked about on it.</summary>
+    internal (FakeEntity Face, string Reference) Top(FakeDocument doc)
+    {
+        var top = doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Plane, AreaMm2 = 800, Normal = new Vector3(0, 0, 1), DistanceMm = 0, Feature = "Boss-Extrude1" });
+        return (top, Services.References.Describe(doc, top).Reference!);
+    }
+
+    static List<Point3> Two() => new List<Point3> { new Point3(10, 10, 10), new Point3(30, 10, 10) };
+
+    [Fact]
+    public void Two_simple_holes_are_drilled_at_their_points_and_checked_on_their_axes()
+    {
+        var doc = Part();
+        Block();
+        var (face, top) = Top(doc);
+        var hole = Hole(new FeatureHoleRequest { Face = top, Positions = Two(), Size = "Ø5.0", DepthMm = 6 });
+        Assert.Equal("Hole1", hole.Feature.Name);
+        Assert.Equal(8000 - 2 * Math.PI * 6.25 * 6, hole.Change.VolumeAfterMm3, 6);
+        Assert.Contains(hole.Checks, c => c == "2 holes, one on each position's axis");
+        Assert.Equal(new[] { "Sketch2", "Hole1" }, hole.Change.Created.Select(c => c.Name).ToArray());
+        var spec = doc.Holes.Single();
+        Assert.Same(face, spec.Face);
+        Assert.Equal((HoleType.Simple, HoleStandard.Iso, "Ø5.0", HoleEnd.Blind, 6.0), (spec.Type, spec.Standard, spec.Size, spec.End, spec.DepthMm));
+        Assert.Equal(2, spec.Points.Count);
+        var sketch = doc.Sketches.Single(s => s.Name == "Sketch2");
+        Assert.Same(face, sketch.On);
+        Assert.Equal(new[] { (10.0, 10.0), (30.0, 10.0) }, sketch.Points.Select(p => (p.At.X, p.At.Y)).ToArray());
+        Assert.True(doc.Editors.Last().Closed);
+    }
+
+    [Fact]
+    public void A_tapped_hole_through_all_takes_no_depth()
+    {
+        var doc = Part();
+        Block();
+        var (_, top) = Top(doc);
+        Hole(new FeatureHoleRequest { Face = top, Positions = Two(), Type = HoleType.Tapped, Standard = HoleStandard.AnsiMetric, Size = " M5 ", End = HoleEnd.ThroughAll });
+        var spec = doc.Holes.Single();
+        Assert.Equal((HoleType.Tapped, HoleStandard.AnsiMetric, "M5", HoleEnd.ThroughAll, 0.0), (spec.Type, spec.Standard, spec.Size, spec.End, spec.DepthMm));
+    }
+
+    [Fact]
+    public void A_hole_off_its_position_is_rolled_back_with_its_sketch()
+    {
+        var doc = Part();
+        Block();
+        var (_, top) = Top(doc);
+        doc.HoleOffsetMm = 0.5;
+        var e = Fails(() => Hole(new FeatureHoleRequest { Face = top, Positions = Two(), Size = "Ø5.0", DepthMm = 6 }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("hole_position", e.Error.Details!["check"]);
+        Assert.Equal("/positions/0", e.Error.Details["field"]);
+        Assert.Equal(0.5, (double)e.Error.Details["measured"]!, 9);
+        Assert.DoesNotContain(doc.Tree, f => f.Name == "Hole1" || f.Name == "Sketch2");
+        Assert.Equal(8000, doc.MassProperties!.VolumeMm3, 6);
+    }
+
+    [Fact]
+    public void Fewer_holes_than_positions_fail_the_check()
+    {
+        var doc = Part();
+        Block();
+        var (_, top) = Top(doc);
+        doc.HoleSkipsOne = true;
+        var e = Fails(() => Hole(new FeatureHoleRequest { Face = top, Positions = Two(), Size = "Ø5.0", DepthMm = 6 }));
+        Assert.Equal("hole_position", e.Error.Details!["check"]);
+        Assert.Equal("/positions/1", e.Error.Details["field"]);
+    }
+
+    [Fact]
+    public void Requests_that_cannot_be_drilled_name_their_field()
+    {
+        var doc = Part();
+        var (face, top) = Top(doc);
+        Assert.Equal("face", Fails(() => Hole(new FeatureHoleRequest { Face = top, Positions = Two(), Size = "Ø5.0", DepthMm = 6 })).Error.Details!["field"]);
+        Block();
+        Assert.Equal("positions", Fails(() => Hole(new FeatureHoleRequest { Face = top, Size = "Ø5.0", DepthMm = 6 })).Error.Details!["field"]);
+        Assert.Equal("/positions/1", Fails(() => Hole(new FeatureHoleRequest { Face = top, Positions = new List<Point3> { new Point3(1, 1, 10), new Point3(1, 1, 10) }, Size = "Ø5.0", DepthMm = 6 })).Error.Details!["field"]);
+        Assert.Equal("size", Fails(() => Hole(new FeatureHoleRequest { Face = top, Positions = Two(), Size = " ", DepthMm = 6 })).Error.Details!["field"]);
+        Assert.Equal("depth_mm", Fails(() => Hole(new FeatureHoleRequest { Face = top, Positions = Two(), Size = "M5" })).Error.Details!["field"]);
+        Assert.Equal("depth_mm", Fails(() => Hole(new FeatureHoleRequest { Face = top, Positions = Two(), Size = "M5", End = HoleEnd.ThroughAll, DepthMm = 6 })).Error.Details!["field"]);
+        face.Info.DistanceMm = 0.5;
+        Assert.Equal("/positions/0", Fails(() => Hole(new FeatureHoleRequest { Face = top, Positions = Two(), Size = "Ø5.0", DepthMm = 6 })).Error.Details!["field"]);
+        face.Info.Geometry = GeometryType.Cylinder;
+        Assert.Equal("face", Fails(() => Hole(new FeatureHoleRequest { Face = top, Positions = Two(), Size = "Ø5.0", DepthMm = 6 })).Error.Details!["field"]);
+        Assert.DoesNotContain(doc.Tree, f => f.Name == "Sketch2");
+    }
+}

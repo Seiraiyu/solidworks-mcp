@@ -116,3 +116,115 @@ public sealed class FeatureDraftOperation : ModelChangeOperation<FeatureDraftReq
         result.Checks.Add(FormattableString.Invariant($"{measured} drafted planar faces stand at {expected:0.###}° to the neutral plane's normal"));
     }
 }
+
+public sealed class FeatureHoleOperation : ModelChangeOperation<FeatureHoleRequest, FeatureResult>
+{
+    public FeatureHoleOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    /// <summary>How far a position may be from the face, and a hole's axis from its position, mm.</summary>
+    public const double PositionToleranceMm = 0.01;
+
+    protected override string? DocumentOf(FeatureHoleRequest request) => request.Document;
+
+    protected override FeatureResult Change(ISwDocument doc, FeatureHoleRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        var spec = Spec(request);
+        if (BodiesBefore == 0) throw FeatureFacts.Invalid("face", "a hole is drilled into a body, and this part has none yet");
+        var (face, _) = Services.References.Resolve(doc, request.Face, "face", ReferenceKind.Face);
+        var info = doc.Describe(face);
+        if (info.Geometry != GeometryType.Plane)
+            throw FeatureFacts.Invalid("face", $"face: Hole Wizard holes start on a planar face, and this is a {WireNames.ForEnum(info.Geometry)}");
+        for (int i = 0; i < request.Positions.Count; i++)
+        {
+            double off = doc.DistanceMm(face, request.Positions[i]);
+            if (off > PositionToleranceMm)
+                throw FeatureFacts.Invalid($"/positions/{i}", FormattableString.Invariant($"/positions/{i} {request.Positions[i]} is {off:0.###} mm off the face; give points on it"));
+        }
+        spec.Face = face;
+        var editor = doc.NewSketch(face);
+        var sketch = new CreatedItem { Name = editor.Name, Kind = ReferenceKind.Sketch };
+        tx.Made(sketch, () =>
+        {
+            doc.DeleteFeature(editor.Sketch);
+            doc.Rebuild(false);
+        });
+        try
+        {
+            foreach (var p in request.Positions)
+            {
+                spec.Points.Add(editor.Point(editor.ToSketch(p)));
+                spec.Positions.Add(p);
+            }
+        }
+        finally
+        {
+            editor.Close();
+        }
+        sketch.Reference = Services.References.Describe(doc, editor.Sketch).Reference;
+        string what = $"{WireNames.ForEnum(spec.Type)} {spec.Size} hole";
+        var feature = doc.Hole(spec)
+            ?? throw FeatureFacts.NotMade(doc, what, $"at {spec.Positions.Count} positions", $"check that {spec.Size} is a {WireNames.ForEnum(spec.Standard)} size the Hole Wizard lists for a {WireNames.ForEnum(spec.Type)} hole");
+        return FeatureFacts.Made(Services.References, doc, feature, tx);
+    }
+
+    /// <summary>The request as SOLIDWORKS takes it, every field checked: invalid_argument names the first that is wrong.</summary>
+    static HoleSpec Spec(FeatureHoleRequest r)
+    {
+        if (r.Positions.Count == 0) throw FeatureFacts.Invalid("positions", "a hole needs at least one position on the face");
+        for (int i = 0; i < r.Positions.Count; i++)
+        {
+            int seen = r.Positions.Take(i).ToList().FindIndex(p => Distance(p, r.Positions[i]) <= PositionToleranceMm);
+            if (seen >= 0) throw FeatureFacts.Invalid($"/positions/{i}", $"/positions/{i} is where /positions/{seen} is");
+        }
+        if (string.IsNullOrWhiteSpace(r.Size)) throw FeatureFacts.Invalid("size", "a hole needs its size as the Hole Wizard lists it, for example M5 or Ø5.0");
+        var end = r.End ?? HoleEnd.Blind;
+        var spec = new HoleSpec { Type = r.Type ?? HoleType.Simple, Standard = r.Standard ?? HoleStandard.Iso, Size = r.Size.Trim(), End = end };
+        if (end == HoleEnd.Blind) spec.DepthMm = FeatureFacts.Length(r.DepthMm, "depth_mm", "a blind hole");
+        else if (r.DepthMm != null) throw FeatureFacts.Invalid("depth_mm", "depth_mm is for a blind hole, and this one goes through_all");
+        return spec;
+    }
+
+    static double Distance(Point3 a, Point3 b) => Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y) + (a.Z - b.Z) * (a.Z - b.Z));
+
+    /// <summary>How far <paramref name="p"/> is from the line through <paramref name="o"/> along <paramref name="axis"/>, mm.</summary>
+    public static double FromAxis(Point3 p, Point3 o, Vector3 axis)
+    {
+        double ax = axis.X, ay = axis.Y, az = axis.Z, l = Math.Sqrt(ax * ax + ay * ay + az * az);
+        double dx = p.X - o.X, dy = p.Y - o.Y, dz = p.Z - o.Z;
+        double cx = dy * az - dz * ay, cy = dz * ax - dx * az, cz = dx * ay - dy * ax;
+        return Math.Sqrt(cx * cx + cy * cy + cz * cz) / l;
+    }
+
+    /// <summary>The feature is a Hole Wizard hole, the volume shrank, and there is one hole (a set of coaxial cylinders) on each position's axis.</summary>
+    protected override void Check(ISwDocument doc, FeatureHoleRequest request, FeatureResult result)
+    {
+        FeatureFacts.ExpectType(doc, result, "HoleWzd", "hole");
+        FeatureFacts.VolumeChanged(result, "hole", VolumeBefore, Volume(doc, doc.SolidBodyCount()), -1);
+        var cylinders = result.Faces.Where(f => f.Geometry == GeometryType.Cylinder && f.Axis != null && f.Origin != null).ToList();
+        var axes = new List<EntityInfo>();
+        foreach (var c in cylinders)
+        {
+            if (!axes.Any(a => FeatureChecks.AngleDeg(a.Axis!, c.Axis!) < 1e-3 && FromAxis(c.Origin!, a.Origin!, a.Axis!) <= PositionToleranceMm)) axes.Add(c);
+        }
+        for (int i = 0; i < request.Positions.Count; i++)
+        {
+            var p = request.Positions[i];
+            if (!axes.Any(a => FromAxis(p, a.Origin!, a.Axis!) <= PositionToleranceMm))
+            {
+                double nearest = axes.Count == 0 ? double.PositiveInfinity : axes.Min(a => FromAxis(p, a.Origin!, a.Axis!));
+                throw new SwAgentException(ErrorCode.VerificationFailed,
+                    FormattableString.Invariant($"no hole of {result.Feature.Name} is on /positions/{i} {p}; the nearest axis is {nearest:0.###} mm off it"),
+                    new JsonObject { ["check"] = "hole_position", ["field"] = $"/positions/{i}", ["expected"] = 0.0, ["measured"] = double.IsInfinity(nearest) ? null : (object?)nearest });
+            }
+        }
+        if (axes.Count != request.Positions.Count)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"{result.Feature.Name} made {axes.Count} holes for {request.Positions.Count} positions",
+                new JsonObject { ["check"] = "hole_count", ["expected"] = request.Positions.Count, ["measured"] = axes.Count });
+        }
+        result.Checks.Add($"{axes.Count} holes, one on each position's axis");
+    }
+}

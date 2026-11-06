@@ -141,6 +141,9 @@ public interface ISwDocument
     /// <summary>A neutral-plane draft (<see cref="DraftSpec"/>); the new feature, or null when SOLIDWORKS made none.</summary>
     object? Draft(DraftSpec spec);
 
+    /// <summary>Hole Wizard holes at <see cref="HoleSpec.Points"/>; the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Hole(HoleSpec spec);
+
     /// <summary>A constant-radius fillet on these edges and faces; the new feature, or null when SOLIDWORKS made none.</summary>
     object? Fillet(System.Collections.Generic.IReadOnlyList<object> edgesAndFaces, double radiusMm);
 

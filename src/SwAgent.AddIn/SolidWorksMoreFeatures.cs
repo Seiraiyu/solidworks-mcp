@@ -123,4 +123,43 @@ internal sealed partial class SolidWorksDocument
             Doc.ClearSelection2(true);
         }
     }
+
+    /// <summary>
+    /// HoleWizard5 with the operation's sketch points selected (mark 0), so a hole goes at each. The fastener table is
+    /// the type's in the standard (drill sizes, socket head cap screw, countersunk flat head, tapped hole), the size is
+    /// the Hole Wizard's own name for it, and every dimension the table gives is left to it (-1).
+    /// </summary>
+    public object? Hole(HoleSpec s)
+    {
+        bool iso = s.Standard == HoleStandard.Iso;
+        var (generic, fastener) = s.Type switch
+        {
+            HoleType.Counterbore => (swWzdGeneralHoleTypes_e.swWzdCounterBore,
+                iso ? swWzdHoleStandardFastenerTypes_e.swStandardISOSocketHeadCap : swWzdHoleStandardFastenerTypes_e.swStandardAnsiMetricSocketHeadCapScrew),
+            HoleType.Countersink => (swWzdGeneralHoleTypes_e.swWzdCounterSink,
+                iso ? swWzdHoleStandardFastenerTypes_e.swStandardISOCTSKFlatHead : swWzdHoleStandardFastenerTypes_e.swStandardAnsiMetricFlatHead82),
+            HoleType.Tapped => (swWzdGeneralHoleTypes_e.swWzdTap,
+                iso ? swWzdHoleStandardFastenerTypes_e.swStandardISOTappedHole : swWzdHoleStandardFastenerTypes_e.swStandardAnsiMetricTappedHole),
+            _ => (swWzdGeneralHoleTypes_e.swWzdHole,
+                iso ? swWzdHoleStandardFastenerTypes_e.swStandardISODrillSizes : swWzdHoleStandardFastenerTypes_e.swStandardAnsiMetricDrillSizes),
+        };
+        int standard = (int)(iso ? swWzdHoleStandards_e.swStandardISO : swWzdHoleStandards_e.swStandardAnsiMetric);
+        short end = (short)(s.End == HoleEnd.ThroughAll ? swEndConditions_e.swEndCondThroughAll : swEndConditions_e.swEndCondBlind);
+        double depth = s.End == HoleEnd.ThroughAll ? -1 : s.DepthMm / Mm;
+        Doc.ClearSelection2(true);
+        try
+        {
+            for (int i = 0; i < s.Points.Count; i++)
+            {
+                if (!((ISketchPoint)s.Points[i]).Select4(i > 0, Marked(0)))
+                    throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the sketch point a hole goes at");
+            }
+            return Doc.FeatureManager.HoleWizard5((int)generic, standard, (int)fastener, s.Size, end, -1, depth, -1,
+                -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, "", false, true, true, true, true, false);
+        }
+        finally
+        {
+            Doc.ClearSelection2(true);
+        }
+    }
 }

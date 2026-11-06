@@ -41,3 +41,58 @@ public sealed class FeatureDraftRequest
     [Description("Pull the other way, against the neutral plane's normal. Default false.")]
     public bool? Reverse { get; set; }
 }
+
+/// <summary>The Hole Wizard's hole types this stage offers.</summary>
+public enum HoleType
+{
+    Simple,
+    Counterbore,
+    Countersink,
+    Tapped,
+}
+
+/// <summary>The hole standards this stage offers: the metric ones.</summary>
+public enum HoleStandard
+{
+    Iso,
+    AnsiMetric,
+}
+
+/// <summary>Where a hole ends.</summary>
+public enum HoleEnd
+{
+    Blind,
+    ThroughAll,
+}
+
+[Operation("feature.hole", typeof(FeatureResult))]
+[Description("Drills Hole Wizard holes into a planar face at the positions given: simple (drill sizes), counterbore (for socket head cap screws), countersink (for countersunk flat head screws) or tapped, to an ISO or ANSI metric standard, blind or through all. The add-in first sketches a point at each position on the face. Lengths in mm. Checked: the feature exists as a Hole Wizard hole, rebuilds without error, the volume shrank, and the hole made one cylinder (or set of coaxial cylinders) per position, each on its position's axis. Otherwise the hole and its sketch are deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class FeatureHoleRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The planar face the holes start on: its reference (model.find kind face).")]
+    public string Face { get; set; } = "";
+
+    [Required]
+    [Description("Where each hole goes: points on the face, in the part's model space, mm.")]
+    public List<Point3> Positions { get; set; } = new List<Point3>();
+
+    [Description("simple (the default), counterbore, countersink or tapped.")]
+    public HoleType? Type { get; set; }
+
+    [Description("iso (the default) or ansi_metric.")]
+    public HoleStandard? Standard { get; set; }
+
+    [Required]
+    [Description("The size exactly as SOLIDWORKS' Hole Wizard lists it for the type and standard: M5 for a counterbore, countersink or tapped hole; Ø5.0 for an ISO simple hole (a drill size).")]
+    public string Size { get; set; } = "";
+
+    [Description("blind (the default: depth_mm deep) or through_all.")]
+    public HoleEnd? End { get; set; }
+
+    [Description("How deep, mm, for blind; more than 0. Not given for through_all.")]
+    public double? DepthMm { get; set; }
+}

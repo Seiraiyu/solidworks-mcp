@@ -44,6 +44,13 @@ sealed class FakeSketch
         return (new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, 1));
     }
 
+    /// <summary>A model point in the sketch's coordinates: its components along the sketch's axes (the fake's origin is the part's).</summary>
+    public Point2 ToSketch(Point3 p)
+    {
+        var (x, y, _) = Axes();
+        return new Point2(p.X * x.X + p.Y * x.Y + p.Z * x.Z, p.X * y.X + p.Y * y.Y + p.Z * y.Z);
+    }
+
     public SketchContents Read()
     {
         var (x, y, normal) = Axes();
@@ -102,6 +109,8 @@ sealed class FakeSketchEditor : ISketchEditor
     public string Name => _sketch.Name;
 
     public bool Closed { get; private set; }
+
+    public Point2 ToSketch(Point3 model) => _sketch.ToSketch(model);
 
     public void Rename(string name)
     {

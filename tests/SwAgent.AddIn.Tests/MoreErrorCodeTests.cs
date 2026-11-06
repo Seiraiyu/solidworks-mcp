@@ -243,4 +243,50 @@ public class MoreErrorCodeTests : FeatureTestBase
         Assert.Equal(code, Reach(() => Run(new FeatureDraftOperation(Services), request)).Code);
         Assert.DoesNotContain(doc.Tree, f => f.Type == "Draft");
     }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_hole_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureHoleRequest { Face = "Face1", Positions = new List<Point3> { new Point3(20, 10, 10) }, Size = "Ø5.0", DepthMm = 5 };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new FeatureHoleOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Part();
+        Block();
+        var top = doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Plane, Normal = new Vector3(0, 0, 1), DistanceMm = 0 });
+        request.Face = Services.References.Describe(doc, top).Reference!;
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.DepthMm = null;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                top.State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                Sw.OpenCommandTitle = "Hole Specification";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.HoleOffsetMm = 1;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureHoleOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "HoleWzd" || f.Name == "Sketch2");
+    }
 }

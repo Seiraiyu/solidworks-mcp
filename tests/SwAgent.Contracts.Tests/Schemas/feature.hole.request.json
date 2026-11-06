@@ -1,0 +1,82 @@
+{
+  "type": "object",
+  "description": "Drills Hole Wizard holes into a planar face at the positions given: simple (drill sizes), counterbore (for socket head cap screws), countersink (for countersunk flat head screws) or tapped, to an ISO or ANSI metric standard, blind or through all. The add-in first sketches a point at each position on the face. Lengths in mm. Checked: the feature exists as a Hole Wizard hole, rebuilds without error, the volume shrank, and the hole made one cylinder (or set of coaxial cylinders) per position, each on its position's axis. Otherwise the hole and its sketch are deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "face": {
+      "type": "string",
+      "description": "The planar face the holes start on: its reference (model.find kind face)."
+    },
+    "positions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A point in the part's model space, in millimetres.",
+        "properties": {
+          "x": {
+            "type": "number",
+            "description": "X, mm."
+          },
+          "y": {
+            "type": "number",
+            "description": "Y, mm."
+          },
+          "z": {
+            "type": "number",
+            "description": "Z, mm."
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "z"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Where each hole goes: points on the face, in the part's model space, mm."
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "simple",
+        "counterbore",
+        "countersink",
+        "tapped"
+      ],
+      "description": "simple (the default), counterbore, countersink or tapped."
+    },
+    "standard": {
+      "type": "string",
+      "enum": [
+        "iso",
+        "ansi_metric"
+      ],
+      "description": "iso (the default) or ansi_metric."
+    },
+    "size": {
+      "type": "string",
+      "description": "The size exactly as SOLIDWORKS' Hole Wizard lists it for the type and standard: M5 for a counterbore, countersink or tapped hole; Ø5.0 for an ISO simple hole (a drill size)."
+    },
+    "end": {
+      "type": "string",
+      "enum": [
+        "blind",
+        "through_all"
+      ],
+      "description": "blind (the default: depth_mm deep) or through_all."
+    },
+    "depth_mm": {
+      "type": "number",
+      "description": "How deep, mm, for blind; more than 0. Not given for through_all."
+    }
+  },
+  "required": [
+    "face",
+    "positions",
+    "size"
+  ],
+  "additionalProperties": false
+}
