@@ -79,3 +79,21 @@ public sealed class FeatureCircularPatternRequest
     [Description("Turn the other way. Default false.")]
     public bool? Reverse { get; set; }
 }
+
+[Operation("feature.mirror", typeof(FeatureResult))]
+[Description("Mirrors features, or the part's whole solid body, about a plane or planar face; a mirrored body is merged with the original. With features, their own volume is measured first by suppressing them for a moment and putting them back, unless another feature is built on them. Checked: the feature exists as a mirror, rebuilds without error, and for features the volume changed by their volume once more (or, when it could not be measured, changed at all), for a body it grew and at most doubled. Otherwise the mirror is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class FeatureMirrorRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("The features to mirror: their names or references. Give features, or body: true.")]
+    public List<string>? Features { get; set; }
+
+    [Description("Mirror the part's whole solid body (every solid body) instead of features. Default false.")]
+    public bool? Body { get; set; }
+
+    [Required]
+    [Description("The mirror plane: a plane's name (front, top, right, Plane1) or reference, or a planar face's reference.")]
+    public string Plane { get; set; } = "";
+}

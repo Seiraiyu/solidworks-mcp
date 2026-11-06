@@ -413,4 +413,49 @@ public class MoreErrorCodeTests : FeatureTestBase
         Assert.Equal(code, Reach(() => Run(new FeatureCircularPatternOperation(Services), request)).Code);
         Assert.DoesNotContain(doc.Tree, f => f.Type == "CirPattern");
     }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Feature_mirror_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new FeatureMirrorRequest { Features = new List<string> { "Cut-Extrude1" }, Plane = "right" };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Reach(() => Run(new FeatureMirrorOperation(Services), request)).Code);
+            return;
+        }
+        var (doc, _) = Holed();
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.Body = true;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                var face = doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Plane });
+                request.Plane = Services.References.Describe(doc, face).Reference!;
+                face.State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch1";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.FeatureVolumeError = 1;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Reach(() => Run(new FeatureMirrorOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "MirrorPattern");
+    }
 }

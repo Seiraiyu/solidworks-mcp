@@ -237,3 +237,56 @@ public class FeatureCircularPatternTests : PatternTestBase
         Assert.Equal("/features/0", Field(r => r.Features = new List<string> { "Axis1" }));
     }
 }
+
+public class FeatureMirrorTests : PatternTestBase
+{
+    internal FeatureResult Mirror(FeatureMirrorRequest request) => Run(new FeatureMirrorOperation(Services), request);
+
+    [Fact]
+    public void A_mirrored_feature_takes_its_volume_once_more()
+    {
+        var doc = Holed();
+        var made = Mirror(new FeatureMirrorRequest { Features = new List<string> { "Cut-Extrude1" }, Plane = "right" });
+        Assert.Equal("Mirror1", made.Feature.Name);
+        Assert.Equal(8000 - 2 * HoleVolume, made.Change.VolumeAfterMm3, 6);
+        Assert.Contains(made.Checks, c => c.Contains("1 new instances × the seeds' -785.398 mm³"));
+        Assert.DoesNotContain(made.Checks, c => c.Contains("instances, the seed included"));
+        var spec = doc.Mirrors.Single();
+        Assert.False(spec.Body);
+        Assert.Equal("Ebene rechts", doc.Describe(spec.Plane).Name);
+    }
+
+    [Fact]
+    public void A_mirrored_body_doubles_the_part_at_most()
+    {
+        var doc = Part();
+        Block();
+        var made = Mirror(new FeatureMirrorRequest { Body = true, Plane = "front" });
+        Assert.Equal(16000, made.Change.VolumeAfterMm3, 6);
+        Assert.Equal("MirrorSolid", doc.Tree.Single(f => f.Name == "Mirror1").Type);
+        Assert.Contains(made.Checks, c => c.StartsWith("the volume at most doubled"));
+        Assert.True(doc.Mirrors.Single().Body);
+        doc.FeatureVolumeError = 100;
+        var e = Fails(() => Mirror(new FeatureMirrorRequest { Body = true, Plane = "front" }));
+        Assert.Equal("volume_change", e.Error.Details!["check"]);
+        Assert.DoesNotContain(doc.Tree, f => f.Name == "Mirror2");
+    }
+
+    [Fact]
+    public void Requests_that_cannot_be_mirrored_name_their_field()
+    {
+        var doc = Holed();
+        var cylinder = Services.References.Describe(doc, doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Cylinder })).Reference!;
+        Assert.Equal("features", Fails(() => Mirror(new FeatureMirrorRequest { Plane = "right" })).Error.Details!["field"]);
+        Assert.Equal("features", Fails(() => Mirror(new FeatureMirrorRequest { Features = new List<string> { "Cut-Extrude1" }, Body = true, Plane = "right" })).Error.Details!["field"]);
+        Assert.Equal("plane", Fails(() => Mirror(new FeatureMirrorRequest { Features = new List<string> { "Cut-Extrude1" }, Plane = cylinder })).Error.Details!["field"]);
+        Assert.Equal("/features/1", Fails(() => Mirror(new FeatureMirrorRequest { Features = new List<string> { "Cut-Extrude1", "Cut-Extrude1" }, Plane = "right" })).Error.Details!["field"]);
+    }
+
+    [Fact]
+    public void A_body_mirror_on_an_empty_part_is_refused()
+    {
+        Part();
+        Assert.Equal("body", Fails(() => Mirror(new FeatureMirrorRequest { Body = true, Plane = "front" })).Error.Details!["field"]);
+    }
+}

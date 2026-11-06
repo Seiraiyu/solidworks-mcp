@@ -153,6 +153,9 @@ public interface ISwDocument
     /// <summary>A circular pattern of <see cref="CircularPatternSpec.Seeds"/>; the new feature, or null when SOLIDWORKS made none.</summary>
     object? CircularPattern(CircularPatternSpec spec);
 
+    /// <summary>A mirror of features or of the body (<see cref="MirrorSpec"/>); the new feature, or null when SOLIDWORKS made none.</summary>
+    object? Mirror(MirrorSpec spec);
+
     /// <summary>A constant-radius fillet on these edges and faces; the new feature, or null when SOLIDWORKS made none.</summary>
     object? Fillet(System.Collections.Generic.IReadOnlyList<object> edgesAndFaces, double radiusMm);
 

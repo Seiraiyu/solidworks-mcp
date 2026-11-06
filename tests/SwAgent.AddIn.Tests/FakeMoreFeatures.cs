@@ -193,4 +193,16 @@ sealed partial class FakeDocument
         CircularPatterns.Add(spec);
         return Pattern("CirPattern", "CirPattern", spec.Seeds, spec.Count, spec.Faces);
     }
+
+    public List<MirrorSpec> Mirrors { get; } = new List<MirrorSpec>();
+
+    /// <summary>Features: the seeds' volume once more. A body: the volume doubles (the plane is one of its faces).</summary>
+    public object? Mirror(MirrorSpec spec)
+    {
+        Mirrors.Add(spec);
+        if (!spec.Body) return Pattern("Mirror", "MirrorPattern", spec.Seeds, 2);
+        if (FeatureSelectFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the body to mirror");
+        if (FeatureRefuses) return null;
+        return MakeFeature("Mirror", "MirrorSolid", MassProperties?.VolumeMm3 ?? 0, 6);
+    }
 }

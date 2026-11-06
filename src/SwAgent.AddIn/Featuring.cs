@@ -203,3 +203,14 @@ public sealed class CircularPatternSpec
     public bool EqualSpacing { get; set; } = true;
     public bool Reverse { get; set; }
 }
+
+/// <summary>A mirror as ISwDocument.Mirror makes it: features or the body, about a plane or planar face.</summary>
+public sealed class MirrorSpec
+{
+    public System.Collections.Generic.List<object> Seeds { get; } = new System.Collections.Generic.List<object>();
+
+    /// <summary>Mirror every solid body instead of <see cref="Seeds"/>.</summary>
+    public bool Body { get; set; }
+
+    public object Plane { get; set; } = new object();
+}

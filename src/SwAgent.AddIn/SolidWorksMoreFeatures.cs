@@ -221,4 +221,34 @@ internal sealed partial class SolidWorksDocument
             Doc.ClearSelection2(true);
         }
     }
+
+    /// <summary>
+    /// InsertMirrorFeature2 with the plane selected with mark 2 and the seeds with mark 1, or (a body mirror) every solid
+    /// body with mark 256, merged with the original.
+    /// </summary>
+    public object? Mirror(MirrorSpec s)
+    {
+        Doc.ClearSelection2(true);
+        try
+        {
+            Pick(s.Plane, append: false, mark: 2);
+            if (s.Body)
+            {
+                var bodies = ((IPartDoc)Doc).GetBodies2((int)swBodyType_e.swSolidBody, true) as object[] ?? Array.Empty<object>();
+                foreach (var b in bodies.OfType<IBody2>())
+                {
+                    if (!b.Select2(true, Marked(256))) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the body to mirror");
+                }
+            }
+            else
+            {
+                foreach (var seed in s.Seeds) Pick(seed, append: true, mark: 1);
+            }
+            return Doc.FeatureManager.InsertMirrorFeature2(s.Body, false, true, false, 0);
+        }
+        finally
+        {
+            Doc.ClearSelection2(true);
+        }
+    }
 }

@@ -221,3 +221,64 @@ public sealed class FeatureCircularPatternOperation : ModelChangeOperation<Featu
     protected override void Check(ISwDocument doc, FeatureCircularPatternRequest request, FeatureResult result) =>
         PatternFacts.Check(doc, result, "CirPattern", "circular pattern", request.Count!.Value, request.Count!.Value, _seed, VolumeBefore, Volume(doc, doc.SolidBodyCount()));
 }
+
+public sealed class FeatureMirrorOperation : ModelChangeOperation<FeatureMirrorRequest, FeatureResult>
+{
+    double? _seed;
+
+    public FeatureMirrorOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(FeatureMirrorRequest request) => request.Document;
+
+    protected override FeatureResult Change(ISwDocument doc, FeatureMirrorRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        bool body = request.Body == true;
+        bool features = (request.Features?.Count ?? 0) > 0;
+        if (body == features) throw FeatureFacts.Invalid("features", "a mirror takes features, or body: true for the whole body, and not both");
+        if (body && BodiesBefore == 0) throw FeatureFacts.Invalid("body", "the part has no solid body to mirror yet");
+        var references = Services.References;
+        var (plane, kind) = references.Resolve(doc, request.Plane, "plane", ReferenceKind.Plane, ReferenceKind.Face);
+        if (kind == ReferenceKind.Face && doc.Describe(plane).Geometry != GeometryType.Plane)
+            throw FeatureFacts.Invalid("plane", $"plane: a mirror needs a plane or a planar face, and this is a {WireNames.ForEnum(doc.Describe(plane).Geometry)} face");
+        var spec = new MirrorSpec { Plane = plane, Body = body };
+        string of = "the body";
+        if (features)
+        {
+            var seeds = PatternFacts.Seeds(references, doc, request.Features!);
+            spec.Seeds.AddRange(seeds.Select(s => s.Feature));
+            of = string.Join(", ", seeds.Select(s => s.Name));
+            _seed = PatternFacts.SeedVolume(doc, seeds, VolumeBefore);
+        }
+        else
+        {
+            _seed = null;
+        }
+        var feature = doc.Mirror(spec)
+            ?? throw FeatureFacts.NotMade(doc, "mirror", $"of {of}", "check that the mirrored copy lands where it can be made: on or against the part");
+        return FeatureFacts.Made(references, doc, feature, tx);
+    }
+
+    /// <summary>Features: the seeds' volume once more. A body: a MirrorSolid, the volume grew and at most doubled.</summary>
+    protected override void Check(ISwDocument doc, FeatureMirrorRequest request, FeatureResult result)
+    {
+        double after = Volume(doc, doc.SolidBodyCount());
+        if (request.Body != true)
+        {
+            // A mirror's definition always reads two instances, so only the volume decides: the seeds' volume once more.
+            PatternFacts.Check(doc, result, "MirrorPattern", "mirror", 2, null, _seed, VolumeBefore, after);
+            return;
+        }
+        FeatureFacts.ExpectType(doc, result, "MirrorSolid", "body mirror");
+        FeatureFacts.VolumeChanged(result, "body mirror", VolumeBefore, after, 1);
+        if (after > 2 * VolumeBefore * (1 + FeatureChecks.VolumeTolerance))
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                FormattableString.Invariant($"the mirrored body took the part from {VolumeBefore:0.###} to {after:0.###} mm³, more than double"),
+                new JsonObject { ["check"] = "volume_change", ["expected"] = $"at most {2 * VolumeBefore}", ["measured"] = after });
+        }
+        result.Checks.Add(FormattableString.Invariant($"the volume at most doubled: {after:0.###} ≤ 2 × {VolumeBefore:0.###} mm³"));
+    }
+}
