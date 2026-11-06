@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "description": "Fault testing only: opens a sketch for editing as the user would (Edit Sketch) and leaves it open (open true), or exits the sketch being edited (open false), so the fault suite can show a model change waiting for the user without anyone at SOLIDWORKS. Refused unless diagnostics are on.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "sketch": {
+      "type": "string",
+      "description": "The sketch to open, by name or reference; for open true."
+    },
+    "open": {
+      "type": "boolean",
+      "description": "true to open the sketch for editing, false to exit the sketch being edited."
+    }
+  },
+  "required": [
+    "open"
+  ],
+  "additionalProperties": false
+}

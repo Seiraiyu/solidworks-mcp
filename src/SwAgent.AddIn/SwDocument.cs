@@ -150,6 +150,12 @@ public interface ISwDocument
     /// <summary>The shortest distance between two entities, mm, and the closest point on each (IModelDoc2.ClosestDistance); ApiError when SOLIDWORKS cannot measure them.</summary>
     double ClosestDistance(object a, object b, out Point3 onA, out Point3 onB);
 
+    /// <summary>Opens a sketch for editing as the user's Edit Sketch does, and leaves it open (diag.edit_sketch); false when SOLIDWORKS did not open it.</summary>
+    bool OpenForEditing(object sketch);
+
+    /// <summary>Exits the sketch being edited, if any, as the user's Exit Sketch does (diag.edit_sketch).</summary>
+    void ExitSketch();
+
     /// <summary>The faces <paramref name="feature"/> made.</summary>
     System.Collections.Generic.IReadOnlyList<object> FacesOf(object feature);
 }

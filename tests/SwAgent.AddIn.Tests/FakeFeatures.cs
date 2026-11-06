@@ -280,6 +280,24 @@ sealed partial class FakeDocument
         return Math.Sqrt(Math.Pow(onA.X - onB.X, 2) + Math.Pow(onA.Y - onB.Y, 2) + Math.Pow(onA.Z - onB.Z, 2)) + MeasureDrift * _measures++;
     }
 
+    /// <summary>OpenForEditing returns this (SOLIDWORKS opening the sketch or not).</summary>
+    public bool OpensForEditing { get; set; } = true;
+
+    public bool OpenForEditing(object sketch)
+    {
+        if (!OpensForEditing) return false;
+        EditingSketchName = ((FakeEntity)sketch).Info.Name;
+        return true;
+    }
+
+    /// <summary>ExitSketch leaves the sketch open.</summary>
+    public bool ExitIgnored { get; set; }
+
+    public void ExitSketch()
+    {
+        if (!ExitIgnored) EditingSketchName = null;
+    }
+
     public IReadOnlyList<object> FacesOf(object feature) =>
         _facesOf.TryGetValue((FakeEntity)feature, out var faces) ? faces.Where(Entities.Contains).Cast<object>().ToList() : new List<object>();
 

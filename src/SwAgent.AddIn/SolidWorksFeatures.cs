@@ -257,6 +257,20 @@ internal sealed partial class SolidWorksDocument
         return d * Mm;
     }
 
+    public bool OpenForEditing(object sketch)
+    {
+        Doc.ClearSelection2(true);
+        if (!((IFeature)sketch).Select2(false, 0)) return false;
+        Doc.EditSketch();
+        Doc.ClearSelection2(true);
+        return Doc.SketchManager.ActiveSketch != null;
+    }
+
+    public void ExitSketch()
+    {
+        if (Doc.SketchManager.ActiveSketch != null) Doc.SketchManager.InsertSketch(true);
+    }
+
     public IReadOnlyList<object> FacesOf(object feature) =>
         ((IFeature)feature).GetFaces() is object[] faces ? faces.Where(f => f != null).ToList() : new List<object>();
 
