@@ -132,6 +132,17 @@ public class FeatureExtrudeTests : FeatureTestBase
         Assert.DoesNotContain(made.Checks, c => c.Contains("mm² ×"));
         var thin = doc.Extrudes.Single().Thin!;
         Assert.Equal((ThinSide.MidPlane, 1.0), (thin.Side, thin.ThicknessMm));
+        Assert.Equal("ExtruThin", doc.Tree.Single(f => f.Name == made.Feature.Name).Type);
+    }
+
+    [Fact]
+    public void A_thin_cut_is_a_CutThin()
+    {
+        var doc = Part();
+        Extrude(new FeatureExtrudeRequest { Sketch = "Sketch1", DepthMm = 10 });
+        Hole();
+        var made = Extrude(new FeatureExtrudeRequest { Sketch = "Sketch2", Mode = FeatureMode.Cut, DepthMm = 5, Thin = new ExtrudeThin { ThicknessMm = 1 } });
+        Assert.Equal("CutThin", doc.Tree.Single(f => f.Name == made.Feature.Name).Type);
     }
 
     [Fact]

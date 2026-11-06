@@ -39,7 +39,9 @@ public sealed class FeatureExtrudeOperation : ModelChangeOperation<FeatureExtrud
     protected override void Check(ISwDocument doc, FeatureExtrudeRequest request, FeatureResult result)
     {
         bool cut = request.Mode == FeatureMode.Cut;
-        FeatureFacts.ExpectType(doc, result, cut ? "Cut" : "Extrusion", What(request));
+        // SOLIDWORKS names a thin boss ExtruThin and a thin cut CutThin (IFeature.GetTypeName2; 3.C live run).
+        string type = request.Thin != null ? (cut ? "CutThin" : "ExtruThin") : cut ? "Cut" : "Extrusion";
+        FeatureFacts.ExpectType(doc, result, type, What(request));
         double after = Volume(doc, doc.SolidBodyCount());
         FeatureFacts.VolumeChanged(result, What(request), VolumeBefore, after, cut ? -1 : 1);
         var end = request.End ?? ExtrudeEnd.Blind;

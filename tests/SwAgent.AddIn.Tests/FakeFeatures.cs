@@ -50,7 +50,9 @@ sealed partial class FakeDocument
         double area = spec.Thin != null ? spec.Thin.ThicknessMm * 40 : FeatureFacts.Region(contents)?.AreaMm2 ?? 100;
         double depth = spec.End == ExtrudeEnd.Blind || spec.End == ExtrudeEnd.MidPlane ? spec.DepthMm : ThroughMm;
         if (spec.Direction2 != null) depth += spec.Direction2.End == ExtrudeEnd.Blind ? spec.Direction2.DepthMm : ThroughMm;
-        return MakeFeature(spec.Cut ? "Cut-Extrude" : "Boss-Extrude", spec.Cut ? "Cut" : "Extrusion", (spec.Cut ? -1 : 1) * area * depth, contents.Segments.Count + 2);
+        // SOLIDWORKS' type names (IFeature.GetTypeName2, 3.C live run): a thin boss is ExtruThin and a thin cut CutThin.
+        string type = spec.Thin != null ? (spec.Cut ? "CutThin" : "ExtruThin") : spec.Cut ? "Cut" : "Extrusion";
+        return MakeFeature(spec.Cut ? "Cut-Extrude" : (spec.Thin != null ? "Extrude-Thin" : "Boss-Extrude"), type, (spec.Cut ? -1 : 1) * area * depth, contents.Segments.Count + 2);
     }
 
     public List<RevolveSpec> Revolves { get; } = new List<RevolveSpec>();
