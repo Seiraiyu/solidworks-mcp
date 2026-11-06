@@ -163,6 +163,39 @@ internal sealed partial class SolidWorksDocument
         }
     }
 
+    /// <summary>
+    /// InsertRefPlane with the references selected with marks 0, 1 and 2, each with its constraint: a distance from the
+    /// first (offset), an angle to the first about the second, coincident with three points, parallel to the first
+    /// through the second, or perpendicular to a curve through a point on it.
+    /// </summary>
+    public object? Plane(PlaneSpec s)
+    {
+        const int Parallel = (int)swRefPlaneReferenceConstraints_e.swRefPlaneReferenceConstraint_Parallel;
+        const int Perpendicular = (int)swRefPlaneReferenceConstraints_e.swRefPlaneReferenceConstraint_Perpendicular;
+        const int Coincident = (int)swRefPlaneReferenceConstraints_e.swRefPlaneReferenceConstraint_Coincident;
+        const int Distance = (int)swRefPlaneReferenceConstraints_e.swRefPlaneReferenceConstraint_Distance;
+        const int Angle = (int)swRefPlaneReferenceConstraints_e.swRefPlaneReferenceConstraint_Angle;
+        int flip = s.Flip ? (int)swRefPlaneReferenceConstraints_e.swRefPlaneReferenceConstraint_OptionFlip : 0;
+        var (c, v) = s.Mode switch
+        {
+            PlaneMode.Offset => (new[] { Distance | flip, 0, 0 }, new[] { s.DistanceMm / Mm, 0, 0 }),
+            PlaneMode.Angle => (new[] { Angle | flip, Coincident, 0 }, new[] { s.AngleDeg * Rad, 0, 0 }),
+            PlaneMode.ThreePoints => (new[] { Coincident, Coincident, Coincident }, new[] { 0.0, 0, 0 }),
+            PlaneMode.ParallelThroughPoint => (new[] { Parallel, Coincident, 0 }, new[] { 0.0, 0, 0 }),
+            _ => (new[] { Perpendicular, Coincident, 0 }, new[] { 0.0, 0, 0 }),
+        };
+        Doc.ClearSelection2(true);
+        try
+        {
+            for (int i = 0; i < s.References.Count; i++) Pick(s.References[i], append: i > 0, mark: i);
+            return Doc.FeatureManager.InsertRefPlane(c[0], v[0], c[1], v[1], c[2], v[2]);
+        }
+        finally
+        {
+            Doc.ClearSelection2(true);
+        }
+    }
+
     public IReadOnlyList<object> FacesOf(object feature) =>
         ((IFeature)feature).GetFaces() is object[] faces ? faces.Where(f => f != null).ToList() : new List<object>();
 

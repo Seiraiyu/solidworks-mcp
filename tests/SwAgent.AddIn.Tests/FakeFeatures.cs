@@ -100,6 +100,70 @@ sealed partial class FakeDocument
         return MakeFeature(type, type, -EdgeVolume * Math.Max(1, edges.Count), targets.Count);
     }
 
+    public List<PlaneSpec> Planes { get; } = new List<PlaneSpec>();
+
+    /// <summary>Reference geometry is made this far, mm, along its normal from where it should be.</summary>
+    public double RefGeometryError { get; set; }
+
+    /// <summary>A plane where the spec puts it, worked out from its references' descriptions.</summary>
+    public object? Plane(PlaneSpec spec)
+    {
+        Planes.Add(spec);
+        if (FeatureSelectFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not select the plane a feature needs");
+        if (FeatureRefuses) return null;
+        var r = spec.References.Cast<FakeEntity>().Select(e => e.Info).ToList();
+        Vector3 n;
+        Point3 o;
+        switch (spec.Mode)
+        {
+            case PlaneMode.Offset:
+                n = r[0].Normal!;
+                o = Along(r[0].Origin ?? new Point3(0, 0, 0), n, (spec.Flip ? -1 : 1) * spec.DistanceMm);
+                break;
+            case PlaneMode.Angle:
+                n = Rotate(r[0].Normal!, r[1].Axis!, spec.AngleDeg);
+                o = r[1].Origin!;
+                break;
+            case PlaneMode.ThreePoints:
+                var (a, b, p) = (r[0].Origin!, r[1].Origin!, r[2].Origin!);
+                n = Unit(Cross(new Vector3(b.X - a.X, b.Y - a.Y, b.Z - a.Z), new Vector3(p.X - a.X, p.Y - a.Y, p.Z - a.Z)));
+                o = a;
+                break;
+            case PlaneMode.ParallelThroughPoint:
+                n = r[0].Normal!;
+                o = r[1].Origin!;
+                break;
+            default:
+                n = r[0].Axis ?? new Vector3(0, 0, 1);
+                o = r[1].Origin!;
+                break;
+        }
+        var plane = MakeFeature("Plane", "RefPlane", 0, 0, ReferenceKind.Plane);
+        plane.Info.Geometry = GeometryType.Plane;
+        plane.Info.Normal = n;
+        plane.Info.Origin = Along(o, n, RefGeometryError);
+        return plane;
+    }
+
+    static Point3 Along(Point3 o, Vector3 n, double d) => new Point3(o.X + n.X * d, o.Y + n.Y * d, o.Z + n.Z * d);
+
+    static Vector3 Cross(Vector3 u, Vector3 v) => new Vector3(u.Y * v.Z - u.Z * v.Y, u.Z * v.X - u.X * v.Z, u.X * v.Y - u.Y * v.X);
+
+    static Vector3 Unit(Vector3 v)
+    {
+        double l = Math.Sqrt(v.X * v.X + v.Y * v.Y + v.Z * v.Z);
+        return new Vector3(v.X / l, v.Y / l, v.Z / l);
+    }
+
+    /// <summary>Rodrigues: <paramref name="v"/> turned <paramref name="deg"/> degrees about the unit axis <paramref name="k"/>.</summary>
+    static Vector3 Rotate(Vector3 v, Vector3 k, double deg)
+    {
+        double t = deg * Math.PI / 180, cos = Math.Cos(t), sin = Math.Sin(t);
+        var kxv = Cross(k, v);
+        double kv = k.X * v.X + k.Y * v.Y + k.Z * v.Z;
+        return new Vector3(v.X * cos + kxv.X * sin + k.X * kv * (1 - cos), v.Y * cos + kxv.Y * sin + k.Y * kv * (1 - cos), v.Z * cos + kxv.Z * sin + k.Z * kv * (1 - cos));
+    }
+
     /// <summary>A new feature named as SOLIDWORKS names them (Boss-Extrude1, Boss-Extrude2 …), with <paramref name="faces"/> planar faces of its own.</summary>
     FakeEntity MakeFeature(string prefix, string type, double volume, int faces, ReferenceKind kind = ReferenceKind.Feature)
     {

@@ -68,3 +68,13 @@ public sealed class ChamferSpec
     /// <summary>For a distance-distance chamfer; null for distance and angle.</summary>
     public double? Distance2Mm { get; set; }
 }
+
+/// <summary>A reference plane as ISwDocument.Plane makes it: its references in SOLIDWORKS' order (first, second, third), mm and degrees.</summary>
+public sealed class PlaneSpec
+{
+    public PlaneMode Mode { get; set; }
+    public System.Collections.Generic.List<object> References { get; } = new System.Collections.Generic.List<object>();
+    public double DistanceMm { get; set; }
+    public double AngleDeg { get; set; }
+    public bool Flip { get; set; }
+}

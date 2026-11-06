@@ -28,6 +28,7 @@ public class OperationFamiliesTests
         Assert.Equal(TimeSpan.FromSeconds(120), OperationFamilies.DefaultDeadline("export"));
         Assert.Equal(TimeSpan.FromSeconds(30), OperationFamilies.DefaultDeadline("api"));
         Assert.Equal(TimeSpan.FromSeconds(30), OperationFamilies.DefaultDeadline("dimension"));
+        Assert.Equal(TimeSpan.FromSeconds(30), OperationFamilies.DefaultDeadline("refgeom"));
     }
 
     [Fact]

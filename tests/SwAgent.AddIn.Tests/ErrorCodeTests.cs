@@ -475,4 +475,49 @@ public class ErrorCodeTests : DocumentTestBase
         Assert.Equal(code, Fails(() => Run(new FeatureChamferOperation(Services), request)).Code);
         Assert.DoesNotContain(doc.Tree, f => f.Type == "Chamfer");
     }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Refgeom_plane_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new RefgeomPlaneRequest { Mode = PlaneMode.Offset, From = "front", DistanceMm = 15 };
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Fails(() => Run(new RefgeomPlaneOperation(Services), request)).Code);
+            return;
+        }
+        var doc = Part();
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.DistanceMm = null;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                var face = doc.Add(ReferenceKind.Face, new EntityInfo { Geometry = GeometryType.Plane, Normal = new Vector3(0, 0, 1) });
+                request.From = Services.References.Describe(doc, face).Reference!;
+                face.State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                Sw.OpenCommandTitle = "Plane";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.RefGeometryError = 1;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Run(new RefgeomPlaneOperation(Services), request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Name == "Plane1");
+    }
 }
