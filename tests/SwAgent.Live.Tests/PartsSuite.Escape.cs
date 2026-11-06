@@ -75,8 +75,19 @@ public sealed partial class PartsSuite
         var ap214 = await Export("export-214.step", ExportFormat.Step);
         Assert.Equal("ISO-10303-21;", FirstLine(ap214.Path));
         Assert.Contains("AUTOMOTIVE_DESIGN", ap214.StepSchema);
-        var ap242 = await Export("export-242.step", ExportFormat.Step, new ExportOptions { StepSchema = StepSchema.Ap242 });
-        Assert.Contains("AP242", ap242.StepSchema);
+        // AP242 is with the owner (3.E live run: SaveAs3 with swStepAP = 242 writes STEP AP203). Its outcome is recorded
+        // and the case goes on, so the other formats run; the case still fails while AP242 is not written.
+        string? ap242Problem = null;
+        try
+        {
+            var ap242 = await Export("export-242.step", ExportFormat.Step, new ExportOptions { StepSchema = StepSchema.Ap242 });
+            if (ap242.StepSchema == null || !ap242.StepSchema.Contains("AP242")) ap242Problem = $"FILE_SCHEMA {ap242.StepSchema ?? "missing"}";
+        }
+        catch (SwAgentException e)
+        {
+            ap242Problem = $"{WireNames.ForEnum(e.Code)}: {e.Message}";
+        }
+        if (ap242Problem != null) notes.Add($"export-242.step NOT AP242 ({ap242Problem})");
         var parasolid = await Export("export.x_t", ExportFormat.Parasolid);
         Assert.StartsWith("**ABCDEFGHIJKLMNOPQRSTUVWXYZ", FirstLine(parasolid.Path));
         var coarse = await Export("export-coarse.stl", ExportFormat.Stl, new ExportOptions { Resolution = MeshResolution.Coarse });
@@ -101,8 +112,10 @@ public sealed partial class PartsSuite
         Assert.Equal(stlInfo, await TogglePreference(70));
         string journal = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "solidworks-mcp", "export-preferences-journal.json");
         Assert.False(File.Exists(journal), "the export preferences' journal is gone: everything was put back");
-        return $"{string.Join("; ", notes)}; overwrite refused without overwrite; the part kept its path and unsaved changes; " +
+        string summary = $"{string.Join("; ", notes)}; overwrite refused without overwrite; the part kept its path and unsaved changes; " +
                $"swStepAP {stepAp}, swSTLQuality {stlQuality}, swExportStlUnits {stlUnits}, binary {stlBinary}, info {stlInfo} before and after; longest export {times.Max()} ms (export deadline 120 s)";
+        if (ap242Problem != null) Assert.Fail($"AP242 was not written ({ap242Problem}); everything else: {summary}");
+        return summary;
     });
 
     [SkippableFact, Step(32)]
