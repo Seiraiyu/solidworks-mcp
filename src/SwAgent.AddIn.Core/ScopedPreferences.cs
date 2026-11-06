@@ -23,13 +23,29 @@ public enum PreferenceKind
 /// <summary>One SOLIDWORKS user preference an operation needs at a value for its own duration.</summary>
 public sealed class PreferenceSetting
 {
-    public PreferenceSetting(string name, PreferenceKind kind, int id, double value)
+    public PreferenceSetting(string name, PreferenceKind kind, int id, double value,
+        IReadOnlyList<double>? unrestorable = null, string? field = null, string? unrestorableWhy = null)
     {
         Name = name;
         Kind = kind;
         Id = id;
         Value = value;
+        Unrestorable = unrestorable ?? Array.Empty<double>();
+        Field = field;
+        UnrestorableWhy = unrestorableWhy;
     }
+
+    /// <summary>
+    /// Values SOLIDWORKS will not take back through its API (3.E live run: swSTLQuality = 3, custom): a user who has
+    /// one of them is never moved off it, since it could not be put back. Empty for most preferences.
+    /// </summary>
+    public IReadOnlyList<double> Unrestorable { get; }
+
+    /// <summary>The request field the refusal names, for example options.resolution.</summary>
+    public string? Field { get; }
+
+    /// <summary>Why the value cannot be put back, and what the caller can do instead, for the refusal's message.</summary>
+    public string? UnrestorableWhy { get; }
 
     /// <summary>The swUserPreference…_e member's name, for the log and the result.</summary>
     public string Name { get; }
@@ -165,6 +181,14 @@ public sealed class ScopedPreferences
             {
                 throw Failed(operation, s, $"reading it failed: {e.Message}");
             }
+            if (!Same(s.Kind, original, s.Value) && s.Unrestorable.Any(u => Same(s.Kind, u, original)))
+            {
+                // Never change a preference SOLIDWORKS would not let us put back (3.E live run, round 3).
+                throw new SwAgentException(ErrorCode.InvalidArgument,
+                    $"{operation} would change the SOLIDWORKS preference {s.Name} from the user's {PreferenceSetting.Format(s.Kind, original)} to {PreferenceSetting.Format(s.Kind, s.Value)}, " +
+                    $"and could not put it back: {s.UnrestorableWhy ?? "SOLIDWORKS does not take that value through its API"}; nothing was changed",
+                    new JsonObject { ["field"] = s.Field, ["preference"] = s.Name, ["value"] = PreferenceSetting.Format(s.Kind, original) });
+            }
             entries.Add(new ScopedPreferenceEntry { Name = s.Name, Kind = s.Kind, Id = s.Id, Original = original, Applied = s.Value });
         }
         try
@@ -199,7 +223,8 @@ public sealed class ScopedPreferences
             {
                 bool restored = Restore(set, $"{operation} could not set {e.Name}");
                 if (restored) Delete();
-                throw Failed(operation, new PreferenceSetting(e.Name, e.Kind, e.Id, e.Applied), problem);
+                else _log.Error("preferences: some scoped preferences could not be restored; the journal is kept for the next load");
+                throw Failed(operation, new PreferenceSetting(e.Name, e.Kind, e.Id, e.Applied), problem, restored);
             }
         }
         foreach (var e in set) _log.Info($"preferences: {e.Name} set to {PreferenceSetting.Format(e.Kind, e.Applied)} for {operation} (was {PreferenceSetting.Format(e.Kind, e.Original)})");
@@ -243,6 +268,14 @@ public sealed class ScopedPreferences
                     continue;
                 }
                 _store.Set(e.Kind, e.Id, e.Original);
+                // Read back: SOLIDWORKS can ignore a set without saying so (3.E live run: swSTLQuality = 3).
+                double after = _store.Get(e.Kind, e.Id);
+                if (!Same(e.Kind, after, e.Original))
+                {
+                    _log.Error($"preferences: {e.Name} could not be put back to {PreferenceSetting.Format(e.Kind, e.Original)}: SOLIDWORKS kept {PreferenceSetting.Format(e.Kind, after)} ({why}); the journal is kept");
+                    ok = false;
+                    continue;
+                }
                 _log.Info($"preferences: {e.Name} restored to {PreferenceSetting.Format(e.Kind, e.Original)} ({why})");
             }
             catch (Exception ex)
@@ -258,9 +291,12 @@ public sealed class ScopedPreferences
     internal static bool Same(PreferenceKind kind, double a, double b) =>
         kind == PreferenceKind.Double ? Math.Abs(a - b) <= 1e-9 * Math.Max(1, Math.Max(Math.Abs(a), Math.Abs(b))) : Math.Round(a) == Math.Round(b);
 
-    static SwAgentException Failed(string operation, PreferenceSetting s, string problem) =>
+    static SwAgentException Failed(string operation, PreferenceSetting s, string problem, bool restored = true) =>
         new SwAgentException(ErrorCode.ApiError,
-            $"{operation} needs the SOLIDWORKS preference {s.Name} at {PreferenceSetting.Format(s.Kind, s.Value)}, but {problem}; every preference it had set was put back and nothing was done",
+            $"{operation} needs the SOLIDWORKS preference {s.Name} at {PreferenceSetting.Format(s.Kind, s.Value)}, but {problem}; " +
+            (restored
+                ? "every preference it had set was put back and nothing was done"
+                : "the preferences it had set could not all be put back (the add-in log names them; the journal is kept and they are tried again before the next export), and nothing was exported"),
             new JsonObject { ["preference"] = s.Name, ["value"] = PreferenceSetting.Format(s.Kind, s.Value) });
 
     void Write(ScopedPreferenceJournal journal)

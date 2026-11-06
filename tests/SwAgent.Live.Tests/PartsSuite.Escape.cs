@@ -42,7 +42,7 @@ public sealed partial class PartsSuite
     }
 
     [SkippableFact, Step(31)]
-    public Task Exports_write_each_format_and_leave_the_part_and_preferences_as_they_were() => _run.CaseAsync(31, "export.part: STEP AP214 and AP242, Parasolid, STL coarse, fine and custom, 3MF, of a drilled block; part and preferences unchanged", async () =>
+    public Task Exports_write_each_format_and_leave_the_part_and_preferences_as_they_were() => _run.CaseAsync(31, "export.part: STEP AP214 and AP242, Parasolid, STL with the user's own resolution and coarse and fine (or refused over custom), 3MF, of a drilled block; part and preferences unchanged", async () =>
     {
         await _run.RequireOnlyOwnDocumentsAsync();
         var block = await Block("export");
@@ -90,11 +90,22 @@ public sealed partial class PartsSuite
         if (ap242Problem != null) notes.Add($"export-242.step NOT AP242 ({ap242Problem})");
         var parasolid = await Export("export.x_t", ExportFormat.Parasolid);
         Assert.StartsWith("**ABCDEFGHIJKLMNOPQRSTUVWXYZ", FirstLine(parasolid.Path));
-        var coarse = await Export("export-coarse.stl", ExportFormat.Stl, new ExportOptions { Resolution = MeshResolution.Coarse });
-        var fine = await Export("export-fine.stl", ExportFormat.Stl);
-        var custom = await Export("export-custom.stl", ExportFormat.Stl, new ExportOptions { DeviationMm = 0.01, AngleDeg = 5 });
-        Assert.True(coarse.Triangles < custom.Triangles, $"a custom 0.01 mm, 5° mesh ({custom.Triangles}) is finer than the coarse one ({coarse.Triangles})");
-        Assert.True(coarse.Triangles <= fine.Triangles, $"the fine mesh ({fine.Triangles}) is no coarser than the coarse one ({coarse.Triangles})");
+        // The user's own mesh settings, untouched (3.E live run, round 3: SOLIDWORKS does not take a custom resolution
+        // back through its API, so resolution is only ever set over coarse or fine, and custom is not offered).
+        await Export("export-own.stl", ExportFormat.Stl);
+        if (stlQuality == 3)
+        {
+            var overCustom = await Refused(() => Call<ExportPartRequest, ExportPartResult>(new ExportPartRequest { Document = path, Path = ScratchFile("export-coarse.stl"), Format = ExportFormat.Stl, Options = new ExportOptions { Resolution = MeshResolution.Coarse } }));
+            Assert.Equal("options.resolution", overCustom.Error.Details!["field"]);
+            Assert.False(File.Exists(ScratchFile("export-coarse.stl")), "nothing was exported over the user's custom resolution");
+            notes.Add("coarse refused over the user's custom resolution (invalid_argument, options.resolution), nothing set or written");
+        }
+        else
+        {
+            var coarse = await Export("export-coarse.stl", ExportFormat.Stl, new ExportOptions { Resolution = MeshResolution.Coarse });
+            var fine = await Export("export-fine.stl", ExportFormat.Stl, new ExportOptions { Resolution = MeshResolution.Fine });
+            Assert.True(coarse.Triangles <= fine.Triangles, $"the fine mesh ({fine.Triangles}) is no coarser than the coarse one ({coarse.Triangles})");
+        }
         var threemf = await Export("export.3mf", ExportFormat.ThreeMf);
         Assert.Equal("zip", threemf.Header);
 

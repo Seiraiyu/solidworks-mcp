@@ -33,12 +33,7 @@ public static class ExportSettings
         bool mesh = format == ExportFormat.Stl || format == ExportFormat.ThreeMf;
         string name = WireNames.ForEnum(format);
         if (o.StepSchema != null && format != ExportFormat.Step) throw Invalid("options.step_schema", $"step_schema is for step, not {name}");
-        if (!mesh)
-        {
-            if (o.Resolution != null) throw Invalid("options.resolution", $"resolution is for stl and threemf, not {name}");
-            if (o.DeviationMm != null) throw Invalid("options.deviation_mm", $"deviation_mm is for stl and threemf, not {name}");
-            if (o.AngleDeg != null) throw Invalid("options.angle_deg", $"angle_deg is for stl and threemf, not {name}");
-        }
+        if (!mesh && o.Resolution != null) throw Invalid("options.resolution", $"resolution is for stl and threemf, not {name}");
         var list = new List<PreferenceSetting>();
         if (format == ExportFormat.Step)
         {
@@ -47,23 +42,16 @@ public static class ExportSettings
         }
         if (!mesh) return list;
 
-        bool custom = o.Resolution == MeshResolution.Custom || o.Resolution == null && (o.DeviationMm != null || o.AngleDeg != null);
-        if (!custom && o.DeviationMm != null) throw Invalid("options.deviation_mm", "deviation_mm needs resolution custom");
-        if (!custom && o.AngleDeg != null) throw Invalid("options.angle_deg", "angle_deg needs resolution custom");
-        if (custom)
-        {
-            if (o.DeviationMm == null || !(o.DeviationMm > 0)) throw Invalid("options.deviation_mm", "a custom resolution needs deviation_mm, more than 0 mm");
-            if (o.AngleDeg == null || !(o.AngleDeg > 0 && o.AngleDeg < 90)) throw Invalid("options.angle_deg", "a custom resolution needs angle_deg, more than 0 and less than 90 degrees");
-        }
-        var quality = custom ? swSTLQuality_e.swSTLQuality_Custom
-            : o.Resolution == MeshResolution.Coarse ? swSTLQuality_e.swSTLQuality_Coarse
-            : swSTLQuality_e.swSTLQuality_Fine;
         list.Add(Integer(nameof(swUserPreferenceIntegerValue_e.swExportStlUnits), (int)swUserPreferenceIntegerValue_e.swExportStlUnits, (int)swLengthUnit_e.swMM));
-        list.Add(Integer(nameof(swUserPreferenceIntegerValue_e.swSTLQuality), (int)swUserPreferenceIntegerValue_e.swSTLQuality, (int)quality));
-        if (custom)
+        // Without a resolution the user's own mesh settings are used and never touched. With one, it is set for the
+        // call, unless the user's is custom: SOLIDWORKS does not take swSTLQuality = 3 through its API (3.E live run,
+        // round 3), so a custom resolution changed for the call could never be put back.
+        if (o.Resolution != null)
         {
-            list.Add(new PreferenceSetting(nameof(swUserPreferenceDoubleValue_e.swSTLDeviation), PreferenceKind.Double, (int)swUserPreferenceDoubleValue_e.swSTLDeviation, o.DeviationMm!.Value / 1000));
-            list.Add(new PreferenceSetting(nameof(swUserPreferenceDoubleValue_e.swSTLAngleTolerance), PreferenceKind.Double, (int)swUserPreferenceDoubleValue_e.swSTLAngleTolerance, o.AngleDeg!.Value * Math.PI / 180));
+            var quality = o.Resolution == MeshResolution.Coarse ? swSTLQuality_e.swSTLQuality_Coarse : swSTLQuality_e.swSTLQuality_Fine;
+            list.Add(new PreferenceSetting(nameof(swUserPreferenceIntegerValue_e.swSTLQuality), PreferenceKind.Integer, (int)swUserPreferenceIntegerValue_e.swSTLQuality, (int)quality,
+                new[] { (double)(int)swSTLQuality_e.swSTLQuality_Custom }, "options.resolution",
+                "the user's STL/3MF resolution is custom, which SOLIDWORKS does not take back through its API; omit options.resolution to export with the user's own mesh settings, or ask the user to choose coarse or fine in Tools > Options > Export"));
         }
         if (format == ExportFormat.Stl)
         {

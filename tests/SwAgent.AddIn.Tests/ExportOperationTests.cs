@@ -93,38 +93,55 @@ public class ExportPartTests : ExportTestBase
     }
 
     [Fact]
-    public void An_STL_export_is_binary_fine_in_mm_and_in_model_coordinates()
+    public void An_STL_export_is_binary_in_mm_and_in_model_coordinates_with_the_users_own_resolution()
     {
+        // 3.E live run, round 3: with no resolution asked, the user's mesh settings are used and never touched.
         var doc = ExportBlock();
         var result = Export(new ExportPartRequest { Path = PathOf("block.stl"), Format = ExportFormat.Stl });
-        Assert.Equal(44, result.Triangles);
+        Assert.Equal(12, result.Triangles);
         Assert.Equal(new[]
         {
-            "swExportStlUnits = 0", "swSTLQuality = 2", "swSTLBinaryFormat = true", "swSTLDontTranslateToPositive = true",
+            "swExportStlUnits = 0", "swSTLBinaryFormat = true", "swSTLDontTranslateToPositive = true",
             "swSTLShowInfoOnSave = false", "swSTLPreview = false",
         }, result.Preferences);
         var during = doc.Exports.Single().Prefs;
+        Assert.Equal(1, during[(PreferenceKind.Integer, 78)]);
         Assert.Equal(1, during[(PreferenceKind.Toggle, 69)]);
         Assert.Equal(0, during[(PreferenceKind.Toggle, 70)]);
         UsersPreferencesBack();
     }
 
     [Fact]
-    public void A_custom_mesh_is_set_in_metres_and_radians()
+    public void Fine_is_set_for_the_call_when_asked()
     {
         var doc = ExportBlock();
-        var result = Export(new ExportPartRequest
-        {
-            Path = PathOf("fine.stl"),
-            Format = ExportFormat.Stl,
-            Options = new ExportOptions { DeviationMm = 0.01, AngleDeg = 5 },
-        });
-        Assert.Equal(100, result.Triangles);
-        var during = doc.Exports.Single().Prefs;
-        Assert.Equal(3, during[(PreferenceKind.Integer, 78)]);
-        Assert.Equal(0.00001, during[(PreferenceKind.Double, 2)], 12);
-        Assert.Equal(5 * Math.PI / 180, during[(PreferenceKind.Double, 3)], 12);
+        var result = Export(new ExportPartRequest { Path = PathOf("fine.stl"), Format = ExportFormat.Stl, Options = new ExportOptions { Resolution = MeshResolution.Fine } });
+        Assert.Equal(44, result.Triangles);
+        Assert.Contains("swSTLQuality = 2", result.Preferences);
         UsersPreferencesBack();
+    }
+
+    [Theory]
+    [InlineData(MeshResolution.Coarse)]
+    [InlineData(MeshResolution.Fine)]
+    public void Coarse_or_fine_over_the_users_custom_resolution_is_refused_before_anything_is_set(MeshResolution resolution)
+    {
+        // 3.E live run, round 3: SOLIDWORKS does not take swSTLQuality = 3 (custom) through its API, so a custom
+        // resolution changed for the call could never be put back.
+        var doc = ExportBlock();
+        Prefs.Values[(PreferenceKind.Integer, 78)] = 3;
+        var e = Fails(() => Export(new ExportPartRequest { Path = PathOf("block.stl"), Format = ExportFormat.Stl, Options = new ExportOptions { Resolution = resolution } }));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal("options.resolution", e.Error.Details!["field"]);
+        Assert.Contains("custom", e.Message);
+        Assert.Contains("omit options.resolution", e.Message);
+        Assert.Empty(doc.Exports);
+        Assert.Equal(3, Prefs.Values[(PreferenceKind.Integer, 78)]);
+        Assert.Equal(0, Prefs.Values[(PreferenceKind.Toggle, 69)]);
+        Assert.False(File.Exists(PathOf("export-preferences-journal.json")));
+        // Without a resolution the user's custom mesh is used as it is.
+        Assert.Equal(100, Export(new ExportPartRequest { Path = PathOf("own.stl"), Format = ExportFormat.Stl }).Triangles);
+        Assert.Equal(3, Prefs.Values[(PreferenceKind.Integer, 78)]);
     }
 
     [Fact]
@@ -141,21 +158,14 @@ public class ExportPartTests : ExportTestBase
     [Theory]
     [InlineData(ExportFormat.Stl, "step_schema", "options.step_schema")]
     [InlineData(ExportFormat.Step, "resolution", "options.resolution")]
-    [InlineData(ExportFormat.Parasolid, "deviation", "options.deviation_mm")]
-    [InlineData(ExportFormat.ThreeMf, "angle_only", "options.deviation_mm")]
-    [InlineData(ExportFormat.Stl, "fine_with_deviation", "options.deviation_mm")]
-    [InlineData(ExportFormat.Stl, "custom_bad_angle", "options.angle_deg")]
+    [InlineData(ExportFormat.Parasolid, "resolution", "options.resolution")]
     public void Options_the_format_does_not_take_name_their_field(ExportFormat format, string options, string field)
     {
         var doc = ExportBlock();
         var o = options switch
         {
             "step_schema" => new ExportOptions { StepSchema = StepSchema.Ap242 },
-            "resolution" => new ExportOptions { Resolution = MeshResolution.Fine },
-            "deviation" => new ExportOptions { DeviationMm = 0.1 },
-            "angle_only" => new ExportOptions { AngleDeg = 10 },
-            "fine_with_deviation" => new ExportOptions { Resolution = MeshResolution.Fine, DeviationMm = 0.1 },
-            _ => new ExportOptions { Resolution = MeshResolution.Custom, DeviationMm = 0.1, AngleDeg = 90 },
+            _ => new ExportOptions { Resolution = MeshResolution.Fine },
         };
         string ext = ExportSettings.Extensions(format)[0];
         var e = Fails(() => Export(new ExportPartRequest { Path = PathOf("block" + ext), Format = format, Options = o }));
@@ -261,6 +271,15 @@ public class ExportPartTests : ExportTestBase
         Assert.Equal(new List<object?> { "swStepAP = 242" }, (List<object?>)e.Error.Details["read_back"]!);
         Assert.Contains("read back just before the export: swStepAP = 242", e.Message);
         UsersPreferencesBack();
+    }
+
+    [Fact]
+    public void Custom_is_not_a_resolution_and_deviation_and_angle_are_not_options()
+    {
+        // 3.E live run, round 3: the API cannot set a custom mesh (swSTLQuality = 3 is not kept), so it is not offered.
+        Assert.Equal(new[] { "Coarse", "Fine" }, Enum.GetNames(typeof(MeshResolution)));
+        Assert.Null(typeof(ExportOptions).GetProperty("DeviationMm"));
+        Assert.Null(typeof(ExportOptions).GetProperty("AngleDeg"));
     }
 
     [Fact]

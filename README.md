@@ -70,10 +70,15 @@ A feature SOLIDWORKS does not make (a fillet too big for its edge, a cut that mi
 `sw_export_part` writes a copy: the part keeps its own path and its unsaved changes. A part that is not the active document is made active for the export, and the document that was active is made active again afterwards. The path's extension must be the format's (`.step` or `.stp`, `.x_t`, `.stl`, `.3mf`), in a folder that exists, and an existing file is replaced only with `overwrite: true`.
 
 - STEP is AP214 unless `options.step_schema` is `ap242`.
-- STL and 3MF are written in mm, coarse, fine (the default) or with a custom `deviation_mm` and `angle_deg`. STL is binary, in the part's own coordinates (not moved to positive space).
+- STL and 3MF are written in mm. Without `options.resolution` they use your own mesh settings (Tools > Options > Export, STL/3MF/AMF), untouched; `coarse` or `fine` is set for the call. STL is binary, in the part's own coordinates (not moved to positive space).
 - Parasolid takes no options.
 
-The options are SOLIDWORKS preferences (Tools > Options > Export). The add-in sets the ones the export needs for the call and puts them back afterwards. It writes them to `%LOCALAPPDATA%\solidworks-mcp\export-preferences-journal.json` first, so if SOLIDWORKS stops mid-export, the next load restores them.
+The options are SOLIDWORKS preferences (Tools > Options > Export). The add-in sets the ones the export needs for the call and puts them back afterwards, reading each one back to be sure SOLIDWORKS took it; one it did not take keeps the journal, is logged as an error, and blocks the next export until it is back. It writes them to `%LOCALAPPDATA%\solidworks-mcp\export-preferences-journal.json` first, so if SOLIDWORKS stops mid-export, the next load restores them.
+
+**Known gaps**, measured on SOLIDWORKS 2026 SP4:
+
+- **No custom mesh resolution.** SOLIDWORKS ignores `swSTLQuality = 3` (custom) when it is set through its API: the call returns and the value stays where it was. A custom resolution changed for an export could never be put back, so `export.part` offers only `coarse` and `fine`, and refuses either (`invalid_argument`, `options.resolution`) when your own resolution is custom; leave `resolution` out to export with your own mesh settings. Custom can be chosen only by hand, in Tools > Options > Export with a document open.
+- **AP242.** With `swStepAP = 242`, which SOLIDWORKS keeps, `SaveAs3` writes STEP AP203 (`FILE_DESCRIPTION 'STEP AP203'`, `FILE_SCHEMA CONFIG_CONTROL_DESIGN`), so an `ap242` export answers `verification_failed` (`step_schema`) and names what was written. AP214 works.
 
 The file is then checked on disk. It must have been written by this call and not be empty, and it must start with its format's header: `ISO-10303-21;` with the schema asked for (STEP), the Parasolid transmit header, a binary STL whose size matches its triangle count, or a 3MF zip holding `3D/3dmodel.model`. The part's path and unsaved-changes flag must also be unchanged. Otherwise the call answers `verification_failed`, naming the check.
 

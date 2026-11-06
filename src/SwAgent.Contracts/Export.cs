@@ -36,15 +36,12 @@ public enum MeshResolution
     [Description("SOLIDWORKS' coarse mesh.")]
     Coarse,
 
-    [Description("SOLIDWORKS' fine mesh, the default.")]
+    [Description("SOLIDWORKS' fine mesh.")]
     Fine,
-
-    [Description("The deviation and angle given in options.")]
-    Custom,
 }
 
 [Operation("export.part", typeof(ExportPartResult))]
-[Description("Writes a copy of a part as STEP, Parasolid (.x_t), binary STL or 3MF, in mm; the part keeps its own path and unsaved changes. A part that is not the active document is made active for the export, and the document that was active is made active again afterwards. The export options it needs (STEP schema, mesh resolution, STL units and format) are set for the call and put back afterwards. Checked on disk: the file was written by this call, is not empty, and has its format's header (ISO-10303-21; and the schema asked, the Parasolid transmit header, a binary STL whose size matches its triangle count, a 3MF zip holding 3D/3dmodel.model).")]
+[Description("Writes a copy of a part as STEP, Parasolid (.x_t), binary STL or 3MF, in mm; the part keeps its own path and unsaved changes. A part that is not the active document is made active for the export, and the document that was active is made active again afterwards. The export options it needs (STEP schema, STL units and format, and the mesh resolution when one is asked) are set for the call and put back afterwards; without a resolution, STL and 3MF use the user's own mesh settings untouched. A resolution is refused when the user's is custom, which SOLIDWORKS cannot put back. Checked on disk: the file was written by this call, is not empty, and has its format's header (ISO-10303-21; and the schema asked, the Parasolid transmit header, a binary STL whose size matches its triangle count, a 3MF zip holding 3D/3dmodel.model).")]
 public sealed class ExportPartRequest
 {
     [Description("The part: its title or full path. The active document when absent.")]
@@ -70,14 +67,8 @@ public sealed class ExportOptions
     [Description("STEP only: the application protocol. Default ap214.")]
     public StepSchema? StepSchema { get; set; }
 
-    [Description("STL and 3MF only: coarse, fine (the default) or custom, which takes deviation_mm and angle_deg.")]
+    [Description("STL and 3MF only: coarse or fine, set for the call. Absent: the user's own mesh settings, untouched. Refused (invalid_argument) when the user's resolution is custom, which SOLIDWORKS does not take back through its API.")]
     public MeshResolution? Resolution { get; set; }
-
-    [Description("STL and 3MF, custom resolution: the largest distance between the mesh and the surface, mm, more than 0.")]
-    public double? DeviationMm { get; set; }
-
-    [Description("STL and 3MF, custom resolution: the largest angle between neighbouring triangles, degrees, more than 0 and less than 90.")]
-    public double? AngleDeg { get; set; }
 }
 
 [Description("The file export.part wrote, as read back from disk.")]

@@ -148,6 +148,83 @@ public class ScopedPreferencesTests
     }
 
     [Fact]
+    public void A_restore_SOLIDWORKS_does_not_take_keeps_the_journal_and_is_an_error()
+    {
+        // 3.E live run, round 3: SOLIDWORKS ignored swSTLQuality = 3 when it was put back, and the journal was deleted.
+        var (prefs, store, journal, log) = Make();
+        var scope = prefs.Apply("export.part", new[] { Schema, Binary });
+        store.Ignored.Add(75);
+        scope.Dispose();
+        Assert.Equal(242, store.Values[(PreferenceKind.Integer, 75)]);
+        Assert.True(File.Exists(journal));
+        Assert.True(log.Contains("swStepAP could not be put back to 214: SOLIDWORKS kept 242"));
+        Assert.False(log.Contains("swStepAP restored"));
+        // The next call tries again first, and changes nothing while it cannot.
+        var e = Assert.Throws<SwAgentException>(() => new ScopedPreferences(store, journal, log).Apply("export.part", new[] { Binary }));
+        Assert.Contains("not all back yet", e.Message);
+        // Once SOLIDWORKS takes it, the journal goes.
+        store.Ignored.Clear();
+        new ScopedPreferences(store, journal, log).Recover();
+        Assert.Equal(214, store.Values[(PreferenceKind.Integer, 75)]);
+        Assert.False(File.Exists(journal));
+    }
+
+    [Fact]
+    public void A_failed_apply_whose_put_back_does_not_take_says_so_and_keeps_the_journal()
+    {
+        var (prefs, store, journal, _) = Make();
+        store.FailSet.Add(2);
+        store.Values[(PreferenceKind.Integer, 75)] = 214;
+        // swStepAP is set, then swSTLDeviation fails, and swStepAP's put back is ignored.
+        var failing = new FailAfterFirstSetStore(store, 75);
+        var e = Assert.Throws<SwAgentException>(() => new ScopedPreferences(failing, journal, new MemoryLog()).Apply("export.part", new[] { Schema, Deviation }));
+        Assert.Contains("could not all be put back", e.Message);
+        Assert.True(File.Exists(journal));
+    }
+
+    /// <summary>A store that takes the first set of one id and ignores every later set of it.</summary>
+    sealed class FailAfterFirstSetStore : ITypedPreferenceStore
+    {
+        readonly FakeStore _inner;
+        readonly int _id;
+        bool _setOnce;
+
+        public FailAfterFirstSetStore(FakeStore inner, int id)
+        {
+            _inner = inner;
+            _id = id;
+        }
+
+        public double Get(PreferenceKind kind, int id) => _inner.Get(kind, id);
+
+        public void Set(PreferenceKind kind, int id, double value)
+        {
+            if (id == _id && _setOnce) return;
+            if (id == _id) _setOnce = true;
+            _inner.Set(kind, id, value);
+        }
+    }
+
+    [Fact]
+    public void A_preference_whose_original_cannot_be_put_back_is_refused_before_anything_is_set()
+    {
+        var (prefs, store, journal, _) = Make();
+        var quality = new PreferenceSetting("swSTLQuality", PreferenceKind.Integer, 78, 1,
+            new[] { 3.0 }, "options.resolution", "SOLIDWORKS does not take a custom resolution through its API");
+        store.Values[(PreferenceKind.Integer, 78)] = 3;
+        var e = Assert.Throws<SwAgentException>(() => prefs.Apply("export.part", new[] { Schema, quality }));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal("options.resolution", e.Error.Details!["field"]);
+        Assert.Equal("swSTLQuality", e.Error.Details["preference"]);
+        Assert.Contains("SOLIDWORKS does not take a custom resolution through its API", e.Message);
+        Assert.Empty(store.Writes);
+        Assert.False(File.Exists(journal));
+        // A value it would not change is no reason to refuse.
+        store.Values[(PreferenceKind.Integer, 78)] = 1;
+        using (prefs.Apply("export.part", new[] { quality })) { }
+    }
+
+    [Fact]
     public void ReadBack_reports_what_SOLIDWORKS_holds_now()
     {
         var (prefs, store, _, _) = Make();
