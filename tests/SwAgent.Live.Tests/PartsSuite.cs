@@ -29,7 +29,7 @@ public sealed class PartsSuiteRun : LiveRun
 /// closes them all at the end. Skipped unless SWMCP_LIVE=1.
 /// </summary>
 [TestCaseOrderer(StepOrderer.TypeName, StepOrderer.AssemblyName)]
-public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
+public sealed partial class PartsSuite : IClassFixture<PartsSuiteRun>
 {
     static readonly TimeSpan Short = TimeSpan.FromSeconds(30);
     const double Tight = 1e-6;
@@ -846,8 +846,8 @@ public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
         return string.Join(" | ", notes);
     });
 
-    [SkippableFact, Step(22)]
-    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(22, "the suite's documents closed", async () =>
+    [SkippableFact, Step(31)]
+    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(31, "the suite's documents closed", async () =>
     {
         var state = await _run.RequireOnlyOwnDocumentsAsync();
         int closed = 0;
