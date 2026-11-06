@@ -856,8 +856,10 @@ public sealed class PartsSuite : IClassFixture<PartsSuiteRun>
             await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = d.Path, Discard = true, UsersDocument = true });
             closed++;
         }
-        // addin.state can still list the last document for a moment after its close answered (3.C live run): read it
-        // again for up to 5 s before failing with what is still open.
+        // Workaround for #11, a bug in our own add-in, not SOLIDWORKS timing: the dispatcher refreshes the add-in's document
+        // table (DocumentTracker) in its finally, after the response is sent, and addin.state answers from that table, so
+        // it can still list a document the close just closed. Re-read for up to 5 s, still failing if one stays listed;
+        // remove this retry when #11 is fixed.
         var open = (await _run.AddinStateAsync()).Documents;
         for (int i = 0; i < 10 && open.Count > 0; i++)
         {
