@@ -1,0 +1,76 @@
+{
+  "type": "object",
+  "description": "Adds a standard mate between two entities of an assembly's components, or two components for lock. Lengths in mm, angles in degrees, everything in the assembly's coordinates. An entity is a reference issued in the assembly (model.find), name@component for a component's planes, axes and points (front@bracket-1, Axis1@sub-1/pin-1), the assembly's own front, top, right or origin, or a reference issued in a component's own part with its component. Checked by measuring after the solve, not by SOLIDWORKS' word: the mate exists without an error, nothing is newly over defined, and its condition holds within 0.001 mm and 0.01 degrees (coincident and tangent touch, concentric axes collinear, parallel at 0, perpendicular at 90, distance and angle at their values, lock leaves the two where they were). Otherwise the mate is deleted and every component the solve moved is put back where it was. measured gives each condition; change.moved lists the components the solve moved. Busy with user_editing while the user is editing a sketch, has a command open or edits a component in context. Place components near where they belong first (component.place): closest alignment depends on where they are. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "coincident",
+        "parallel",
+        "perpendicular",
+        "tangent",
+        "concentric",
+        "lock",
+        "distance",
+        "angle"
+      ],
+      "description": "coincident, parallel, perpendicular, tangent, concentric, lock, distance or angle."
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "One side of a mate.",
+        "properties": {
+          "entity": {
+            "type": "string",
+            "description": "A face, edge, vertex, plane, axis or point: a reference issued in the assembly (model.find), name@component for a component's own plane, axis or point (front@bracket-1, Axis1@sub-1/pin-1), or front, top, right or origin for the assembly's own. For lock, a component: its reference or name. With component, a reference issued in that component's own part, or a name there."
+          },
+          "component": {
+            "type": "string",
+            "description": "Only when entity is a reference issued in a component's own part (or a name there): that component, by reference or name (bracket-1, sub-1/pin-1)."
+          }
+        },
+        "required": [
+          "entity"
+        ],
+        "additionalProperties": false
+      },
+      "description": "The two sides, each from a different component (or one of them the assembly's own plane, axis or point)."
+    },
+    "alignment": {
+      "type": "string",
+      "enum": [
+        "aligned",
+        "anti_aligned",
+        "closest"
+      ],
+      "description": "aligned, anti_aligned or closest. Default closest. Not for lock or perpendicular."
+    },
+    "distance_mm": {
+      "type": "number",
+      "description": "For distance only, required: mm, 0 or more."
+    },
+    "angle_deg": {
+      "type": "number",
+      "description": "For angle only, required: degrees, 0 to 180."
+    },
+    "flip": {
+      "type": "boolean",
+      "description": "For distance and angle only: put the value on the other side. Default false."
+    },
+    "name": {
+      "type": "string",
+      "description": "A name for the mate; SOLIDWORKS names it (Coincident1) when absent."
+    }
+  },
+  "required": [
+    "type",
+    "entities"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "description": "How far each component's position is defined (fixed, fully_defined, under_defined, over_defined) and, when under defined, how it can still move: free translations and rotations as counts, with their directions (and each rotation's axis point) in the assembly's coordinates, mm. An unmated floating component is free in all six. Free motion is read from SOLIDWORKS (IComponent2.GetRemainingDOFs), never probed by moving anything; when SOLIDWORKS cannot describe it the counts are absent and note says why. The top-level components, or the ones named.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Only these components: each a reference or a name (bracket-1, sub-1/pin-1). Every top-level component when absent."
+    }
+  },
+  "additionalProperties": false
+}

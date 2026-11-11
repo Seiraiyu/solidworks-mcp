@@ -1,0 +1,188 @@
+{
+  "type": "object",
+  "description": "Each component's constrained state and free motion.",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "False for a document SOLIDWORKS loaded only because an open assembly uses it: it has no window of its own."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty",
+        "visible"
+      ],
+      "additionalProperties": false,
+      "description": "The assembly."
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "How a component can still move.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The component's name."
+          },
+          "reference": {
+            "type": "string",
+            "description": "Its reference (r1.component.…)."
+          },
+          "constraint": {
+            "type": "string",
+            "enum": [
+              "fixed",
+              "fully_defined",
+              "under_defined",
+              "over_defined",
+              "unknown"
+            ],
+            "description": "Fixed, fully defined, under defined, over defined or unknown."
+          },
+          "free_translations": {
+            "type": "integer",
+            "description": "How many ways it can slide; absent when SOLIDWORKS could not say."
+          },
+          "free_rotations": {
+            "type": "integer",
+            "description": "How many ways it can turn; absent when SOLIDWORKS could not say."
+          },
+          "translations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "A direction in the part's model space, of unit length.",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "description": "X component."
+                },
+                "y": {
+                  "type": "number",
+                  "description": "Y component."
+                },
+                "z": {
+                  "type": "number",
+                  "description": "Z component."
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The directions it can slide along, unit vectors in the assembly."
+          },
+          "rotations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "An axis a component can turn about.",
+              "properties": {
+                "axis": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "description": "X component."
+                    },
+                    "y": {
+                      "type": "number",
+                      "description": "Y component."
+                    },
+                    "z": {
+                      "type": "number",
+                      "description": "Z component."
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y",
+                    "z"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Its direction, a unit vector in the assembly."
+                },
+                "through": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "description": "X, mm."
+                    },
+                    "y": {
+                      "type": "number",
+                      "description": "Y, mm."
+                    },
+                    "z": {
+                      "type": "number",
+                      "description": "Z, mm."
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y",
+                    "z"
+                  ],
+                  "additionalProperties": false,
+                  "description": "A point on it, mm in the assembly."
+                }
+              },
+              "required": [
+                "axis",
+                "through"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The axes it can turn about."
+          },
+          "note": {
+            "type": "string",
+            "description": "Why the counts are absent, or what they mean when they are not SOLIDWORKS' own."
+          }
+        },
+        "required": [
+          "name",
+          "constraint",
+          "translations",
+          "rotations"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Each component, in the order asked (tree order by default)."
+    }
+  },
+  "required": [
+    "document",
+    "components"
+  ],
+  "additionalProperties": false
+}

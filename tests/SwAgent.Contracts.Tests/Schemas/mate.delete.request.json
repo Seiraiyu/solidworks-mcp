@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "description": "Deletes mates. The components they joined stay where the mates left them (listed in stayed) and can then move as their other mates allow. Checked: the mates are gone. A deletion is not rolled back: what SOLIDWORKS deleted stays deleted, and a failed check says what is left.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "mates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The mates: each a reference (r1.mate.…) or a name (Coincident1)."
+    }
+  },
+  "required": [
+    "mates"
+  ],
+  "additionalProperties": false
+}
