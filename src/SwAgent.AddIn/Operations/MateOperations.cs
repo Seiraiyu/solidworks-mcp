@@ -289,3 +289,36 @@ public sealed class MateDeleteOperation : AssemblyChangeOperation<MateDeleteRequ
                 new JsonObject { ["check"] = "mates", ["expected"] = _matesBefore - result.Deleted.Count, ["measured"] = now });
     }
 }
+
+/// <summary>mate.list (design 455, Mates): read-only.</summary>
+public sealed class MateListOperation : Operation<MateListRequest, MateListResult>
+{
+    readonly AddInServices _services;
+
+    public MateListOperation(AddInServices services)
+    {
+        _services = services;
+    }
+
+    protected override MateListResult Run(MateListRequest request, IOperationContext context)
+    {
+        var (doc, asm) = DocumentLocator.FindAssembly(_services.SolidWorks, request.Document, Name);
+        string? only = request.Component == null ? null : asm.Identify(ComponentLookup.Find(_services.References, doc, asm, request.Component, "/component")).Name;
+        var result = new MateListResult { Document = doc.Info() };
+        foreach (var mate in asm.Mates())
+        {
+            var info = MateChecks.Describe(_services.References, doc, asm, mate);
+            if (only == null || info.Entities.Any(e => string.Equals(e.Component, only, StringComparison.OrdinalIgnoreCase))) result.Mates.Add(info);
+        }
+        return result;
+    }
+
+    /// <summary>Read again, the assembly has the same mates: nothing changed them while they were read.</summary>
+    protected override void Verify(MateListRequest request, MateListResult result, IOperationContext context)
+    {
+        var (_, asm) = DocumentLocator.FindAssembly(_services.SolidWorks, DocumentKeys.Of(result.Document), Name);
+        var names = asm.Mates().Select(m => asm.ReadMate(m).Name).ToList();
+        if (result.Mates.Any(m => !names.Contains(m.Name)))
+            throw new SwAgentException(ErrorCode.VerificationFailed, "the mates changed while they were read; ask again");
+    }
+}
