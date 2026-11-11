@@ -5,7 +5,8 @@ public static class Protocol
     /// <summary>Bumped on any breaking change to the envelope or an existing operation.</summary>
     /// 2: busy and timeout answered by the add-in, event notifications, addin.* operations.
     /// 3: persistent references, the document, model and selection families, session.status internal.
-    public const int Version = 3;
+    /// 4: the sheetmetal family.
+    public const int Version = 4;
 
     public const string PipeNamePrefix = "solidworks-mcp-";
 

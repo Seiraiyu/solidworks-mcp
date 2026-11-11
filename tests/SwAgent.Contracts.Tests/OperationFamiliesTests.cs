@@ -30,6 +30,7 @@ public class OperationFamiliesTests
         Assert.Equal(TimeSpan.FromSeconds(30), OperationFamilies.DefaultDeadline("dimension"));
         Assert.Equal(TimeSpan.FromSeconds(30), OperationFamilies.DefaultDeadline("refgeom"));
         Assert.Equal(TimeSpan.FromSeconds(30), OperationFamilies.DefaultDeadline("configuration"));
+        Assert.Equal(TimeSpan.FromSeconds(60), OperationFamilies.DefaultDeadline("sheetmetal"));
     }
 
     [Fact]

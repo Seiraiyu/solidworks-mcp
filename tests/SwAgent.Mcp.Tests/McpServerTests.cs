@@ -44,6 +44,20 @@ public class McpServerTests
     }
 
     [Fact]
+    public async Task The_sheet_metal_tools_are_listed_with_their_contracts_and_only_read_is_read_only()
+    {
+        await using var server = await InProcessServer.StartAsync(NoSolidWorks());
+        var tools = (await server.Client.ListToolsAsync()).ToDictionary(t => t.Name);
+        Assert.Equal(Json.Write(SwTool.WithDeadline(JsonSchema.For(typeof(SheetMetalBaseFlangeRequest)))), Json.Write(Json.Parse(tools["sw_sheetmetal_base_flange"].JsonSchema.GetRawText())));
+        Assert.Equal(Json.Write(SwTool.WithDeadline(JsonSchema.For(typeof(SheetMetalSetParametersRequest)))), Json.Write(Json.Parse(tools["sw_sheetmetal_set_parameters"].JsonSchema.GetRawText())));
+        Assert.True(tools["sw_sheetmetal_read"].ProtocolTool.Annotations!.ReadOnlyHint);
+        Assert.False(tools["sw_sheetmetal_base_flange"].ProtocolTool.Annotations!.ReadOnlyHint);
+        Assert.False(tools["sw_sheetmetal_set_parameters"].ProtocolTool.Annotations!.ReadOnlyHint);
+        Assert.StartsWith("Starts a sheet-metal part from a sketch", tools["sw_sheetmetal_base_flange"].Description);
+        Assert.Equal(TimeSpan.FromSeconds(60), OperationFamilies.DefaultFor("sheetmetal.set_parameters", TimeSpan.Zero));
+    }
+
+    [Fact]
     public async Task Sw_status_composes_the_state_the_addin_state_and_the_session()
     {
         using var addin = new FakeAddin();

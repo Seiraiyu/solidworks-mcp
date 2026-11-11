@@ -76,7 +76,7 @@ function Assert-Safe {
 
 function Buttons($Dialog) { return (@($Dialog.buttons | ForEach-Object { "$($_.text) ($($_.control_id))" }) -join ', ') }
 
-$hello = Invoke-Addin 'session.hello' @{ protocol_version = 3; client_version = 'live-check-2b' }
+$hello = Invoke-Addin 'session.hello' @{ protocol_version = 4; client_version = 'live-check-2b' }
 Write-Host "hello: SOLIDWORKS $($hello.sw_revision), add-in $($hello.addin_version), process $($hello.process_id)"
 $state = Assert-Safe
 Check 'dialog watch alive' ([bool]$state.dialog_watch_alive) "dialog_watch_alive=$($state.dialog_watch_alive)"

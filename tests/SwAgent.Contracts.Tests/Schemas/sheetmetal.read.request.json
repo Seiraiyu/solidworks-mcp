@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "description": "Reads a part as a sheet-metal designer does: whether it is sheet metal, whether it is folded or flattened, its thickness, default bend radius, allowance and relief, its sheet-metal body and any ordinary bodies beside it, every bend with its angle, inner radius, allowance and width, its base face (the sheet's largest planar face, whose edges usually take flanges), and the flat pattern's size from SOLIDWORKS' cut list with the cut list's other properties. An ordinary part answers sheet_metal false and nothing more. Lengths in mm, angles in degrees. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    }
+  },
+  "additionalProperties": false
+}
