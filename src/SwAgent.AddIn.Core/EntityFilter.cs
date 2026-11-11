@@ -76,7 +76,8 @@ public static class EntityFilter
 
     /// <summary>
     /// The description a reference carries: what the entity was when it was issued, as reference_unresolved reports it,
-    /// for example "plane face of Boss-Extrude1, 800 mm²" or "line edge of Cut-Extrude1, 20 mm".
+    /// for example "plane face of Boss-Extrude1, 800 mm²" or "line edge of Cut-Extrude1, 20 mm"; in an assembly, with the
+    /// component it belongs to: "plane face of Boss-Extrude1 in bracket-1, 800 mm²".
     /// </summary>
     public static string Describe(EntityInfo e)
     {
@@ -84,6 +85,7 @@ public static class EntityFilter
         string kind = WireNames.ForEnum(e.Kind).Replace('_', ' ');
         string text = e.Name != null ? $"{kind} {e.Name}" : $"{geometry} {kind}";
         if (e.Feature != null) text += $" of {e.Feature}";
+        if (e.Component != null && e.Kind != ReferenceKind.Component) text += $" in {e.Component}";
         var c = CultureInfo.InvariantCulture;
         if (e.AreaMm2 != null) text += string.Format(c, ", {0:0.###} mm²", e.AreaMm2);
         if (e.LengthMm != null) text += string.Format(c, ", {0:0.###} mm", e.LengthMm);

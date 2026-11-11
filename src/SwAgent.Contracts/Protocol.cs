@@ -7,7 +7,8 @@ public static class Protocol
     /// 3: persistent references, the document, model and selection families, session.status internal.
     /// 4: the sheetmetal family.
     /// 5: assemblies: component and mate references, DocumentInfo.visible, the assembly and component families.
-    public const int Version = 5;
+    /// 6: assembly-context references (payload versions 3 and 4, EntityInfo.component), model, selection and configuration operations on assemblies.
+    public const int Version = 6;
 
     public const string PipeNamePrefix = "solidworks-mcp-";
 
