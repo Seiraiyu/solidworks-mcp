@@ -42,6 +42,76 @@ public sealed class AssemblyComponentsOperation : Operation<AssemblyComponentsRe
     }
 }
 
+/// <summary>component.place (design 455, Components).</summary>
+public sealed class ComponentPlaceOperation : AssemblyChangeOperation<ComponentPlaceRequest, ComponentPlaceResult>
+{
+    /// <summary>Whether the component had mates, so a solve may have moved it (one request runs at a time).</summary>
+    bool _mated;
+
+    public ComponentPlaceOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(ComponentPlaceRequest request) => request.Document;
+
+    protected override ComponentPlaceResult Change(ISwDocument doc, ISwAssembly asm, ComponentPlaceRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        var component = Component(doc, asm, request.Component, "component");
+        var info = asm.Read(component);
+        Placeable(doc, asm, component, info);
+        var target = request.XAxis == null && request.ZAxis == null
+            ? new Transform { Origin = request.Origin, XAxis = info.Transform.XAxis, YAxis = info.Transform.YAxis, ZAxis = info.Transform.ZAxis }
+            : Placement.Make(request.Origin, request.XAxis, request.ZAxis, "x_axis", "z_axis");
+        var old = info.Transform;
+        _mated = info.Mates > 0;
+        tx.Edited(new ChangedItem { Name = info.Name, Property = "position", Before = $"{old.Origin} mm", After = $"{target.Origin} mm" },
+            () => asm.SetTransform(component, old));
+        asm.SetTransform(component, target);
+        if (_mated) asm.Rebuild();
+        var now = Describe(doc, asm, component);
+        bool solved = _mated && Placement.Moved(target, now.Transform);
+        context.Log.Info($"component.place: {info.Name} to {target.Origin}{(solved ? $", solved to {now.Transform.Origin}" : "")}");
+        return new ComponentPlaceResult { Component = now, Solved = solved };
+    }
+
+    /// <summary>A fixed component, one its mates hold completely, and one carried by a rigid subassembly cannot be placed.</summary>
+    static void Placeable(ISwDocument doc, ISwAssembly asm, object component, ComponentInfo info)
+    {
+        if (info.Fixed)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument, $"{info.Name} is fixed; float it first (component.set with fixed: false)",
+                new JsonObject { ["field"] = "component", ["component"] = info.Name });
+        }
+        if (info.Constraint == Constraint.FullyDefined)
+        {
+            var mates = asm.MatesOf(component);
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{info.Name} is fully defined by its mates ({string.Join(", ", mates)}), so it cannot move; change or delete a mate first",
+                new JsonObject { ["field"] = "component", ["component"] = info.Name, ["mates"] = mates.Select(m => (object?)m).ToList() });
+        }
+        if (info.Parent != null && asm.ComponentByName(info.Parent) is object parent && asm.Read(parent).SolveAs != SolveAs.Flexible)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{info.Name} is inside the rigid subassembly {info.Parent}, which carries it; place {info.Parent}, or make it flexible (component.set with solve_as: flexible)",
+                new JsonObject { ["field"] = "component", ["component"] = info.Name, ["subassembly"] = info.Parent });
+        }
+    }
+
+    /// <summary>An unmated component reads back where it was put; a mated one may have been solved elsewhere, which the result says.</summary>
+    protected override void Check(ISwDocument doc, ISwAssembly asm, ComponentPlaceRequest request, ComponentPlaceResult result)
+    {
+        if (_mated) return;
+        var now = asm.Read(asm.ComponentByName(result.Component.Name)
+            ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"{result.Component.Name} is no longer in the assembly"));
+        if (Placement.OriginMoved(new Transform { Origin = request.Origin }, now.Transform))
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"{now.Name} is at {now.Transform.Origin}, not {request.Origin}",
+                new JsonObject { ["check"] = "origin", ["expected"] = request.Origin.ToString(), ["measured"] = now.Transform.Origin.ToString() });
+        }
+    }
+}
+
 /// <summary>assembly.insert (design 455, Components).</summary>
 public sealed class AssemblyInsertOperation : AssemblyChangeOperation<AssemblyInsertRequest, AssemblyInsertResult>
 {

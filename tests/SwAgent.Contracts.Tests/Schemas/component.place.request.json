@@ -1,0 +1,91 @@
+{
+  "type": "object",
+  "description": "Moves a component to a point (mm, assembly coordinates), with new axes when x_axis and z_axis are given, so it sits near where it belongs before it is mated (a mate's closest alignment depends on where things are). Refuses a fixed component, one its mates leave no freedom (fully defined), and one inside a rigid subassembly. A component with mates is placed and then solved: solved says whether the solve moved it from where it was put. Checked: an unmated component reads back where it was put. Rolled back on failure.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "component": {
+      "type": "string",
+      "description": "The component: its reference (r1.component.…) or its name (bracket-1; sub-1/pin-1 inside a subassembly)."
+    },
+    "origin": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "X, mm."
+        },
+        "y": {
+          "type": "number",
+          "description": "Y, mm."
+        },
+        "z": {
+          "type": "number",
+          "description": "Z, mm."
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "additionalProperties": false,
+      "description": "Where the component's origin goes, mm in the assembly."
+    },
+    "x_axis": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "X component."
+        },
+        "y": {
+          "type": "number",
+          "description": "Y component."
+        },
+        "z": {
+          "type": "number",
+          "description": "Z component."
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "additionalProperties": false,
+      "description": "The component's x axis in the assembly, with z_axis (both or neither, perpendicular). Its present axes when absent."
+    },
+    "z_axis": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "X component."
+        },
+        "y": {
+          "type": "number",
+          "description": "Y component."
+        },
+        "z": {
+          "type": "number",
+          "description": "Z component."
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "additionalProperties": false,
+      "description": "The component's z axis in the assembly, with x_axis."
+    }
+  },
+  "required": [
+    "component",
+    "origin"
+  ],
+  "additionalProperties": false
+}
