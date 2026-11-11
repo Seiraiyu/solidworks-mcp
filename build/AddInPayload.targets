@@ -3,10 +3,12 @@
     Puts the add-in (SwAgent.AddIn.dll with the SwAgent.AddIn.Core.dll and SwAgent.Contracts.dll it loads) in an
     addin\ folder of this project's output, and of its publish folder, so `swmcp addin register` finds it by default.
     The add-in is net48 and cannot be a normal project reference of a net10.0 project, so it is built here with the
-    MSBuild task, inheriting this build's global properties so a solution build shares one build of it.
+    MSBuild task, inheriting this build's global properties so a solution build shares one build of it. A
+    self-contained publish's runtime identifier is not passed on (plan 3.F): the add-in is restored without one, and
+    SOLIDWORKS loads it as it is (NETSDK1047 otherwise).
   -->
   <Target Name="SwAgentAddInPayload" AfterTargets="Build">
-    <MSBuild Projects="$(MSBuildThisFileDirectory)..\src\SwAgent.AddIn\SwAgent.AddIn.csproj" Targets="Build">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)..\src\SwAgent.AddIn\SwAgent.AddIn.csproj" Targets="Build" RemoveProperties="RuntimeIdentifier;SelfContained;_IsPublishing;PublishDir">
       <Output TaskParameter="TargetOutputs" ItemName="_SwAgentAddInAssembly" />
     </MSBuild>
     <PropertyGroup>

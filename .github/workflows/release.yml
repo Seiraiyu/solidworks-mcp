@@ -1,0 +1,104 @@
+name: release
+
+# A v* tag builds, tests, packs and checks the zip, and publishes it with its SHA-256 as a GitHub Release whose notes
+# link the live-suite report for the tagged commit. A pull request that changes this workflow or build/, and a
+# dispatch (dry_run true by default), do all of it but the release, and upload the zip as an artifact (design 371,
+# Installer and release). In swmcp phase 3 it is only ever run as a dry run; swmcp-release:1 cuts v0.1.0.
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - build/**
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Do everything but create the release
+        type: boolean
+        default: true
+      version:
+        description: Version to build on a branch (default 0.1.0-dryrun.<run number>)
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Version rules
+        shell: pwsh
+        run: ./build/release/version.tests.ps1
+      - name: Version
+        id: version
+        shell: pwsh
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        run: ./build/release/version.ps1 -Event $env:EVENT -RefType $env:REF_TYPE -RefName $env:REF_NAME -RunNumber $env:RUN_NUMBER -InputVersion "$env:INPUT_VERSION" -InputDryRun "$env:INPUT_DRY_RUN" | Tee-Object -FilePath $env:GITHUB_OUTPUT -Append
+      - name: Restore
+        run: dotnet restore SolidWorksMcp.slnx
+      - name: Build
+        run: dotnet build SolidWorksMcp.slnx -c Release --no-restore "-p:Version=${{ steps.version.outputs.version }}"
+      - name: Test
+        run: dotnet test SolidWorksMcp.slnx -c Release --no-build --logger trx --results-directory TestResults
+      - name: Pack
+        shell: pwsh
+        run: ./build/release/pack.ps1 -Version '${{ steps.version.outputs.version }}' -Output dist
+      - name: Check the zip
+        shell: pwsh
+        run: ./build/release/smoke.ps1 -Zip 'dist/solidworks-mcp-${{ steps.version.outputs.version }}-win-x64.zip' -Version '${{ steps.version.outputs.version }}'
+      - name: Upload the zip
+        uses: actions/upload-artifact@v6
+        with:
+          name: solidworks-mcp-${{ steps.version.outputs.version }}-win-x64
+          path: |
+            dist/solidworks-mcp-${{ steps.version.outputs.version }}-win-x64.zip
+            dist/solidworks-mcp-${{ steps.version.outputs.version }}-win-x64.zip.sha256
+          if-no-files-found: error
+      - name: Release notes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ steps.version.outputs.dry_run }}
+        run: |
+          $dry = $env:DRY_RUN -eq 'true'
+          ./build/release/notes.ps1 -Version '${{ steps.version.outputs.version }}' -Commit '${{ github.sha }}' -Repository '${{ github.repository }}' -Output dist/notes.md -AllowMissingReport:$dry
+          Get-Content dist/notes.md | Add-Content $env:GITHUB_STEP_SUMMARY
+      - name: Publish the release
+        if: steps.version.outputs.dry_run == 'false'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $zip = "dist/solidworks-mcp-$env:VERSION-win-x64.zip"
+          $flags = @('--title', "solidworks-mcp $env:VERSION", '--notes-file', 'dist/notes.md', '--verify-tag')
+          if ($env:VERSION.Contains('-')) { $flags += '--prerelease' }
+          gh release create "v$env:VERSION" $zip "$zip.sha256" @flags
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-test-results
+          path: TestResults
+          if-no-files-found: ignore

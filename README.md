@@ -102,91 +102,38 @@ The escape hatch is on by default. Turn it off with `swmcp serve --no-api-call` 
 
 Every tool takes an optional `deadline_ms`.
 
-## Requirements
-
-- Windows with SOLIDWORKS 2026 SP4, started from the 3DEXPERIENCE launcher.
-- The .NET 10 SDK, to build. A per-user install works: `dotnet-install.ps1 -Channel 10.0` puts it in `%LOCALAPPDATA%\Microsoft\dotnet`. Then set `DOTNET_ROOT` to that folder, because `swmcp.exe` needs it to find the runtime.
-- No administrator rights. Everything installs for the current user only.
-
-## Build and test
-
-```powershell
-dotnet build SolidWorksMcp.slnx -c Release
-dotnet test SolidWorksMcp.slnx -c Release --no-build
-```
-
-The build needs no SOLIDWORKS: the interop assemblies it compiles against are in `lib/solidworks/`.
-
-## Live fault suite
-
-`tests/SwAgent.Live.Tests` drives a real SOLIDWORKS through the client library, exactly as `swmcp serve` does. It covers:
-
-- the add-in loaded by the first call;
-- preferences applied per connection and restored;
-- `sw_status` answering while SOLIDWORKS is busy;
-- `busy`, `timeout` and the late `operation.completed`;
-- dialogs during an operation and with nothing running;
-- a second client;
-- the client dropping the pipe;
-- SOLIDWORKS killed mid-operation (`sw_crashed`);
-- SOLIDWORKS closed normally (`sw_not_running`);
-- reattaching after each restart;
-- a reference to a face that a dimension change removed (a pocket deepened through the block: `reference_unresolved`, nothing changed);
-- a change while a sketch is open for editing (`busy` with `user_editing`; the suite opens the sketch itself);
-- a dialog in the middle of a feature (`dialog_open`, answered with `sw_dialog_respond`: OK completes the fillet, Cancel takes it back). SOLIDWORKS' feature calls raise no prompt through the API, so the suite has the add-in show one (`diag.arm_dialog`).
-
-A 3DEXPERIENCE sign-in or licence window is never answered: `sw_status` and `addin.state` mark it `needs_person`, `sw_dialog_respond` refuses it, and the suite stops for you.
-
-Every case is skipped unless `SWMCP_LIVE=1`, so a plain `dotnet test` and CI never touch SOLIDWORKS.
-
-Run it with SOLIDWORKS closed, or started from the 3DEXPERIENCE tab with no documents open:
-
-```powershell
-$env:SWMCP_LIVE = "1"
-dotnet test tests/SwAgent.Live.Tests -c Release --filter "FullyQualifiedName~SwAgent.Live.Tests.FaultSuite"
-Remove-Item env:SWMCP_LIVE
-```
-
-A run looks after the two switches the add-in's diagnostic operations depend on, so it does not matter how SOLIDWORKS was last started:
-
-- It sets `HKCU\Software\solidworks-mcp\Diagnostics` to 1 when it starts and deletes it at the end. The add-in reads it when it loads.
-- `swmcp addin register` makes SOLIDWORKS load the add-in as it starts (`HKCU\Software\SolidWorks\AddInsStartup`), before a run can turn diagnostics on. If SOLIDWORKS is not running, the run turns that off before it asks for SOLIDWORKS to be started, so the add-in loads on the run's first call with diagnostics on, and puts it back as it was at the end. If SOLIDWORKS is running with the add-in loaded without diagnostics, the run asks you (`ACTION`) to close it, waits for it to exit, and then asks for it to be started again.
-
-It writes to `%LOCALAPPDATA%\solidworks-mcp\live-runs\<run>\`:
-
-- `progress.log`, which you follow while it runs. A line starting `ACTION` asks for something only you can do: close SOLIDWORKS, start it from the 3DEXPERIENCE tab, open Tools > Options, edit a sketch or open a PropertyManager. A line starting `STOP` ends the run.
-- `client.log`.
-- `report.md`, with the SOLIDWORKS revision, the versions, and a result per case.
-
-The suite ends SOLIDWORKS twice. Each time it first reads the open documents again through its own connection, and it refuses if a document it did not create is open, or a dialog is open. It ends SOLIDWORKS only by process id. It creates documents only under `%LOCALAPPDATA%\solidworks-mcp\live-scratch\`.
-
-### Parts suite
-
-`PartsSuite` checks documents, references, inspection, selection, sketches, dimensions and features against exact geometry: a 40 x 20 x 10 mm block must measure 8000 mm³, its top face must be the one face whose normal is +Z, a reference to it must survive a rebuild, a save as and a close and reopen, a fully dimensioned plate sketch must read back fully defined, setting the block's depth to 15 mm must make it 12000 mm³, a change that over-defines a sketch must leave it as it was, a 5 mm radius hole through the block must take 785.398 mm³, a 2 mm fillet on a 10 mm edge 8.584 mm³ and a 2 mm chamfer 20 mm³, a tube revolved from a 10 x 30 profile must be 28274.334 mm³, extrudes up to next, mid-plane, reversed, both ways, drafted and thin-walled must make exactly the box and volume asked for, a fillet too big for its edge or a cut that misses the part must leave it as it was, a circle swept 30 mm along a line must be 2356.194 mm³, a loft from a 20 mm square to a 10 mm one 10 mm above it 2333.333 mm³, the block shelled open at the top with 2 mm walls 3392 mm³, its side drafted 5° must change by 87.489 mm³, two Ø5.0 holes through it must take 392.699 mm³, patterns and a mirror of holes must take each hole's volume once per instance, the block mirrored about its side must be 16000 mm³, and a hole suppressed in one configuration must be there in the other, each export format (STEP AP214 and AP242, Parasolid, STL coarse, fine and custom, 3MF) must be written with its header while the part keeps its path and unsaved changes and the export preferences read back as they were, and `sw_api_call`'s `GetMassProperties2` must agree with `sw_model_mass` in SI units, suppress a hole with its rebuild status, and refuse `CloseDoc`. Two cases ask you to edit a sketch and to open a PropertyManager by hand, and are skipped after 3 minutes if nobody does. It never ends SOLIDWORKS. It needs the add-in loaded with diagnostics on, as the fault suite does (it looks after that the same way), and stops if any document it did not create is open:
-
-```powershell
-$env:SWMCP_LIVE = "1"
-dotnet test tests/SwAgent.Live.Tests -c Release --filter "FullyQualifiedName~SwAgent.Live.Tests.PartsSuite"
-Remove-Item env:SWMCP_LIVE
-```
-
-Its report is in `%LOCALAPPDATA%\solidworks-mcp\live-runs\<run>-parts-suite\report.md`.
-
-The SP4 canary, `Canary`, checks that a sketch call made through COM from outside SOLIDWORKS still crashes it. It is expected to crash SOLIDWORKS. It never runs by default: it needs `SWMCP_CANARY=1` as well, and is run on its own with `--filter "FullyQualifiedName~Canary"`, after a SOLIDWORKS update.
-
-## Upgrading
-
-The add-in speaks protocol version 3. A SOLIDWORKS that still has an older add-in loaded answers `addin_incompatible`: start SOLIDWORKS again from the 3DEXPERIENCE dashboard, and the next call loads the new add-in.
-
 ## Install
 
-```powershell
-$app = "$env:LOCALAPPDATA\solidworks-mcp\app"
-dotnet publish src/SwAgent.Mcp -c Release -o $app
-& "$app\swmcp.exe" addin register
-```
+You need Windows and SOLIDWORKS 2026 SP4, started from the 3DEXPERIENCE dashboard, and nothing else. The release carries its own .NET, and installing needs no administrator rights.
 
-`addin register` writes the add-in's COM registration and SOLIDWORKS' add-in keys under `HKCU`. `swmcp addin status` shows them, and `swmcp addin unregister` removes them.
+1. Download `solidworks-mcp-<version>-win-x64.zip` from the [releases](https://github.com/Seiraiyu/solidworks-mcp/releases), and check it against the `.sha256` file beside it:
+
+   ```powershell
+   (Get-FileHash .\solidworks-mcp-0.1.0-win-x64.zip -Algorithm SHA256).Hash
+   ```
+
+2. Unzip it anywhere, such as your Downloads folder.
+3. In PowerShell, in the unzipped folder:
+
+   ```powershell
+   .\swmcp.exe install
+   ```
+
+`install` copies the release to `%LOCALAPPDATA%\solidworks-mcp\app\<version>\`, one folder per version, so a SOLIDWORKS still holding an earlier add-in does not block it. It then:
+
+- removes the Mark of the Web that Windows puts on downloaded files (SOLIDWORKS cannot load an add-in from a blocked DLL);
+- registers the add-in for you alone, under `HKCU`;
+- writes the version to `app\current.txt`.
+
+It prints a JSON document. `path` is where it installed, `swmcp` is the `swmcp.exe` to use from now on, and `claude_code` is the line that adds the server to Claude Code. If SOLIDWORKS is running with an add-in loaded, `next` says the new one loads after you close SOLIDWORKS and start it again from the dashboard.
+
+The binaries are not signed. Run `swmcp.exe` from PowerShell rather than by double-clicking it, which makes Windows SmartScreen ask about it.
+
+Below, `$app` is the installed folder:
+
+```powershell
+$app = "$env:LOCALAPPDATA\solidworks-mcp\app\$(Get-Content "$env:LOCALAPPDATA\solidworks-mcp\app\current.txt")"
+```
 
 ## Load the add-in
 
@@ -202,8 +149,10 @@ Name an instance with `--pid` when more than one is running.
 
 ## Use it from Claude Code
 
+Run the `claude_code` line `install` printed, which adds the server for every project:
+
 ```powershell
-claude mcp add solidworks -e "DOTNET_ROOT=$env:LOCALAPPDATA\Microsoft\dotnet" -- "$env:LOCALAPPDATA\solidworks-mcp\app\swmcp.exe" serve
+claude mcp add --scope user solidworks -- "$app\swmcp.exe" serve
 ```
 
 Or in a project's `.mcp.json`:
@@ -212,9 +161,8 @@ Or in a project's `.mcp.json`:
 {
   "mcpServers": {
     "solidworks": {
-      "command": "C:\\Users\\<you>\\AppData\\Local\\solidworks-mcp\\app\\swmcp.exe",
-      "args": ["serve"],
-      "env": { "DOTNET_ROOT": "C:\\Users\\<you>\\AppData\\Local\\Microsoft\\dotnet" }
+      "command": "C:\\Users\\<you>\\AppData\\Local\\solidworks-mcp\\app\\0.1.0\\swmcp.exe",
+      "args": ["serve"]
     }
   }
 }
@@ -277,3 +225,135 @@ Logs are in `%LOCALAPPDATA%\solidworks-mcp\logs\` and are kept 14 days:
 - `server-<yyyyMMdd>.log` is the MCP server's log. It records every tool call with its outcome code and duration, every change in what the server sees (`not_running`, `starting`, `loading`, `ready`, `crashed`, ...), every `LoadAddIn` with its result and how long the add-in's pipe took, and how each connection ended (crash, close, add-in turned off), with its evidence. The server also logs to stderr.
 
 `SWMCP_LOG_LEVEL` (`trace`, `debug`, `information`, `warning`, `error`) sets the server's minimum level; the default is `information`. At `debug` the server also logs each call's parameters.
+
+## Upgrading and uninstalling
+
+To upgrade, install the new release the same way. Its `swmcp.exe` is in a new version folder, so run `claude mcp remove --scope user solidworks` and then the `claude_code` line it prints. The add-in speaks protocol version 3, and a SOLIDWORKS that still has an older add-in loaded answers `addin_incompatible`. Close SOLIDWORKS and start it again from the 3DEXPERIENCE dashboard, and the next call loads the new add-in. The earlier version's folder stays until you uninstall.
+
+```powershell
+& "$app\swmcp.exe" uninstall
+claude mcp remove --scope user solidworks
+```
+
+`uninstall` removes the add-in's registration and every version folder except the one it runs from, which it lists under `kept` for you to delete once it has exited. A folder that SOLIDWORKS still holds files in is kept too, with the reason: close SOLIDWORKS and run `uninstall` again. If SOLIDWORKS was running with the add-in loaded, run `uninstall` once more after closing SOLIDWORKS, which writes the add-in's `AddInsStartup` entry back as it exits. The preferences the add-in changes are put back whenever a client disconnects. Upgrading in place and a fuller uninstall are planned.
+
+## What it can and cannot do
+
+In your running SOLIDWORKS, an agent can:
+
+- create, open, save and close parts;
+- draw fully specified sketches in one call;
+- add and edit the features listed above, each checked against the geometry it made and taken back when it is wrong;
+- name faces, edges and features by references that survive rebuilds and reopening;
+- read the feature tree, dimensions, mass properties, bounding box and rebuild errors, and measure;
+- export STEP, Parasolid, STL and 3MF;
+- see what you have selected;
+- reach the rest of SOLIDWORKS' API through `sw_api_call`.
+
+In this release it cannot:
+
+- work on assemblies, drawings or sheet metal, or check interference;
+- export drawing formats (PDF, DXF, DWG);
+- set materials, appearances, equations, design tables or custom properties, except through `sw_api_call`;
+- make variable-radius fillets or chamfers other than distance-angle and distance-distance, or do surface, multibody, weldment or direct-editing work;
+- set a custom STL or 3MF mesh resolution, or write STEP AP242 on a seat without SOLIDWORKS MBD (see **Export**);
+- start, restart or end SOLIDWORKS, answer a 3DEXPERIENCE sign-in or licence prompt, or work on 3DEXPERIENCE documents: only local files;
+- serve more than one client at a time;
+- load a new add-in into a running SOLIDWORKS: an upgrade needs SOLIDWORKS started again.
+
+It runs on Windows only and is tested on SOLIDWORKS 2026 SP4.
+
+## Development
+
+### Requirements
+
+- The .NET 10 SDK, to build. A per-user install works: `dotnet-install.ps1 -Channel 10.0` puts it in `%LOCALAPPDATA%\Microsoft\dotnet`. Then set `DOTNET_ROOT` to that folder, because `swmcp.exe` needs it to find the runtime.
+
+### Build and test
+
+```powershell
+dotnet build SolidWorksMcp.slnx -c Release
+dotnet test SolidWorksMcp.slnx -c Release --no-build
+```
+
+The build needs no SOLIDWORKS: the interop assemblies it compiles against are in `lib/solidworks/`.
+
+### Run from a build
+
+```powershell
+$dev = "$env:LOCALAPPDATA\solidworks-mcp\dev"
+dotnet publish src/SwAgent.Mcp -c Release -o $dev
+& "$dev\swmcp.exe" addin register
+claude mcp add solidworks -e "DOTNET_ROOT=$env:LOCALAPPDATA\Microsoft\dotnet" -- "$dev\swmcp.exe" serve
+```
+
+A build is not self-contained, so `swmcp.exe` needs `DOTNET_ROOT`. `addin register` writes the add-in's COM registration and SOLIDWORKS' add-in keys under `HKCU`. `swmcp addin status` shows them, and `swmcp addin unregister` removes them.
+
+### Releases
+
+`.github/workflows/release.yml` builds a release from a `v*` tag. It builds, tests, packs the zip with `build/release/pack.ps1`, and checks it with `build/release/smoke.ps1`, which installs and uninstalls it on the runner. It then publishes the zip and its SHA-256 as a GitHub Release, whose notes link the pull request that carries the commit's live-suite report. A pull request that changes the workflow or `build/`, and a run started by hand (`dry_run` is on by default), do everything but the release and upload the zip as an artifact. To build the same zip here:
+
+```powershell
+./build/release/pack.ps1 -Version 0.1.0-local.1 -Output dist
+```
+
+`smoke.ps1` installs into your own `%LOCALAPPDATA%` and `HKCU`, so it runs only on a GitHub-hosted runner.
+
+### Live fault suite
+
+`tests/SwAgent.Live.Tests` drives a real SOLIDWORKS through the client library, exactly as `swmcp serve` does. It covers:
+
+- the add-in loaded by the first call;
+- preferences applied per connection and restored;
+- `sw_status` answering while SOLIDWORKS is busy;
+- `busy`, `timeout` and the late `operation.completed`;
+- dialogs during an operation and with nothing running;
+- a second client;
+- the client dropping the pipe;
+- SOLIDWORKS killed mid-operation (`sw_crashed`);
+- SOLIDWORKS closed normally (`sw_not_running`);
+- reattaching after each restart;
+- a reference to a face that a dimension change removed (a pocket deepened through the block: `reference_unresolved`, nothing changed);
+- a change while a sketch is open for editing (`busy` with `user_editing`; the suite opens the sketch itself);
+- a dialog in the middle of a feature (`dialog_open`, answered with `sw_dialog_respond`: OK completes the fillet, Cancel takes it back). SOLIDWORKS' feature calls raise no prompt through the API, so the suite has the add-in show one (`diag.arm_dialog`).
+
+A 3DEXPERIENCE sign-in or licence window is never answered: `sw_status` and `addin.state` mark it `needs_person`, `sw_dialog_respond` refuses it, and the suite stops for you.
+
+Every case is skipped unless `SWMCP_LIVE=1`, so a plain `dotnet test` and CI never touch SOLIDWORKS.
+
+Run it with SOLIDWORKS closed, or started from the 3DEXPERIENCE tab with no documents open:
+
+```powershell
+$env:SWMCP_LIVE = "1"
+dotnet test tests/SwAgent.Live.Tests -c Release --filter "FullyQualifiedName~SwAgent.Live.Tests.FaultSuite"
+Remove-Item env:SWMCP_LIVE
+```
+
+A run looks after the two switches the add-in's diagnostic operations depend on, so it does not matter how SOLIDWORKS was last started:
+
+- It sets `HKCU\Software\solidworks-mcp\Diagnostics` to 1 when it starts and deletes it at the end. The add-in reads it when it loads.
+- `swmcp addin register` makes SOLIDWORKS load the add-in as it starts (`HKCU\Software\SolidWorks\AddInsStartup`), before a run can turn diagnostics on. If SOLIDWORKS is not running, the run turns that off before it asks for SOLIDWORKS to be started, so the add-in loads on the run's first call with diagnostics on, and puts it back as it was at the end. If SOLIDWORKS is running with the add-in loaded without diagnostics, the run asks you (`ACTION`) to close it, waits for it to exit, and then asks for it to be started again.
+
+It writes to `%LOCALAPPDATA%\solidworks-mcp\live-runs\<run>\`:
+
+- `progress.log`, which you follow while it runs. A line starting `ACTION` asks for something only you can do: close SOLIDWORKS, start it from the 3DEXPERIENCE tab, open Tools > Options, edit a sketch or open a PropertyManager. A line starting `STOP` ends the run.
+- `client.log`.
+- `report.md`, with the SOLIDWORKS revision, the versions, and a result per case.
+
+The suite ends SOLIDWORKS twice. Each time it first reads the open documents again through its own connection, and it refuses if a document it did not create is open, or a dialog is open. It ends SOLIDWORKS only by process id. It creates documents only under `%LOCALAPPDATA%\solidworks-mcp\live-scratch\`.
+
+#### Parts suite
+
+`PartsSuite` checks documents, references, inspection, selection, sketches, dimensions and features against exact geometry: a 40 x 20 x 10 mm block must measure 8000 mm³, its top face must be the one face whose normal is +Z, a reference to it must survive a rebuild, a save as and a close and reopen, a fully dimensioned plate sketch must read back fully defined, setting the block's depth to 15 mm must make it 12000 mm³, a change that over-defines a sketch must leave it as it was, a 5 mm radius hole through the block must take 785.398 mm³, a 2 mm fillet on a 10 mm edge 8.584 mm³ and a 2 mm chamfer 20 mm³, a tube revolved from a 10 x 30 profile must be 28274.334 mm³, extrudes up to next, mid-plane, reversed, both ways, drafted and thin-walled must make exactly the box and volume asked for, a fillet too big for its edge or a cut that misses the part must leave it as it was, a circle swept 30 mm along a line must be 2356.194 mm³, a loft from a 20 mm square to a 10 mm one 10 mm above it 2333.333 mm³, the block shelled open at the top with 2 mm walls 3392 mm³, its side drafted 5° must change by 87.489 mm³, two Ø5.0 holes through it must take 392.699 mm³, patterns and a mirror of holes must take each hole's volume once per instance, the block mirrored about its side must be 16000 mm³, and a hole suppressed in one configuration must be there in the other, each export format (STEP AP214 and AP242, Parasolid, STL coarse, fine and custom, 3MF) must be written with its header while the part keeps its path and unsaved changes and the export preferences read back as they were, and `sw_api_call`'s `GetMassProperties2` must agree with `sw_model_mass` in SI units, suppress a hole with its rebuild status, and refuse `CloseDoc`. Two cases ask you to edit a sketch and to open a PropertyManager by hand, and are skipped after 3 minutes if nobody does. It never ends SOLIDWORKS. It needs the add-in loaded with diagnostics on, as the fault suite does (it looks after that the same way), and stops if any document it did not create is open:
+
+```powershell
+$env:SWMCP_LIVE = "1"
+dotnet test tests/SwAgent.Live.Tests -c Release --filter "FullyQualifiedName~SwAgent.Live.Tests.PartsSuite"
+Remove-Item env:SWMCP_LIVE
+```
+
+Its report is in `%LOCALAPPDATA%\solidworks-mcp\live-runs\<run>-parts-suite\report.md`.
+
+Its case 33 is the build-a-part scenario. It plays `tests/SwAgent.Live.Tests/Scenarios/bracket.transcript.json` through the MCP server's own tools, as an agent would: a 60 x 50 x 40 mm L-bracket of 6 mm stock with a 5 mm inside fillet and two 5 mm holes. The bracket must come out at 24938.982 mm³ with its centre of mass at (18.276, 13.621, 0) mm, and its STEP copy must be written. The calls and their answers are kept in the run's `bracket-transcript.jsonl`.
+
+The SP4 canary, `Canary`, checks that a sketch call made through COM from outside SOLIDWORKS still crashes it. It is expected to crash SOLIDWORKS. It never runs by default: it needs `SWMCP_CANARY=1` as well, and is run on its own with `--filter "FullyQualifiedName~Canary"`, after a SOLIDWORKS update.

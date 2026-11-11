@@ -1,0 +1,55 @@
+{
+  "name": "bracket",
+  "description": "An agent makes a 60 x 50 x 40 mm L-bracket of 6 mm stock: an L profile on the front plane extruded 40 mm mid-plane, a 5 mm fillet in the inside corner, two 5 mm holes through the base, then its mass properties, its bounding box and a STEP copy. Variables: part (the .SLDPRT to create) and step (the .step to write).",
+  "steps": [
+    { "say": "a new part, saved where it was asked for", "tool": "sw_document_new", "arguments": { "path": "${part}" } },
+    {
+      "say": "the L profile on the front plane, fully defined",
+      "tool": "sw_sketch_create",
+      "arguments": {
+        "document": "${part}",
+        "on": "front",
+        "name": "profile",
+        "lines": [
+          { "id": "l1", "start": { "x": 0, "y": 0 }, "end": { "x": 60, "y": 0 } },
+          { "id": "l2", "start": { "x": 60, "y": 0 }, "end": { "x": 60, "y": 6 } },
+          { "id": "l3", "start": { "x": 60, "y": 6 }, "end": { "x": 6, "y": 6 } },
+          { "id": "l4", "start": { "x": 6, "y": 6 }, "end": { "x": 6, "y": 50 } },
+          { "id": "l5", "start": { "x": 6, "y": 50 }, "end": { "x": 0, "y": 50 } },
+          { "id": "l6", "start": { "x": 0, "y": 50 }, "end": { "x": 0, "y": 0 } }
+        ],
+        "relations": [
+          { "type": "coincident", "entities": ["l1.end", "l2.start"] },
+          { "type": "coincident", "entities": ["l2.end", "l3.start"] },
+          { "type": "coincident", "entities": ["l3.end", "l4.start"] },
+          { "type": "coincident", "entities": ["l4.end", "l5.start"] },
+          { "type": "coincident", "entities": ["l5.end", "l6.start"] },
+          { "type": "coincident", "entities": ["l6.end", "l1.start"] },
+          { "type": "horizontal", "entities": ["l1"] },
+          { "type": "horizontal", "entities": ["l3"] },
+          { "type": "horizontal", "entities": ["l5"] },
+          { "type": "vertical", "entities": ["l2"] },
+          { "type": "vertical", "entities": ["l4"] },
+          { "type": "vertical", "entities": ["l6"] },
+          { "type": "coincident", "entities": ["l1.start", "origin"] }
+        ],
+        "dimensions": [
+          { "name": "length", "entities": ["l1"], "value": 60 },
+          { "name": "thickness", "entities": ["l2"], "value": 6 },
+          { "name": "height", "entities": ["l6"], "value": 50 },
+          { "name": "upright", "entities": ["l5"], "value": 6 }
+        ]
+      },
+      "save": { "profile": "/sketch/name", "solve": "/sketch/solve" }
+    },
+    { "say": "extrude it 40 mm, half each side of the front plane", "tool": "sw_feature_extrude", "arguments": { "document": "${part}", "sketch": "${profile}", "end": "mid_plane", "depth_mm": 40 }, "save": { "body": "/feature/name" } },
+    { "say": "the inside corner's edge", "tool": "sw_model_find", "arguments": { "document": "${part}", "kind": "edge", "geometry": "line", "direction": { "x": 0, "y": 0, "z": 1 }, "near": { "x": 6, "y": 6, "z": 0 }, "max_distance_mm": 0.001, "limit": 1 }, "save": { "corner": "/entities/0/reference" } },
+    { "say": "round the inside corner, 5 mm", "tool": "sw_feature_fillet", "arguments": { "document": "${part}", "edges": ["${corner}"], "radius_mm": 5 }, "save": { "fillet": "/feature/name" } },
+    { "say": "the base's top face", "tool": "sw_model_find", "arguments": { "document": "${part}", "kind": "face", "geometry": "plane", "direction": { "x": 0, "y": 1, "z": 0 }, "near": { "x": 40, "y": 6, "z": 0 }, "max_distance_mm": 0.001, "limit": 1 }, "save": { "base_top": "/entities/0/reference" } },
+    { "say": "two 5 mm holes through the base", "tool": "sw_feature_hole", "arguments": { "document": "${part}", "face": "${base_top}", "positions": [ { "x": 40, "y": 6, "z": -10 }, { "x": 40, "y": 6, "z": 10 } ], "type": "simple", "standard": "iso", "size": "Ø5.0", "end": "through_all" }, "save": { "holes": "/feature/name" } },
+    { "say": "its mass properties", "tool": "sw_model_mass", "arguments": { "document": "${part}" }, "save": { "volume": "/volume_mm3" } },
+    { "say": "its bounding box", "tool": "sw_model_bounding_box", "arguments": { "document": "${part}", "precise": true } },
+    { "say": "a STEP copy", "tool": "sw_export_part", "arguments": { "document": "${part}", "path": "${step}", "format": "step" } },
+    { "say": "save the part", "tool": "sw_document_save", "arguments": { "document": "${part}" } }
+  ]
+}
