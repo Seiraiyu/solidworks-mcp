@@ -54,5 +54,6 @@ The first release: an agent can model parts in a running SOLIDWORKS 2026 SP4 on 
 
 ### Fixed before release
 
-- The `dialog_open` error for a 3DEXPERIENCE sign-in or licence window no longer tells the agent to answer it with
-  `sw_dialog_respond`, which refuses those windows; it says only a person can answer it (#16).
+- The `dialog_open` error and the `sw_status` message for a 3DEXPERIENCE sign-in or licence window no longer tell
+  the agent to answer it with `sw_dialog_respond`, which refuses those windows; they say only a person can answer it
+  (#16).

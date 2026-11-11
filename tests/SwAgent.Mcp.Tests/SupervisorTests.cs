@@ -403,6 +403,23 @@ public class SupervisorTests
     }
 
     [Fact]
+    public async Task Status_with_a_sign_in_window_open_asks_for_a_person_not_sw_dialog_respond()
+    {
+        // sw_dialog_respond refuses a sign-in or licence window (issue #16), so sw_status must not send the agent there.
+        using var addin = new FakeAddin();
+        addin.State.Dialog = new DialogInfo
+        {
+            Id = "d1-3", Title = "Login - 3DEXPERIENCE ID - Dassault Systemes", NeedsPerson = true,
+            Buttons = { new DialogButton { Text = "Log in", ControlId = 1 } }, OpenedAt = "t",
+        };
+        using var rig = new Rig(addin);
+        var status = await rig.Supervisor.StatusAsync();
+        Assert.DoesNotContain("sw_dialog_respond", status.Message);
+        Assert.Contains("\"Login - 3DEXPERIENCE ID - Dassault Systemes\", a 3DEXPERIENCE sign-in or licence window that only a person can answer", status.Message);
+        Assert.Contains("ask the user to deal with it in SOLIDWORKS", status.Message);
+    }
+
+    [Fact]
     public async Task Status_while_another_call_loads_the_addin_answers_loading_within_its_deadline()
     {
         using var addin = new FakeAddin();
