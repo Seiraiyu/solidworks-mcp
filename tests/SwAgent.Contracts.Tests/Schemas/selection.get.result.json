@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "A part's selection.",
+  "description": "A part's or assembly's selection.",
   "properties": {
     "document": {
       "type": "object",
@@ -38,7 +38,7 @@
         "visible"
       ],
       "additionalProperties": false,
-      "description": "The part."
+      "description": "The part or assembly."
     },
     "total": {
       "type": "integer",
@@ -52,7 +52,7 @@
         "properties": {
           "type": {
             "type": "string",
-            "description": "What SOLIDWORKS says it is: face, edge, vertex, plane, axis, point, sketch, sketch_segment, sketch_point, dimension, feature, solid_body or other."
+            "description": "What SOLIDWORKS says it is: face, edge, vertex, plane, axis, point, sketch, sketch_segment, sketch_point, dimension, feature, solid_body, component or other."
           },
           "entity": {
             "type": "object",

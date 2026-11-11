@@ -386,6 +386,7 @@ sealed partial class FakeDocument : ISwDocument
             ReferenceKind.Axis => 5,
             ReferenceKind.Point => 6,
             ReferenceKind.Sketch => 9,
+            ReferenceKind.Component => 20,
             _ => 22,
         };
         Selected.Add(new SelectedObject(type, entity));

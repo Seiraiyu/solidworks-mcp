@@ -1,10 +1,10 @@
 {
   "type": "object",
-  "description": "The user's selection changed in a part (raised once it has been still for 250 ms; never for the add-in's own selections).",
+  "description": "The user's selection changed in a part or an assembly (raised once it has been still for 250 ms; never for the add-in's own selections).",
   "properties": {
     "title": {
       "type": "string",
-      "description": "The part's title."
+      "description": "The part's or assembly's title."
     },
     "path": {
       "type": "string",
@@ -22,7 +22,7 @@
         "properties": {
           "type": {
             "type": "string",
-            "description": "What SOLIDWORKS says it is: face, edge, vertex, plane, axis, point, sketch, sketch_segment, sketch_point, dimension, feature, solid_body or other."
+            "description": "What SOLIDWORKS says it is: face, edge, vertex, plane, axis, point, sketch, sketch_segment, sketch_point, dimension, feature, solid_body, component or other."
           },
           "entity": {
             "type": "object",

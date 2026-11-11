@@ -8,7 +8,7 @@ using SwAgent.Contracts.Serialization;
 namespace SwAgent.AddIn.Operations;
 
 /// <summary>
-/// Reads a part's selection as selection.get, diag.select and selection.changed report it: the count, and at most a
+/// Reads a part's or an assembly's selection as selection.get, diag.select and selection.changed report it: the count, and at most a
 /// cap of items described, since describing each one costs SOLIDWORKS' UI thread (a box select can pick thousands).
 /// </summary>
 public static class SelectionReading
@@ -51,7 +51,7 @@ public sealed class SelectionGetOperation : Operation<SelectionGetRequest, Selec
 
     protected override SelectionResult Run(SelectionGetRequest request, IOperationContext context)
     {
-        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "selection.get");
+        var doc = DocumentLocator.FindModel(_services.SolidWorks, request.Document, "selection.get");
         return SelectionReading.Result(doc, _services.References);
     }
 
@@ -84,8 +84,8 @@ public sealed class DiagSelectOperation : Operation<DiagSelectRequest, Selection
         }
         if (request.Items.Count == 0)
             throw new SwAgentException(ErrorCode.InvalidArgument, "items must name at least one entity", new JsonObject { ["field"] = "items" });
-        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "diag.select");
-        var entities = request.Items.Select((item, i) => _services.References.Resolve(doc, item, $"items/{i}").Entity).ToList();
+        var doc = DocumentLocator.FindModel(_services.SolidWorks, request.Document, "diag.select");
+        var entities = request.Items.Select((item, i) => Item(doc, item, $"items/{i}")).ToList();
         using (_services.Runtime.Selection?.AllowDuringOperation())
         {
             if (request.Append != true) doc.ClearSelection();
@@ -99,6 +99,20 @@ public sealed class DiagSelectOperation : Operation<DiagSelectRequest, Selection
             }
             _services.Runtime.Selection?.Changed(() => SelectionReading.Event(doc, _services.References));
             return SelectionReading.Result(doc, _services.References);
+        }
+    }
+
+    /// <summary>An entity by reference or name; in an assembly a plain name that names no plane or feature may name a component (post-1).</summary>
+    object Item(ISwDocument doc, string item, string field)
+    {
+        try
+        {
+            return _services.References.Resolve(doc, item, field).Entity;
+        }
+        catch (SwAgentException e) when (e.Code == ErrorCode.InvalidArgument && doc.Assembly() is ISwAssembly asm && !References.IsReference(item) && item.IndexOf('@') < 0
+            && asm.ComponentByName(item) is object component)
+        {
+            return component;
         }
     }
 
