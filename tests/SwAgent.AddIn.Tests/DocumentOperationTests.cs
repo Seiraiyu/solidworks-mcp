@@ -264,6 +264,65 @@ public class DocumentNewTests : DocumentTestBase
     }
 }
 
+public class AssemblySaveTests : DocumentTestBase
+{
+    DocumentSaveResult Save(string? document = null) => Run(new DocumentSaveOperation(Services), new DocumentSaveRequest { Document = document });
+
+    (FakeDocument Asm, FakeDocument Bracket, FakeDocument Pin) Scene()
+    {
+        var asm = Sw.Track(new FakeDocument("stand.SLDASM", PathOf("stand.SLDASM"), DocumentType.Assembly));
+        var bracket = Sw.Track(FakeDocument.Part("bracket.SLDPRT", PathOf("bracket.SLDPRT")));
+        var pin = Sw.Track(FakeDocument.Part("pin.SLDPRT", PathOf("pin.SLDPRT")));
+        bracket.Document.Visible = pin.Document.Visible = false;
+        asm.Uses.AddRange(new[] { bracket.Document.Path!, pin.Document.Path! });
+        asm.Document.Dirty = true;
+        return (asm, bracket, pin);
+    }
+
+    [Fact]
+    public void Saves_the_dirty_components_first_then_the_assembly_and_lists_each()
+    {
+        var (asm, bracket, pin) = Scene();
+        bracket.Document.Dirty = true;
+        var result = Save("stand.SLDASM");
+        Assert.Equal(new[] { bracket.Document.Path, asm.Document.Path }, bracket.Saves.Concat(asm.Saves).ToArray());
+        Assert.Empty(pin.Saves);
+        Assert.Equal(new[] { bracket.Document.Path }, result.Referenced.Select(r => r.Path));
+        Assert.False(result.Referenced[0].Document.Dirty);
+        Assert.Equal(asm.Document.Path, result.Path);
+    }
+
+    [Fact]
+    public void An_assembly_with_nothing_dirty_inside_saves_only_itself()
+    {
+        var (asm, _, _) = Scene();
+        Assert.Empty(Save("stand.SLDASM").Referenced);
+        Assert.Single(asm.Saves);
+    }
+
+    [Fact]
+    public void A_part_saves_only_itself_even_when_an_assembly_it_belongs_to_is_dirty()
+    {
+        var (asm, bracket, _) = Scene();
+        bracket.Document.Dirty = true;
+        Assert.Empty(Save("bracket.SLDPRT").Referenced);
+        Assert.Empty(asm.Saves);
+    }
+
+    [Fact]
+    public void A_component_that_will_not_save_stops_before_the_assembly_and_says_what_was_saved()
+    {
+        var (asm, bracket, pin) = Scene();
+        bracket.Document.Dirty = pin.Document.Dirty = true;
+        pin.FailNextSave = new SaveOutcome(false, 1, 0);
+        var e = Fails(() => Save("stand.SLDASM"));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.Empty(asm.Saves);
+        Assert.Equal(new object?[] { bracket.Document.Path }, (System.Collections.Generic.List<object?>)e.Error.Details!["saved"]!);
+        Assert.Contains("stand.SLDASM was not saved", e.Message);
+    }
+}
+
 public class DocumentOpenTests : DocumentTestBase
 {
     DocumentOpenResult Open(DocumentOpenRequest request) => Run(new DocumentOpenOperation(Services), request);

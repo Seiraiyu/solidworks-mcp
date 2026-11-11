@@ -240,11 +240,46 @@ public sealed class DocumentSaveOperation : Operation<DocumentSaveRequest, Docum
                 new JsonObject { ["field"] = "document", ["document"] = info.Title });
         }
         string path = Path.GetFullPath(info.Path);
-        return Saving.Save(doc, path, doc.Save, context);
+        var referenced = info.Type == DocumentType.Assembly ? SaveUsed(doc, info, context) : new System.Collections.Generic.List<SavedFile>();
+        var result = Saving.Save(doc, path, doc.Save, context);
+        result.Referenced = referenced;
+        return result;
     }
 
-    protected override void Verify(DocumentSaveRequest request, DocumentSaveResult result, IOperationContext context) =>
+    /// <summary>
+    /// Design 455, owner's answer 454: every document the assembly uses that has unsaved changes is saved first, where it
+    /// is, and checked on disk. A failure stops before the assembly is saved and says which were saved already.
+    /// </summary>
+    System.Collections.Generic.List<SavedFile> SaveUsed(ISwDocument assembly, DocumentInfo info, IOperationContext context)
+    {
+        var dirty = DocumentUse.Used(_services.SolidWorks, assembly).Where(d => d.Info().Dirty).ToList();
+        var saved = new System.Collections.Generic.List<SavedFile>();
+        foreach (var used in dirty)
+        {
+            string path = Path.GetFullPath(used.Info().Path!);
+            try
+            {
+                var one = Saving.Save(used, path, used.Save, context);
+                saved.Add(new SavedFile { Document = one.Document, Path = one.Path, Bytes = one.Bytes });
+            }
+            catch (SwAgentException e)
+            {
+                var details = e.Error.Details ?? new JsonObject();
+                details["saved"] = saved.Select(s => (object?)s.Path).ToList();
+                details["assembly"] = DocumentLocator.Label(info);
+                throw new SwAgentException(e.Code,
+                    $"{e.Message}. {info.Title} was not saved{(saved.Count == 0 ? "" : $"; {saved.Count} of the documents it uses were saved before this one (details.saved)")}",
+                    details);
+            }
+        }
+        return saved;
+    }
+
+    protected override void Verify(DocumentSaveRequest request, DocumentSaveResult result, IOperationContext context)
+    {
+        foreach (var used in result.Referenced) Saving.Verify(_services.SolidWorks, used.Path);
         Saving.Verify(_services.SolidWorks, result.Path);
+    }
 }
 
 public sealed class DocumentSaveAsOperation : Operation<DocumentSaveAsRequest, DocumentSaveResult>

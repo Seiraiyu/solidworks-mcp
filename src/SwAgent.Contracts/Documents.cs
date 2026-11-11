@@ -64,7 +64,7 @@ public sealed class DocumentOpenResult
 }
 
 [Operation("document.save", typeof(DocumentSaveResult))]
-[Description("Saves a document where it already is. A document never saved needs document.save_as. Checked on disk: the file was written by this call.")]
+[Description("Saves a document where it already is. A document never saved needs document.save_as. Saving an assembly first saves every document it uses that has unsaved changes (its components, nested ones included), so the saved assembly never points at changes that exist only in memory; each file written is listed in referenced. Checked on disk: every file was written by this call.")]
 public sealed class DocumentSaveRequest
 {
     [Description("The document: its title or full path. The active document when absent.")]
@@ -103,6 +103,25 @@ public sealed class DocumentSaveResult
     [Required]
     [Description("What SOLIDWORKS warned about while saving (swFileSaveWarning_e names).")]
     public List<string> Warnings { get; set; } = new List<string>();
+
+    [Required]
+    [Description("For document.save of an assembly: the documents it uses that had unsaved changes and were saved first, each where it already was. Empty otherwise.")]
+    public List<SavedFile> Referenced { get; set; } = new List<SavedFile>();
+}
+
+[Description("A document saved along with the assembly that uses it.")]
+public sealed class SavedFile
+{
+    [Required]
+    [Description("The document, now without unsaved changes.")]
+    public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Required]
+    [Description("The file written.")]
+    public string Path { get; set; } = "";
+
+    [Description("The file's size in bytes.")]
+    public long Bytes { get; set; }
 }
 
 [Operation("document.close", typeof(DocumentCloseResult))]
