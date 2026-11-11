@@ -68,6 +68,89 @@ public interface ISwSheetMetal
 
     /// <summary>A hem on <paramref name="edges"/>; the new feature, or null when SOLIDWORKS made none. Selects what it needs and clears the selection.</summary>
     object? Hem(IReadOnlyList<object> edges, HemSpec spec);
+
+    /// <summary>
+    /// A sketched bend of every line in <paramref name="sketch"/> (InsertSheetMetal3dBend, CADapter's measured call), the
+    /// side of the lines holding <paramref name="fixedPoint"/> staying put: the sketch is selected, then the face under
+    /// that point. The new feature, or null when SOLIDWORKS made none. Clears the selection.
+    /// </summary>
+    object? SketchedBend(object sketch, Point3 fixedPoint, SketchedBendSpec spec);
+
+    /// <summary>
+    /// An Unfold feature (IModelDoc2.InsertSheetMetalUnfold) of <paramref name="bends"/> (bend sub-features), keeping
+    /// <paramref name="fixedFace"/> put: the face selected with mark 1 and each bend with mark 2 (CADapter). SOLIDWORKS
+    /// returns nothing, so the caller finds the feature by its new name. Clears the selection.
+    /// </summary>
+    void Unfold(object fixedFace, IReadOnlyList<object> bends);
+
+    /// <summary>A Fold feature (IModelDoc2.InsertSheetMetalFold) of <paramref name="bends"/>, selected as for <see cref="Unfold"/>.</summary>
+    void Fold(object fixedFace, IReadOnlyList<object> bends);
+
+    /// <summary>Every Unfold and Fold feature of the part in tree order, with its fixed face and bends (IFoldsFeatureData).</summary>
+    IReadOnlyList<FoldRecord> Folds();
+
+    /// <summary>
+    /// Converts the part's solid to sheet metal (InsertConvertToSheetMetal2 with the fixed face and every bend edge
+    /// selected as entities, CADapter's measured combination). SOLIDWORKS' answer is false even when it builds, so it is
+    /// not returned: the caller finds what was made by its new names. Clears the selection.
+    /// </summary>
+    void ConvertToSheet(object fixedFace, IReadOnlyList<object> bendEdges, ConvertSpec spec);
+}
+
+/// <summary>A sketched bend as ISwSheetMetal.SketchedBend makes it.</summary>
+public sealed class SketchedBendSpec
+{
+    public double AngleDeg { get; set; } = 90;
+
+    /// <summary>Its inner radius; null for the part's default.</summary>
+    public double? RadiusMm { get; set; }
+
+    public BendPosition Position { get; set; } = BendPosition.BendOutside;
+
+    public bool Flip { get; set; }
+
+    /// <summary>Its own allowance; null for the part's default.</summary>
+    public BendAllowance? Allowance { get; set; }
+}
+
+/// <summary>A conversion to sheet metal as ISwSheetMetal.ConvertToSheet makes it.</summary>
+public sealed class ConvertSpec
+{
+    public double ThicknessMm { get; set; }
+    public double BendRadiusMm { get; set; }
+
+    /// <summary>Thicken inward from the fixed face.</summary>
+    public bool ReverseThickness { get; set; }
+
+    public bool KeepBody { get; set; }
+
+    /// <summary>The rip gap where two bent walls meet at a corner (CADapter's measured 2 mm).</summary>
+    public double GapMm { get; set; } = 2;
+}
+
+/// <summary>An Unfold or Fold feature: what it unfolded or folded, and the face it kept put.</summary>
+public sealed class FoldRecord
+{
+    public FoldRecord(object feature, string name, bool unfold, object? fixedFace, IReadOnlyList<string> bends)
+    {
+        Feature = feature;
+        Name = name;
+        Unfold = unfold;
+        FixedFace = fixedFace;
+        Bends = bends;
+    }
+
+    public object Feature { get; }
+    public string Name { get; }
+
+    /// <summary>True for an Unfold feature, false for a Fold.</summary>
+    public bool Unfold { get; }
+
+    /// <summary>The face it kept put, or null when SOLIDWORKS did not give it.</summary>
+    public object? FixedFace { get; }
+
+    /// <summary>The names of the bends it unfolded or folded.</summary>
+    public IReadOnlyList<string> Bends { get; }
 }
 
 /// <summary>An edge flange as ISwSheetMetal.EdgeFlange makes it.</summary>

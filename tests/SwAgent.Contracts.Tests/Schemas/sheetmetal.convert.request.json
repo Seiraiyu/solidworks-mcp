@@ -1,0 +1,63 @@
+{
+  "type": "object",
+  "description": "Turns an ordinary solid of constant wall thickness (an L or U profile extruded) into the part's sheet metal: fixed_face stays where it is, and each sharp inner edge named becomes a bend of bend_radius_mm (inner radius). The allowance becomes the part's default (SOLIDWORKS' own when absent). Refused on a part that is already sheet metal: a part has one sheet-metal body. Lengths in mm. Checked before SOLIDWORKS is called: the fixed face is planar and borders a bend edge; each bend edge is straight, between two planar faces, and an inner (concave) corner. Checked after: the part is sheet metal with one sheet body, Sheet-Metal and Flat-Pattern exist, the thickness reads back and measures thickness_mm; one bend per edge named at the radius asked; the part's box is unchanged within the thickness. Otherwise everything it made is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "fixed_face": {
+      "type": "string",
+      "description": "The face that stays put, by reference: a planar inner face of the solid, one that borders a bend edge (model.find gives it). An outer face is refused."
+    },
+    "bend_edges": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The sharp inner edges that become bends, by reference (model.find gives them)."
+    },
+    "thickness_mm": {
+      "type": "number",
+      "description": "The sheet's thickness, mm, more than 0: the solid's wall thickness."
+    },
+    "bend_radius_mm": {
+      "type": "number",
+      "description": "The bends' inner radius, mm, more than 0; it becomes the part's default."
+    },
+    "allowance": {
+      "type": "object",
+      "properties": {
+        "k_factor": {
+          "type": "number",
+          "description": "The K-factor: where the neutral layer sits across the thickness, more than 0 and at most 1 (0.5 is the middle). The bend develops to angle × (inner radius + K × thickness)."
+        },
+        "allowance_mm": {
+          "type": "number",
+          "description": "The bend allowance itself, mm, more than 0: the length the bend develops to, whatever its angle."
+        },
+        "deduction_mm": {
+          "type": "number",
+          "description": "The bend deduction, mm, 0 or more: what the bend takes off the sum of the two flanges' outer lengths to the virtual sharp."
+        }
+      },
+      "additionalProperties": false,
+      "description": "The part's default bend allowance: exactly one of k_factor, allowance_mm or deduction_mm. SOLIDWORKS' own default when absent."
+    },
+    "reverse_thickness": {
+      "type": "boolean",
+      "description": "Thicken to the other side of the fixed face (inward, so the part shrinks by the thickness). Default false."
+    },
+    "keep_body": {
+      "type": "boolean",
+      "description": "Keep the original solid as a body beside the sheet. Default false."
+    }
+  },
+  "required": [
+    "fixed_face",
+    "bend_edges",
+    "thickness_mm",
+    "bend_radius_mm"
+  ],
+  "additionalProperties": false
+}

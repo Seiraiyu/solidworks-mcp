@@ -23,7 +23,7 @@ public sealed class SheetMetalSuiteRun : LiveRun
 /// <summary>
 /// The sheet-metal live suite (design 454, Testing; plan 6.A covers base flanges, reading a part back, changing its
 /// parameters and the Flat-Pattern audit of phase 3's features; plan 6.B edge flanges, miter flanges and hems, in
-/// SheetMetalSuite.Flanges.cs): every case drives seiraiyu2's SOLIDWORKS through
+/// SheetMetalSuite.Flanges.cs; plan 6.C sketched bends, flatten and fold, unfold and fold, and convert, in SheetMetalSuite.Bends.cs): every case drives seiraiyu2's SOLIDWORKS through
 /// SwAgent.Client exactly as swmcp serve does, in [Step] order, and checks geometry against exact values: the bend
 /// arithmetic's, and CADapter's measured flat sizes. It never ends SOLIDWORKS. Before every case it stops the run if a
 /// document it did not create is open; it creates documents only in its scratch directory and closes them all at the
@@ -295,8 +295,8 @@ public sealed partial class SheetMetalSuite : IClassFixture<SheetMetalSuiteRun>
         return $"{cut.Feature.Name} ({cut.Change.VolumeAfterMm3:0.###} mm³), {fillet.Feature.Name} ({fillet.Change.VolumeAfterMm3:0.###} mm³); tree ends {string.Join(" > ", top.Skip(Math.Max(0, top.Count - 4)).Select(f => f.Name))}";
     });
 
-    [SkippableFact, Step(13)]
-    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(13, "the suite's documents closed", async () =>
+    [SkippableFact, Step(20)]
+    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(20, "the suite's documents closed", async () =>
     {
         var state = await _run.RequireOnlyOwnDocumentsAsync();
         int closed = 0;

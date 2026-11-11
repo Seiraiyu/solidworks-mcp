@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "description": "Folds back bends a sheet-metal part's Unfold features unfolded, with a Fold feature, keeping the face fixed that the unfold kept (or fixed_face): what was cut in them while unfolded is folded with them. SOLIDWORKS folds nothing once a cut reaches past a bend into the side that turns: that fold fails (operation_failed) with nothing changed, so keep a cut inside the bend or reaching only into the side that stays put. bends names the bends; every unfolded bend when absent. A bend that is not unfolded is refused. Folded parts only (the Flat-Pattern feature off): a flattened part is refused. Checked: the feature is a Fold; each bend named has its cylindrical faces back; the fixed face is where it was; the volume changed by exactly the bend arithmetic's sum over those bends, the other way, where each is whole again, and between nothing and that, give or take the material the cut took from the bend, where one was cut into (SOLIDWORKS folds a cut's walls up to a few percent of the cut's volume off the arithmetic). Otherwise it is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "bends": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The bends to fold, each by name (EdgeBend1) or reference. Every unfolded bend when absent."
+    },
+    "fixed_face": {
+      "type": "string",
+      "description": "A planar face of the sheet, by reference, that stays where it is. The fixed face of the Unfold that unfolded the bends when absent."
+    }
+  },
+  "additionalProperties": false
+}

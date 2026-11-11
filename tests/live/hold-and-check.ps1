@@ -62,7 +62,7 @@ function Show-State($State) {
     Write-Host "preferences applied=$($State.preferences_applied) not_applied=[$($State.preferences_not_applied -join ', ')] recovered=$($State.preferences_recovered)"
 }
 
-$hello = Invoke-Addin 'session.hello' @{ protocol_version = 6; client_version = 'live-check-2a' }
+$hello = Invoke-Addin 'session.hello' @{ protocol_version = 8; client_version = 'live-check-2a' }
 Write-Host "hello: SOLIDWORKS $($hello.sw_revision), add-in $($hello.addin_version)"
 $state = Invoke-Addin 'addin.state'
 if ($state.process_id -ne $swPid) { Write-Host "REFUSED: the pipe for $swPid reports process $($state.process_id)"; exit 3 }

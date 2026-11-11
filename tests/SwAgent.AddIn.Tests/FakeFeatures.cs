@@ -262,8 +262,12 @@ sealed partial class FakeDocument
         if (old.Suppressed == suppressed) return true;
         Tree[i] = new FeatureRecord(f, old.Name, old.Type, old.Parent, suppressed, old.ErrorCode, old.Warning);
         if (_volumeOf.TryGetValue(f, out double v)) MassProperties!.VolumeMm3 += suppressed ? -v : v;
+        Suppressed(f, suppressed);
         return true;
     }
+
+    /// <summary>What else suppressing a feature does (6.C: Flat-Pattern1 flattens the sheet).</summary>
+    partial void Suppressed(FakeEntity feature, bool suppressed);
 
     /// <summary>ClosestDistance throws api_error (SOLIDWORKS unable to measure).</summary>
     public bool MeasureFails { get; set; }

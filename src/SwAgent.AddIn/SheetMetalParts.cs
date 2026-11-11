@@ -46,7 +46,7 @@ public static class SheetMetalParts
     {
         if (State(doc) == SheetState.Folded) return;
         throw new SwAgentException(ErrorCode.InvalidArgument,
-            $"{operation} changes a folded part, and {doc.Info().Title} is flattened; fold it (turn its flat pattern off) first. Nothing was changed",
+            $"{operation} changes a folded part, and {doc.Info().Title} is flattened; fold it with sw_sheetmetal_flatten {{flat: false}} first. Nothing was changed",
             new JsonObject { ["field"] = "document", ["state"] = "flattened" });
     }
 
@@ -93,7 +93,7 @@ public static class SheetMetalParts
         }).ToList();
 
     /// <summary>The extent of the bend's cylindrical faces along their axis, when that axis is along x, y or z.</summary>
-    static double? Width(ISwDocument doc, BendRecord bend)
+    public static double? Width(ISwDocument doc, BendRecord bend)
     {
         var cylinders = doc.FacesOf(bend.Feature).Select(doc.Describe).Where(i => i.Geometry == GeometryType.Cylinder && i.Axis != null && i.Box != null).ToList();
         if (cylinders.Count == 0) return null;
@@ -206,6 +206,116 @@ public static class SheetMetalParts
         return new SheetEdge(edge, start, finish, info.LengthMm.Value, sheet.Face, sheet.Info.Normal!, sheet.Info.Origin, thin.Info.Normal!);
     }
 
+    /// <summary>SOLIDWORKS' type names of the Unfold and Fold features (IFeature.GetTypeName2).</summary>
+    public const string UnfoldType = "UnFold";
+    public const string FoldType = "Fold";
+
+    /// <summary>The cylindrical faces a bend has now: one inner and one outer when it is folded and whole, none when it is developed.</summary>
+    public static List<EntityInfo> Cylinders(ISwDocument doc, BendRecord bend) =>
+        doc.FacesOf(bend.Feature).Select(doc.Describe).Where(i => i.Geometry == GeometryType.Cylinder).ToList();
+
+    /// <summary>
+    /// The bends as the development checks read them now: angle, radius, allowance, width, and whole when they have
+    /// exactly two cylindrical faces with nothing cut out of them. A hole inside a bend leaves it two cylinders, so where
+    /// SOLIDWORKS gives the faces' areas, what they lost against the whole bend's says what a cut took
+    /// (BendDevelopment.CutFromBend).
+    /// </summary>
+    public static List<DevelopedBend> Developed(ISwDocument doc, IEnumerable<BendRecord> bends)
+    {
+        double? thickness = doc.SheetMetal.Defaults()?.ThicknessMm;
+        var list = new List<DevelopedBend>();
+        foreach (var b in bends)
+        {
+            var cylinders = Cylinders(doc, b);
+            double? width = Width(doc, b);
+            double cut = 0;
+            if (width != null && thickness != null && cylinders.Count > 0 && cylinders.All(c => c.AreaMm2 != null && c.RadiusMm != null))
+                cut = BendDevelopment.CutFromBend(width.Value, b.AngleDeg, b.RadiusMm, thickness.Value, cylinders.Select(c => (c.RadiusMm!.Value, c.AreaMm2!.Value))) ?? 0;
+            list.Add(new DevelopedBend(b.Name, b.AngleDeg, b.RadiusMm, b.Allowance, width, cylinders.Count == 2 && cut == 0, cut));
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// The bends unfolded now, each with the Unfold feature that unfolded it: Unfold and Fold features in tree order,
+    /// suppressed ones skipped, an unfold adding its bends and a fold taking its bends back out.
+    /// </summary>
+    public static Dictionary<string, FoldRecord> Unfolded(ISwDocument doc)
+    {
+        var suppressed = new HashSet<string>(doc.Features().Where(f => f.Suppressed).Select(f => f.Name), StringComparer.Ordinal);
+        var open = new Dictionary<string, FoldRecord>(StringComparer.Ordinal);
+        foreach (var fold in doc.SheetMetal.Folds().Where(f => !suppressed.Contains(f.Name)))
+        {
+            foreach (string bend in fold.Bends)
+            {
+                if (fold.Unfold) open[bend] = fold;
+                else open.Remove(bend);
+            }
+        }
+        return open;
+    }
+
+    /// <summary>
+    /// A planar face of the sheet that stays put, read for its plane: its normal and its centre, which must lie on it
+    /// (an L-shaped face or one with a hole at its centre is refused, naming the field).
+    /// </summary>
+    public static FixedPlane Fixed(ISwDocument doc, object face, string field)
+    {
+        var info = doc.Describe(face);
+        if (info.Geometry != GeometryType.Plane || info.Normal == null || info.Origin == null)
+            throw FeatureFacts.Invalid(field, $"{field} is a {WireNames.ForEnum(info.Geometry)} face; the face that stays put is a planar face of the sheet (sheetmetal.read gives the base face)");
+        double off = doc.DistanceMm(face, info.Origin);
+        if (off > 1e-6)
+            throw FeatureFacts.Invalid(field, FormattableString.Invariant($"{field}'s centre is {off:0.###} mm off the face (an L-shaped face, or a hole at its centre); name a face whose centre is on it"));
+        return new FixedPlane(face, info.Normal, info.Origin);
+    }
+
+    /// <summary>
+    /// A face of the sheet still lies in the fixed face's plane through its centre, facing the same way: verification_failed
+    /// otherwise. Recorded in <paramref name="checks"/>.
+    /// </summary>
+    public static void StaysPut(ISwDocument doc, FixedPlane plane, string what, List<string> checks)
+    {
+        var faces = doc.SheetMetal.SheetFaces().Select(f => (Face: f, Info: doc.Describe(f)))
+            .Where(f => f.Info.Geometry == GeometryType.Plane && f.Info.Normal != null && FeatureFacts.Dot(f.Info.Normal, plane.Normal) > 1 - 1e-6).ToList();
+        double nearest = faces.Count == 0 ? double.PositiveInfinity : faces.Min(f => doc.DistanceMm(f.Face, plane.Centre));
+        string at = FormattableString.Invariant($"({plane.Centre.X:0.###}, {plane.Centre.Y:0.###}, {plane.Centre.Z:0.###})");
+        if (nearest > 1e-4)
+        {
+            string found = double.IsInfinity(nearest) ? "there is none" : FormattableString.Invariant($"the nearest is {nearest:0.####} mm from it");
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"no face of the sheet lies where the fixed face was after the {what}: of the faces facing the same way, {found} (its centre was {at})",
+                new JsonObject { ["check"] = "fixed_face", ["measured"] = double.IsInfinity(nearest) ? null : nearest });
+        }
+        checks.Add(FormattableString.Invariant($"the fixed face stayed put: a face of the sheet still lies through {at} facing ({plane.Normal.X:0.###}, {plane.Normal.Y:0.###}, {plane.Normal.Z:0.###})"));
+    }
+
+    /// <summary>
+    /// The volume changed as developing or forming the bends predicts (<see cref="BendDevelopment"/>), within the volume
+    /// tolerance of the part; recorded in <paramref name="checks"/>, or why it was not compared.
+    /// </summary>
+    public static void VolumeDeveloped(BendVolumeChange? change, double before, double after, string what, List<string> checks)
+    {
+        double measured = after - before;
+        if (change == null)
+        {
+            checks.Add(FormattableString.Invariant($"the volume went {before:0.###} -> {after:0.###} mm³ (not compared: a bend's width or allowance is not known)"));
+            return;
+        }
+        double tolerance = FeatureChecks.VolumeTolerance * Math.Max(1, Math.Abs(before));
+        if (!change.Holds(measured, tolerance))
+        {
+            string expected = change.Exact
+                ? FormattableString.Invariant($"{change.ExpectedMm3:0.###} mm³")
+                : FormattableString.Invariant($"between 0 and {change.ExpectedMm3:0.###} mm³");
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                FormattableString.Invariant($"the {what} changed the volume by {measured:0.###} mm³, not {expected} ({change.Why})"),
+                new JsonObject { ["check"] = "volume_developed", ["expected"] = change.ExpectedMm3, ["exact"] = change.Exact, ["measured"] = measured, ["why"] = change.Why });
+        }
+        string bound = change.Exact ? "" : "bound ";
+        checks.Add(FormattableString.Invariant($"the volume changed by {measured:0.###} mm³, the bend arithmetic's {bound}{change.ExpectedMm3:0.###} mm³ ({change.Why})"));
+    }
+
     /// <summary>
     /// How far rounding can have put the cut list's length plus width off, mm: half a unit in the last decimal place
     /// each is written to (SOLIDWORKS rounds them to the part's display precision; CADapter read 83.28 for 83.2832).
@@ -253,4 +363,19 @@ public sealed class SheetEdge
 
     /// <summary>The thin face's normal: in the face's plane, square to the edge, away from the material.</summary>
     public Vector3 Outward { get; }
+}
+
+/// <summary>The plane of a face that stays put: its outward normal and its centre. Millimetres.</summary>
+public sealed class FixedPlane
+{
+    public FixedPlane(object face, Vector3 normal, Point3 centre)
+    {
+        Face = face;
+        Normal = normal;
+        Centre = centre;
+    }
+
+    public object Face { get; }
+    public Vector3 Normal { get; }
+    public Point3 Centre { get; }
 }
