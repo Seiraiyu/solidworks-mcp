@@ -353,7 +353,7 @@ public sealed class SheetMetalFoldOperation : ModelChangeOperation<SheetMetalFol
         var before = Folding.Names(doc);
         doc.SheetMetal.Fold(face, bends.Select(b => b.Feature).ToList());
         var made = Folding.NewFeature(doc, before, SheetMetalParts.FoldType)
-            ?? throw FeatureFacts.NotMade(doc, "fold", $"of {string.Join(", ", _bends)}", "check that the fixed face is the one the unfold kept and that what was cut leaves each bend whole enough to fold");
+            ?? throw FeatureFacts.NotMade(doc, "fold", $"of {string.Join(", ", _bends)}", "SOLIDWORKS folds nothing once a cut reaches past the bend into the side that turns: keep cuts inside the bend or reaching only into the side that stays put, and check that the fixed face is the one the unfold kept");
         return Flanges.Result(new[] { FeatureFacts.Made(references, doc, made, tx) });
     }
 

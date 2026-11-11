@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using SwAgent.AddIn.Operations;
@@ -57,6 +58,27 @@ public class SheetBendPartsTests : SheetMetalFlangeTestBase
         Assert.False(developed.Whole);
         Assert.Null(developed.WidthMm);
         Assert.Empty(SheetMetalParts.Cylinders(doc, record));
+    }
+
+    [Fact]
+    public void A_hole_inside_a_bend_leaves_two_cylinders_but_reads_cut_by_the_area_they_lost()
+    {
+        var doc = Flanged();
+        var record = doc.SheetMetal.Bends().Single();
+        var fake = doc.FakeBends.Single();
+        double inner = 40 * Math.PI / 2 * 3, outer = 40 * Math.PI / 2 * 5;
+        fake.Faces[0].Info.AreaMm2 = inner;
+        fake.Faces[1].Info.AreaMm2 = outer;
+        var whole = SheetMetalParts.Developed(doc, new[] { record }).Single();
+        Assert.True(whole.Whole);
+        Assert.Equal(0, whole.CutMm3);
+        // A 4 mm hole through the bend: flat 4π mm² at the neutral radius 4, so the inner face loses 3/4 of it and the outer 5/4.
+        double hole = Math.PI * 4;
+        fake.Faces[0].Info.AreaMm2 = inner - hole * 3 / 4;
+        fake.Faces[1].Info.AreaMm2 = outer - hole * 5 / 4;
+        var cut = SheetMetalParts.Developed(doc, new[] { record }).Single();
+        Assert.False(cut.Whole);
+        Assert.Equal(2 * hole, cut.CutMm3, 6);
     }
 
     [Fact]

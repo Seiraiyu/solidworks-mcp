@@ -45,7 +45,48 @@ public class BendDevelopmentTests
         Assert.True(change.Holds(-50.265482, 1e-5));
         Assert.False(change.Holds(-51, 1e-5));
         Assert.False(change.Holds(1, 1e-5));
-        Assert.Contains("cut across", change.Why);
+        Assert.Contains("cut into", change.Why);
+    }
+
+    [Fact]
+    public void A_cut_in_a_bend_is_the_area_its_cylinders_lost_times_the_thickness()
+    {
+        // A 100 mm wide 90° bend at R 3, T 2: whole, its inner cylinder is 100 × π/2 × 3 and its outer 100 × π/2 × 5.
+        double inner = 100 * Math.PI / 2 * 3, outer = 100 * Math.PI / 2 * 5;
+        Assert.Equal(0, BendDevelopment.CutFromBend(100, 90, 3, 2, new[] { (3.0, inner), (5.0, outer) })!.Value, 9);
+        // A through hole of 12.566 mm² flat at the neutral radius 4: the inner face loses 3/4 of it, the outer 5/4; folded it held 2 × 12.566 mm³.
+        double hole = Math.PI * 4;
+        double cut = BendDevelopment.CutFromBend(100, 90, 3, 2, new[] { (3.0, inner - hole * 3 / 4), (5.0, outer - hole * 5 / 4) })!.Value;
+        Assert.Equal(2 * hole, cut, 9);
+        // Cut across, each cylinder in two pieces: the pieces are summed.
+        Assert.Equal(2 * hole, BendDevelopment.CutFromBend(100, 90, 3, 2, new[] { (3.0, inner / 2), (3.0, inner / 2 - hole * 3 / 4), (5.0, outer / 2), (5.0, outer / 2 - hole * 5 / 4) })!.Value, 9);
+        // An area SOLIDWORKS does not give leaves it unknown.
+        Assert.Null(BendDevelopment.CutFromBend(100, 90, 3, 2, new[] { (3.0, inner), (5.0, double.NaN) }));
+    }
+
+    [Fact]
+    public void A_bend_cut_into_widens_the_bound_by_the_material_the_cut_took()
+    {
+        // SOLIDWORKS 2026 SP4 folds a hole in a bend 0.2 to 0.9 mm³ off the arithmetic's nothing at K 0.5 (6.C live run).
+        var change = BendDevelopment.Develop(new[] { new DevelopedBend("EdgeBend1", 90, 3, K(0.5), 100, whole: false, cutMm3: 25.1) }, 2, flatten: false)!;
+        Assert.False(change.Exact);
+        Assert.True(change.Holds(-0.857, 1e-5));
+        Assert.True(change.Holds(0.187, 1e-5));
+        Assert.False(change.Holds(-26, 1e-5));
+        Assert.Contains("25.1 mm³", change.Why);
+        // The bound is the material the cut took, no wider.
+        Assert.False(change.Holds(25.2, 1e-5));
+        Assert.True(change.Holds(25.1, 1e-5));
+    }
+
+    [Fact]
+    public void With_no_cut_in_any_bend_the_check_stays_exact()
+    {
+        var change = BendDevelopment.Develop(new[] { new DevelopedBend("EdgeBend1", 90, 3, K(0.5), 100, whole: true, cutMm3: 0) }, 2, flatten: false)!;
+        Assert.True(change.Exact);
+        Assert.True(change.Holds(0, 1e-5));
+        Assert.False(change.Holds(-0.857, 1e-5));
+        Assert.False(change.Holds(0.187, 1e-5));
     }
 
     [Fact]

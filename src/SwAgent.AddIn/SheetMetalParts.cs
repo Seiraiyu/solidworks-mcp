@@ -214,9 +214,27 @@ public static class SheetMetalParts
     public static List<EntityInfo> Cylinders(ISwDocument doc, BendRecord bend) =>
         doc.FacesOf(bend.Feature).Select(doc.Describe).Where(i => i.Geometry == GeometryType.Cylinder).ToList();
 
-    /// <summary>The bends as the development checks read them now: angle, radius, allowance, width, and whole when they have exactly two cylindrical faces.</summary>
-    public static List<DevelopedBend> Developed(ISwDocument doc, IEnumerable<BendRecord> bends) =>
-        bends.Select(b => new DevelopedBend(b.Name, b.AngleDeg, b.RadiusMm, b.Allowance, Width(doc, b), Cylinders(doc, b).Count == 2)).ToList();
+    /// <summary>
+    /// The bends as the development checks read them now: angle, radius, allowance, width, and whole when they have
+    /// exactly two cylindrical faces with nothing cut out of them. A hole inside a bend leaves it two cylinders, so where
+    /// SOLIDWORKS gives the faces' areas, what they lost against the whole bend's says what a cut took
+    /// (BendDevelopment.CutFromBend).
+    /// </summary>
+    public static List<DevelopedBend> Developed(ISwDocument doc, IEnumerable<BendRecord> bends)
+    {
+        double? thickness = doc.SheetMetal.Defaults()?.ThicknessMm;
+        var list = new List<DevelopedBend>();
+        foreach (var b in bends)
+        {
+            var cylinders = Cylinders(doc, b);
+            double? width = Width(doc, b);
+            double cut = 0;
+            if (width != null && thickness != null && cylinders.Count > 0 && cylinders.All(c => c.AreaMm2 != null && c.RadiusMm != null))
+                cut = BendDevelopment.CutFromBend(width.Value, b.AngleDeg, b.RadiusMm, thickness.Value, cylinders.Select(c => (c.RadiusMm!.Value, c.AreaMm2!.Value))) ?? 0;
+            list.Add(new DevelopedBend(b.Name, b.AngleDeg, b.RadiusMm, b.Allowance, width, cylinders.Count == 2 && cut == 0, cut));
+        }
+        return list;
+    }
 
     /// <summary>
     /// The bends unfolded now, each with the Unfold feature that unfolded it: Unfold and Fold features in tree order,

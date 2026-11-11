@@ -141,6 +141,20 @@ public class SheetMetalBendErrorCodeTests : SheetMetalBendTestBase
         Assert.Equal(folded, doc.MassProperties.VolumeMm3, 9);
     }
 
+    [Fact]
+    public void A_fold_SOLIDWORKS_does_not_make_fails_naming_the_turning_side_limit()
+    {
+        // 6.C's live run: SOLIDWORKS 2026 SP4 makes no Fold once a cut reaches past the bend into the side that turns.
+        var doc = Tabbed();
+        EdgeFlange(new SheetMetalEdgeFlangeRequest { Edges = new List<string> { Top(doc) }, LengthMm = 25 });
+        Run(new SheetMetalUnfoldOperation(Services), new SheetMetalUnfoldRequest { FixedFace = Base(doc) });
+        doc.FeatureRefuses = true;
+        var e = Fails(() => Run(new SheetMetalFoldOperation(Services), new SheetMetalFoldRequest()));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.Contains("past the bend into the side that turns", e.Message);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == SheetMetalParts.FoldType);
+    }
+
     [Theory]
     [InlineData(ErrorCode.InvalidArgument)]
     [InlineData(ErrorCode.ReferenceUnresolved)]
