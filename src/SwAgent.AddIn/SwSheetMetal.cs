@@ -49,6 +49,75 @@ public interface ISwSheetMetal
 
     /// <summary>How many millimetres one of the document's length units is (the unit cut-list values are written in).</summary>
     double MmPerUnit();
+
+    /// <summary>The faces on either side of an edge (IEdge.GetTwoAdjacentFaces2).</summary>
+    IReadOnlyList<object> AdjacentFaces(object edge);
+
+    /// <summary>
+    /// The empty sketch SOLIDWORKS makes for an edge flange on <paramref name="edge"/> at <paramref name="angleDeg"/>
+    /// (IModelDoc2.InsertSketchForEdgeFlange), closed; null when it made none. Its profile is drawn by the caller: an
+    /// empty one makes a flange of no size, with no error (design 454).
+    /// </summary>
+    object? EdgeFlangeSketch(object edge, double angleDeg);
+
+    /// <summary>An edge flange on <paramref name="edge"/> from its sketch's profile; the new feature, or null when SOLIDWORKS made none. Clears the selection.</summary>
+    object? EdgeFlange(object edge, object sketch, EdgeFlangeSpec spec);
+
+    /// <summary>A miter flange of <paramref name="sketch"/>'s open profile along <paramref name="edges"/>; the new feature, or null when SOLIDWORKS made none. Selects what it needs and clears the selection.</summary>
+    object? MiterFlange(object sketch, IReadOnlyList<object> edges, MiterFlangeSpec spec);
+
+    /// <summary>A hem on <paramref name="edges"/>; the new feature, or null when SOLIDWORKS made none. Selects what it needs and clears the selection.</summary>
+    object? Hem(IReadOnlyList<object> edges, HemSpec spec);
+}
+
+/// <summary>An edge flange as ISwSheetMetal.EdgeFlange makes it.</summary>
+public sealed class EdgeFlangeSpec
+{
+    public double AngleDeg { get; set; } = 90;
+
+    /// <summary>Its inner radius; null for the part's default.</summary>
+    public double? RadiusMm { get; set; }
+
+    public BendPosition Position { get; set; } = BendPosition.MaterialInside;
+
+    /// <summary>Where SOLIDWORKS dimensions its length from (the profile, not this, sets the length).</summary>
+    public FlangeLengthFrom LengthFrom { get; set; } = FlangeLengthFrom.OuterVirtualSharp;
+
+    /// <summary>Its own allowance; null for the part's default.</summary>
+    public BendAllowance? Allowance { get; set; }
+}
+
+/// <summary>A miter flange as ISwSheetMetal.MiterFlange makes it.</summary>
+public sealed class MiterFlangeSpec
+{
+    /// <summary>Its inner radius; null for the part's default.</summary>
+    public double? RadiusMm { get; set; }
+
+    /// <summary>The rip gap where it turns a corner between edges.</summary>
+    public double GapMm { get; set; } = 0.5;
+
+    public BendPosition Position { get; set; } = BendPosition.MaterialInside;
+
+    /// <summary>Its own allowance; null for the part's default.</summary>
+    public BendAllowance? Allowance { get; set; }
+}
+
+/// <summary>A hem as ISwSheetMetal.Hem makes it; the dimensions its kind does not take are 0.</summary>
+public sealed class HemSpec
+{
+    public HemKind Kind { get; set; } = HemKind.Closed;
+
+    /// <summary>SOLIDWORKS' inside position (material_inside) rather than outside (bend_outside).</summary>
+    public bool Inside { get; set; }
+
+    public bool Reverse { get; set; }
+    public double LengthMm { get; set; }
+    public double GapMm { get; set; }
+    public double AngleDeg { get; set; }
+    public double RadiusMm { get; set; }
+
+    /// <summary>Its own allowance; null for the part's default.</summary>
+    public BendAllowance? Allowance { get; set; }
 }
 
 /// <summary>A sheet-metal part's defaults, read from its SheetMetal feature.</summary>

@@ -182,6 +182,31 @@ public static class SheetMetalParts
     }
 
     /// <summary>
+    /// The edge a flange or hem is made on, read as the sheet has it: a straight edge between one of the sheet's faces
+    /// (its normal is where a flange rises) and the thin face the sheet ends in (its normal points away from the
+    /// material, and it is as wide as the sheet is thick). invalid_argument at <paramref name="field"/> otherwise.
+    /// </summary>
+    public static SheetEdge Edge(ISwDocument doc, object edge, string field, double thicknessMm)
+    {
+        var info = doc.Describe(edge);
+        if (info.Geometry != GeometryType.Line || info.Origin == null || info.Axis == null || info.LengthMm == null)
+            throw FeatureFacts.Invalid(field, $"{field} is a {WireNames.ForEnum(info.Geometry)} edge; a flange or hem is made on a straight edge of the sheet");
+        var axis = info.Axis;
+        var planar = doc.SheetMetal.AdjacentFaces(edge).Select(f => (Face: f, Info: doc.Describe(f)))
+            .Where(f => f.Info.Geometry == GeometryType.Plane && f.Info.Normal != null && Math.Abs(FeatureFacts.Dot(f.Info.Normal, axis)) < 1e-6).ToList();
+        double end = info.LengthMm.Value * thicknessMm;
+        var thin = planar.FirstOrDefault(f => f.Info.AreaMm2 is double a && Math.Abs(a - end) <= 1e-3 * end + 1e-6);
+        var sheet = thin.Face == null ? default : planar.FirstOrDefault(f => !ReferenceEquals(f.Face, thin.Face) && Math.Abs(FeatureFacts.Dot(f.Info.Normal!, thin.Info.Normal!)) < 1e-6);
+        if (thin.Face == null || sheet.Face == null)
+        {
+            throw FeatureFacts.Invalid(field,
+                $"{field} is not an edge where the sheet ends: a flange or hem is made on a straight edge between one of the sheet's faces and the thin face, {thicknessMm.ToString("0.####", CultureInfo.InvariantCulture)} mm wide, it ends in (sheetmetal.read gives the base face; model.find gives its edges)");
+        }
+        var (start, finish) = FlangeGeometry.Ends(info.Origin, axis, info.LengthMm.Value);
+        return new SheetEdge(edge, start, finish, info.LengthMm.Value, sheet.Face, sheet.Info.Normal!, sheet.Info.Origin, thin.Info.Normal!);
+    }
+
+    /// <summary>
     /// How far rounding can have put the cut list's length plus width off, mm: half a unit in the last decimal place
     /// each is written to (SOLIDWORKS rounds them to the part's display precision; CADapter read 83.28 for 83.2832).
     /// </summary>
@@ -195,4 +220,37 @@ public static class SheetMetalParts
         }
         return Half(LengthProperty) + Half(WidthProperty);
     }
+}
+
+/// <summary>An edge of the sheet as <see cref="SheetMetalParts.Edge"/> reads it. Millimetres.</summary>
+public sealed class SheetEdge
+{
+    public SheetEdge(object edge, Point3 start, Point3 end, double lengthMm, object face, Vector3 normal, Point3? faceOrigin, Vector3 outward)
+    {
+        Entity = edge;
+        Start = start;
+        End = end;
+        LengthMm = lengthMm;
+        Face = face;
+        Normal = normal;
+        FaceOrigin = faceOrigin;
+        Outward = outward;
+    }
+
+    public object Entity { get; }
+    public Point3 Start { get; }
+    public Point3 End { get; }
+    public double LengthMm { get; }
+
+    /// <summary>The sheet's face the edge bounds.</summary>
+    public object Face { get; }
+
+    /// <summary>That face's outward normal: the way a flange rises.</summary>
+    public Vector3 Normal { get; }
+
+    /// <summary>A point on that face (its centre), for its level along the normal.</summary>
+    public Point3? FaceOrigin { get; }
+
+    /// <summary>The thin face's normal: in the face's plane, square to the edge, away from the material.</summary>
+    public Vector3 Outward { get; }
 }

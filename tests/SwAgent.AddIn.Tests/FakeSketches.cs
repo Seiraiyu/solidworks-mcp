@@ -35,9 +35,15 @@ sealed class FakeSketch
     /// <summary>What the solver says; under defined unless a test says otherwise.</summary>
     public SolveState Solve { get; set; } = SolveState.UnderDefined;
 
+    /// <summary>Where SOLIDWORKS put a sketch it made itself (an edge flange's): its origin and axes in model space. Null on a plane or face.</summary>
+    public (Point3 Origin, Vector3 X, Vector3 Y, Vector3 Normal)? Frame { get; set; }
+
+    Point3 Origin => Frame?.Origin ?? new Point3(0, 0, 0);
+
     /// <summary>The sketch's axes as SOLIDWORKS sets them on the standard planes: on top, y runs along -z; on right, x runs along -z.</summary>
     (Vector3 X, Vector3 Y, Vector3 Normal) Axes()
     {
+        if (Frame is { } frame) return (frame.X, frame.Y, frame.Normal);
         var n = (On as FakeEntity)?.Info.Normal ?? new Vector3(0, 0, 1);
         if (Math.Abs(n.Y) > 0.999) return (new Vector3(1, 0, 0), new Vector3(0, 0, -1), n);
         if (Math.Abs(n.X) > 0.999) return (new Vector3(0, 0, -1), new Vector3(0, 1, 0), n);
@@ -48,7 +54,9 @@ sealed class FakeSketch
     public Point2 ToSketch(Point3 p)
     {
         var (x, y, _) = Axes();
-        return new Point2(p.X * x.X + p.Y * x.Y + p.Z * x.Z, p.X * y.X + p.Y * y.Y + p.Z * y.Z);
+        var o = Origin;
+        double dx = p.X - o.X, dy = p.Y - o.Y, dz = p.Z - o.Z;
+        return new Point2(dx * x.X + dy * x.Y + dz * x.Z, dx * y.X + dy * y.Y + dz * y.Z);
     }
 
     public SketchContents Read()
@@ -59,7 +67,7 @@ sealed class FakeSketch
             Name = Name,
             Feature = Feature,
             Solve = Solve,
-            Origin = new Point3(0, 0, 0),
+            Origin = Origin,
             XAxis = x,
             YAxis = y,
             Normal = normal,
