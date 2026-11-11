@@ -162,6 +162,7 @@ public class OwnerGuardTests : IDisposable
     [Fact]
     public async Task A_close_refuses_unsaved_changes_even_in_its_own_document()
     {
+        Assert.EndsWith("stand.SLDASM", _guard.NewScratchPath("stand", ".SLDASM"));
         string mine = _guard.NewScratchPath("dirty");
         _guard.Created(mine);
         var e = await Assert.ThrowsAsync<GuardRefusedException>(() =>

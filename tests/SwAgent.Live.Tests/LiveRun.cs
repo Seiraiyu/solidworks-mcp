@@ -327,7 +327,10 @@ public abstract class LiveRun : IDisposable
             var closing = Task.Run(async () =>
             {
                 var state = await AddinStateAsync().ConfigureAwait(false);
-                foreach (var d in state.Documents.Where(d => d.Path != null && Guard.CreatedPaths.Contains(Path.GetFullPath(d.Path))))
+                // Assemblies first (they unload the components loaded only for them), and only documents with a window:
+                // a component without one goes with its assembly (design 455).
+                foreach (var d in state.Documents.Where(d => d.Path != null && d.Visible && Guard.CreatedPaths.Contains(Path.GetFullPath(d.Path)))
+                    .OrderBy(d => d.Type == DocumentType.Assembly ? 0 : 1).ToList())
                 {
                     try
                     {
