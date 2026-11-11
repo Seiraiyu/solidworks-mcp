@@ -355,46 +355,32 @@ public class SheetMetalHemTests : SheetMetalFlangeTestBase
         Assert.Equal(0, spec.GapMm);
     }
 
-    [Theory]
-    [InlineData(HemKind.Open, 10.0, 1.0, null, null)]
-    [InlineData(HemKind.Teardrop, null, null, 2.0, 270.0)]
-    [InlineData(HemKind.Rolled, null, null, 3.0, 200.0)]
-    public void Every_kind_takes_its_own_dimensions(HemKind kind, double? length, double? gap, double? radius, double? angle)
+    [Fact]
+    public void An_open_hem_takes_its_length_and_gap_along_every_edge()
     {
         var doc = Sheet();
-        var made = Hem(new SheetMetalHemRequest { Edges = new List<string> { Top(doc), Right(doc) }, Kind = kind, LengthMm = length, GapMm = gap, RadiusMm = radius, AngleDeg = angle, Position = BendPosition.BendOutside });
+        var made = Hem(new SheetMetalHemRequest { Edges = new List<string> { Top(doc), Right(doc) }, Kind = HemKind.Open, LengthMm = 10, GapMm = 1, Position = BendPosition.BendOutside });
         Assert.True(made.Change.VolumeAfterMm3 > 1600);
         var (edges, spec) = doc.Hems.Single();
         Assert.Equal(2, edges.Count);
         Assert.False(spec.Inside);
-        Assert.Equal(kind, spec.Kind);
-        Assert.Equal(radius ?? 0, spec.RadiusMm);
+        Assert.Equal(HemKind.Open, spec.Kind);
+        Assert.Equal(10, spec.LengthMm);
+        Assert.Equal(1, spec.GapMm);
     }
 
     [Theory]
-    [InlineData(HemKind.Teardrop, 10.0, 10.0, 1.0)]
-    [InlineData(HemKind.Rolled, 10.0, 10.0, 1.0)]
-    [InlineData(HemKind.Closed, 10.0, 0.0, 0.0)]
-    [InlineData(HemKind.Open, 10.0, 1.0, 0.0)]
-    public void Teardrop_and_rolled_hems_pass_SOLIDWORKS_own_defaults_for_the_dimensions_they_do_not_take(HemKind kind, double length, double gap, double miterGap)
+    [InlineData(HemKind.Teardrop)]
+    [InlineData(HemKind.Rolled)]
+    public void Teardrop_and_rolled_hems_are_refused_at_their_kind_until_SOLIDWORKS_makes_them_through_the_API(HemKind kind)
     {
-        // 6.B live run: InsertSheetMetalHem2 made no teardrop, and a rolled hem with no faces, with length, gap and miter
-        // gap 0; the same hems made by hand read back length 10 mm, gap 10 mm and miter gap 1 mm, SOLIDWORKS' defaults.
+        // 6.B live run: InsertSheetMetalHem2 made no teardrop, and a rolled hem with no faces, though both are made by hand.
         var doc = Sheet();
-        bool rolls = kind == HemKind.Teardrop || kind == HemKind.Rolled;
-        Hem(new SheetMetalHemRequest
-        {
-            Edges = new List<string> { Top(doc) },
-            Kind = kind,
-            LengthMm = rolls ? null : 10,
-            GapMm = kind == HemKind.Open ? 1 : null,
-            RadiusMm = rolls ? 3 : null,
-            AngleDeg = rolls ? 200 : null,
-        });
-        var (_, spec) = doc.Hems.Single();
-        Assert.Equal(length, spec.LengthMm);
-        Assert.Equal(gap, spec.GapMm);
-        Assert.Equal(miterGap, spec.MiterGapMm);
+        var e = Fails(() => Hem(new SheetMetalHemRequest { Edges = new List<string> { Top(doc) }, Kind = kind, RadiusMm = 3, AngleDeg = 200 }));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal("kind", e.Error.Details!["field"]);
+        Assert.Contains($"{(kind == HemKind.Teardrop ? "teardrop" : "rolled")} hems are not available yet", e.Message);
+        Assert.Empty(doc.Hems);
     }
 
     [Fact]
@@ -408,10 +394,9 @@ public class SheetMetalHemTests : SheetMetalFlangeTestBase
         Assert.Equal("length_mm", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Closed }));
         Assert.Equal("gap_mm", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Closed, LengthMm = 10, GapMm = 1 }));
         Assert.Equal("gap_mm", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Open, LengthMm = 10 }));
-        Assert.Equal("length_mm", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Rolled, LengthMm = 10, RadiusMm = 2, AngleDeg = 180 }));
-        Assert.Equal("angle_deg", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Rolled, RadiusMm = 2 }));
-        Assert.Equal("angle_deg", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Teardrop, RadiusMm = 2, AngleDeg = 90 }));
-        Assert.Equal("radius_mm", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Teardrop, AngleDeg = 270 }));
+        Assert.Equal("radius_mm", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Open, LengthMm = 10, GapMm = 1, RadiusMm = 2 }));
+        Assert.Equal("angle_deg", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Closed, LengthMm = 10, AngleDeg = 180 }));
+        Assert.Equal("kind", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Rolled, RadiusMm = 2, AngleDeg = 200 }));
         Assert.Equal("position", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Closed, LengthMm = 10, Position = BendPosition.MaterialOutside }));
         Assert.Empty(doc.Hems);
     }

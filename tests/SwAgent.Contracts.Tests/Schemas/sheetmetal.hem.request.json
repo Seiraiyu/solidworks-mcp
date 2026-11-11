@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "Folds straight edges of a sheet-metal part back on themselves, as one hem feature. kind closed takes length_mm; open takes length_mm and gap_mm; teardrop and rolled take radius_mm and angle_deg; a dimension the kind does not take is refused. position material_inside (the default) folds the hem back within the edge, bend_outside puts it outside. Folded parts only: a flattened part is refused. Lengths in mm, angles in degrees. Checked: the feature is a hem, the edges named are gone (folded into it), and the volume grew by the hem's material (its fold and, for closed and open, its return, less the sheet it takes back) within one fold's outside radius of sheet across its width. Otherwise it is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "description": "Folds straight edges of a sheet-metal part back on themselves, as one hem feature. kind closed takes length_mm; open takes length_mm and gap_mm; a dimension the kind does not take is refused. teardrop and rolled are refused (invalid_argument at kind) for now: SOLIDWORKS does not make them through its API as it does by hand. position material_inside (the default) folds the hem back within the edge, bend_outside puts it outside. Folded parts only: a flattened part is refused. Lengths in mm, angles in degrees. Checked: the feature is a hem, the edges named are gone (folded into it), and the volume grew by the hem's material (its fold and its return, less the sheet it takes back) within one fold's outside radius of sheet across its width. Otherwise it is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
   "properties": {
     "document": {
       "type": "string",
@@ -21,7 +21,7 @@
         "teardrop",
         "rolled"
       ],
-      "description": "closed, open, teardrop or rolled."
+      "description": "closed or open. teardrop and rolled are refused for now."
     },
     "length_mm": {
       "type": "number",
@@ -33,11 +33,11 @@
     },
     "radius_mm": {
       "type": "number",
-      "description": "For teardrop and rolled: the inner radius it rolls at, mm, more than 0."
+      "description": "For teardrop and rolled, which are refused for now: the inner radius it rolls at, mm. Refused for closed and open."
     },
     "angle_deg": {
       "type": "number",
-      "description": "For teardrop (more than 180 and less than 360) and rolled (more than 0 and less than 360): how far it rolls, degrees."
+      "description": "For teardrop and rolled, which are refused for now: how far it rolls, degrees. Refused for closed and open."
     },
     "position": {
       "type": "string",

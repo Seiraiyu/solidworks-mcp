@@ -253,6 +253,7 @@ In your running SOLIDWORKS, an agent can:
 In this release it cannot:
 
 - work on assemblies, drawings or sheet metal, or check interference;
+- make teardrop or rolled hems: `sw_sheetmetal_hem` makes closed and open hems and refuses the other two kinds, which SOLIDWORKS does not make through its API as it does by hand;
 - export drawing formats (PDF, DXF, DWG);
 - set materials, appearances, equations, design tables or custom properties, except through `sw_api_call`;
 - make variable-radius fillets or chamfers other than distance-angle and distance-distance, or do surface, multibody, weldment or direct-editing work;

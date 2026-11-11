@@ -102,11 +102,7 @@ public sealed class MiterFlangeSpec
     public BendAllowance? Allowance { get; set; }
 }
 
-/// <summary>
-/// A hem as ISwSheetMetal.Hem makes it. The dimensions a closed or open hem does not take are 0; a teardrop or rolled hem
-/// carries SOLIDWORKS' own defaults for them instead (length and gap 10 mm, miter gap 1 mm), because InsertSheetMetalHem2
-/// makes no teardrop, and a rolled hem with no faces, when they are 0 (6.B live run, read back from hems made by hand).
-/// </summary>
+/// <summary>A hem as ISwSheetMetal.Hem makes it; the dimensions its kind does not take are 0.</summary>
 public sealed class HemSpec
 {
     public HemKind Kind { get; set; } = HemKind.Closed;
@@ -119,9 +115,6 @@ public sealed class HemSpec
     public double GapMm { get; set; }
     public double AngleDeg { get; set; }
     public double RadiusMm { get; set; }
-
-    /// <summary>The gap left where the hem turns a corner between edges.</summary>
-    public double MiterGapMm { get; set; }
 
     /// <summary>Its own allowance; null for the part's default.</summary>
     public BendAllowance? Allowance { get; set; }

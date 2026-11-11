@@ -141,65 +141,34 @@ public sealed partial class SheetMetalSuite
     });
 
     [SkippableFact, Step(11)]
-    public Task Every_hem_kind_folds_its_edge_within_its_material() => _run.CaseAsync(11, "sheetmetal.hem on new tabs' 100 mm edge: closed 10, open 10 with gap 1, teardrop R 2 at 270°, rolled R 3 at 200°; each a Hem, the edge gone, the volume within the band (the measured values are recorded to tighten it)", async () =>
+    public Task Closed_and_open_hems_fold_their_edge_and_the_other_kinds_are_refused() => _run.CaseAsync(11, "sheetmetal.hem on new tabs' 100 mm edge: closed 10 and open 10 with gap 1, each a Hem, the edge gone, the volume within the band (the measured values are recorded); teardrop and rolled refused at kind with nothing made", async () =>
     {
         await _run.RequireOnlyOwnDocumentsAsync();
         var notes = new List<string>();
-        var kinds = new[]
-        {
-            new SheetMetalHemRequest { Kind = HemKind.Closed, LengthMm = 10 },
-            new SheetMetalHemRequest { Kind = HemKind.Open, LengthMm = 10, GapMm = 1 },
-            new SheetMetalHemRequest { Kind = HemKind.Teardrop, RadiusMm = 2, AngleDeg = 270 },
-            new SheetMetalHemRequest { Kind = HemKind.Rolled, RadiusMm = 3, AngleDeg = 200 },
-        };
-        // Every kind runs and is recorded even when one fails (6.B live run round 1: the teardrop at R 2, 270° made nothing,
-        // and the case stopped before the rolled hem), so one round answers all four.
-        var failed = new List<string>();
-        async Task<string?> Try(string name, SheetMetalHemRequest hem)
-        {
-            var (path, _) = await Sheet(name);
-            hem.Document = path;
-            hem.Edges = new List<string> { await EdgeAt(path, 50, 60) };
-            try
-            {
-                var made = await Call<SheetMetalHemRequest, SheetMetalFeatureResult>(hem);
-                return made.Change.VolumeAfterMm3 > 12000
-                    ? $"{made.Feature.Name}, {made.Change.VolumeAfterMm3 - 12000:0.###} mm³ added, {made.Sheet.Bends.Count} bends; {string.Join("; ", made.Checks)}"
-                    : null;
-            }
-            catch (SwAgentException e)
-            {
-                notes.Add($"{name}: {e.Code}: {e.Message}{(e.Error.Details == null ? "" : " " + JsonCodec.Serialize(e.Error.Details))}");
-                return null;
-            }
-        }
-        foreach (var hem in kinds)
+        foreach (var hem in new[] { new SheetMetalHemRequest { Kind = HemKind.Closed, LengthMm = 10 }, new SheetMetalHemRequest { Kind = HemKind.Open, LengthMm = 10, GapMm = 1 } })
         {
             string kind = WireNames.ForEnum(hem.Kind);
-            var line = await Try($"hem-{kind}", hem);
-            if (line != null)
-            {
-                notes.Add($"{kind}: {line}");
-                continue;
-            }
-            failed.Add(kind);
-            if (hem.Kind == HemKind.Teardrop)
-            {
-                // Diagnostics only, not the case's verdict: does the position or the radius decide it?
-                foreach (var (name, probe) in new[]
-                {
-                    ("hem-teardrop-outside", new SheetMetalHemRequest { Kind = HemKind.Teardrop, RadiusMm = 2, AngleDeg = 270, Position = BendPosition.BendOutside }),
-                    ("hem-teardrop-r5", new SheetMetalHemRequest { Kind = HemKind.Teardrop, RadiusMm = 5, AngleDeg = 270 }),
-                })
-                {
-                    var probed = await Try(name, probe);
-                    notes.Add($"{name} (diagnostic): {probed ?? "not made"}");
-                }
-            }
+            var (path, _) = await Sheet($"hem-{kind}");
+            hem.Document = path;
+            hem.Edges = new List<string> { await EdgeAt(path, 50, 60) };
+            var made = await Call<SheetMetalHemRequest, SheetMetalFeatureResult>(hem);
+            Assert.True(made.Change.VolumeAfterMm3 > 12000, $"the {kind} hem added material");
+            notes.Add($"{kind}: {made.Feature.Name}, {made.Change.VolumeAfterMm3 - 12000:0.###} mm³ added, {made.Sheet.Bends.Count} bends; {string.Join("; ", made.Checks)}");
         }
-        string report = string.Join(" | ", notes);
-        Assert.True(failed.Count == 0, $"no hem made for: {string.Join(", ", failed)}. {report}");
-        return report;
+        // 6.B live run: InsertSheetMetalHem2 made no teardrop, and a rolled hem with no faces, though both are made by hand.
+        var (tab, _) = await Sheet("hem-refused");
+        string edge = await EdgeAt(tab, 50, 60);
+        foreach (var hem in new[] { new SheetMetalHemRequest { Kind = HemKind.Teardrop, RadiusMm = 2, AngleDeg = 270 }, new SheetMetalHemRequest { Kind = HemKind.Rolled, RadiusMm = 3, AngleDeg = 200 } })
+        {
+            hem.Document = tab;
+            hem.Edges = new List<string> { edge };
+            var refused = await Refused(() => Call<SheetMetalHemRequest, SheetMetalFeatureResult>(hem));
+            Assert.Equal(ErrorCode.InvalidArgument, refused.Code);
+            Assert.Equal("kind", refused.Error.Details!["field"]);
+            notes.Add($"{WireNames.ForEnum(hem.Kind)} refused: {refused.Message}");
+        }
+        Near(12000, await VolumeOf(tab), "the tab after the refusals");
+        return string.Join(" | ", notes);
     });
 
     [SkippableFact, Step(12)]

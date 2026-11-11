@@ -110,7 +110,7 @@ public sealed class SheetMetalMiterFlangeRequest
 }
 
 [Operation("sheetmetal.hem", typeof(SheetMetalFeatureResult))]
-[Description("Folds straight edges of a sheet-metal part back on themselves, as one hem feature. kind closed takes length_mm; open takes length_mm and gap_mm; teardrop and rolled take radius_mm and angle_deg; a dimension the kind does not take is refused. position material_inside (the default) folds the hem back within the edge, bend_outside puts it outside. Folded parts only: a flattened part is refused. Lengths in mm, angles in degrees. Checked: the feature is a hem, the edges named are gone (folded into it), and the volume grew by the hem's material (its fold and, for closed and open, its return, less the sheet it takes back) within one fold's outside radius of sheet across its width. Otherwise it is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+[Description("Folds straight edges of a sheet-metal part back on themselves, as one hem feature. kind closed takes length_mm; open takes length_mm and gap_mm; a dimension the kind does not take is refused. teardrop and rolled are refused (invalid_argument at kind) for now: SOLIDWORKS does not make them through its API as it does by hand. position material_inside (the default) folds the hem back within the edge, bend_outside puts it outside. Folded parts only: a flattened part is refused. Lengths in mm, angles in degrees. Checked: the feature is a hem, the edges named are gone (folded into it), and the volume grew by the hem's material (its fold and its return, less the sheet it takes back) within one fold's outside radius of sheet across its width. Otherwise it is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class SheetMetalHemRequest
 {
     [Description("The part: its title or full path. The active document when absent.")]
@@ -120,7 +120,7 @@ public sealed class SheetMetalHemRequest
     [Description("The edges, by reference: straight edges where the sheet ends, each between one of its faces and the thin face it ends in.")]
     public List<string> Edges { get; set; } = new List<string>();
 
-    [Description("closed, open, teardrop or rolled.")]
+    [Description("closed or open. teardrop and rolled are refused for now.")]
     public HemKind Kind { get; set; }
 
     [Description("For closed and open: how long the hem's return is, mm, more than 0.")]
@@ -129,10 +129,10 @@ public sealed class SheetMetalHemRequest
     [Description("For open: the gap between the return and the sheet, mm, more than 0.")]
     public double? GapMm { get; set; }
 
-    [Description("For teardrop and rolled: the inner radius it rolls at, mm, more than 0.")]
+    [Description("For teardrop and rolled, which are refused for now: the inner radius it rolls at, mm. Refused for closed and open.")]
     public double? RadiusMm { get; set; }
 
-    [Description("For teardrop (more than 180 and less than 360) and rolled (more than 0 and less than 360): how far it rolls, degrees.")]
+    [Description("For teardrop and rolled, which are refused for now: how far it rolls, degrees. Refused for closed and open.")]
     public double? AngleDeg { get; set; }
 
     [Description("material_inside (the default: the hem within the edge) or bend_outside (outside it); material_outside is not a hem position.")]

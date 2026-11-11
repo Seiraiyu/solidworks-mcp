@@ -422,19 +422,9 @@ public sealed class SheetMetalHemOperation : ModelChangeOperation<SheetMetalHemR
                 spec.GapMm = FeatureFacts.Length(r.GapMm, "gap_mm", "an open hem");
                 break;
             default:
-                Foreign(r.LengthMm, "length_mm");
-                Foreign(r.GapMm, "gap_mm");
-                spec.RadiusMm = FeatureFacts.Length(r.RadiusMm, "radius_mm", $"a {kind} hem");
-                if (r.AngleDeg == null) throw FeatureFacts.Invalid("angle_deg", $"a {kind} hem needs angle_deg");
-                spec.AngleDeg = Flanges.Angle(r.AngleDeg, 0, "angle_deg", 360);
-                if (r.Kind == HemKind.Teardrop && spec.AngleDeg <= 180)
-                    throw FeatureFacts.Invalid("angle_deg", FormattableString.Invariant($"a teardrop hem rolls more than 180 degrees, not {spec.AngleDeg}"));
-                // SOLIDWORKS' own defaults for what these kinds do not take: with 0 it makes no teardrop, and a rolled hem
-                // with no faces (6.B live run; the same hems made by hand read back these values).
-                spec.LengthMm = 10;
-                spec.GapMm = 10;
-                spec.MiterGapMm = 1;
-                break;
+                // 6.B live run: through InsertSheetMetalHem2 SOLIDWORKS made no teardrop hem, and a rolled hem with no
+                // faces, though both are made by hand with the same values; refused until a later stage finds the call.
+                throw FeatureFacts.Invalid("kind", $"{kind} hems are not available yet: sheetmetal.hem makes closed and open hems. Nothing was changed");
         }
         var position = r.Position ?? BendPosition.MaterialInside;
         if (position == BendPosition.MaterialOutside) throw FeatureFacts.Invalid("position", "a hem's position is material_inside or bend_outside");
