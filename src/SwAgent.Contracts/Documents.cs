@@ -4,20 +4,20 @@ using System.ComponentModel;
 namespace SwAgent.Contracts;
 
 [Operation("document.new", typeof(DocumentNewResult))]
-[Description("Creates a part from the user's default part template (or a named template) and makes it the active document. With path, saves it there at once. The part is the agent's own, so document.close may close it.")]
+[Description("Creates a part or an assembly from the user's default template for it (or a named template) and makes it the active document. With path, saves it there at once. The document is the agent's own, so document.close may close it.")]
 public sealed class DocumentNewRequest
 {
-    [Description("What to create; only part in this version. Default part.")]
+    [Description("What to create: part or assembly (drawings come in a later release). Default part.")]
     public DocumentType? Type { get; set; }
 
-    [Description("Full path of a part template (.PRTDOT); the user's default part template when absent.")]
+    [Description("Full path of a template: .PRTDOT for a part, .ASMDOT for an assembly; the user's default template for the type when absent.")]
     public string? Template { get; set; }
 
-    [Description("Full path of a .SLDPRT file that does not exist yet, in an existing folder: the new part is saved there at once.")]
+    [Description("Full path of a file that does not exist yet, in an existing folder, with the type's extension (.SLDPRT, .SLDASM): the new document is saved there at once.")]
     public string? Path { get; set; }
 }
 
-[Description("The part created.")]
+[Description("The document created.")]
 public sealed class DocumentNewResult
 {
     [Required]
@@ -30,7 +30,7 @@ public sealed class DocumentNewResult
 }
 
 [Operation("document.open", typeof(DocumentOpenResult))]
-[Description("Opens a part, assembly or drawing from a local file and makes it the active document. A document that is already open is made active, not opened again. A document this call opened is the agent's own, so document.close may close it.")]
+[Description("Opens a part, assembly or drawing from a local file and makes it the active document. An assembly opens with every component resolved (never lightweight); component files that are missing are listed, never searched for with a dialog. A document that is already open is made active, not opened again. A document this call opened is the agent's own, so document.close may close it.")]
 public sealed class DocumentOpenRequest
 {
     [Required]
@@ -57,6 +57,10 @@ public sealed class DocumentOpenResult
     [Required]
     [Description("What SOLIDWORKS warned about while opening it (swFileLoadWarning_e names), for example swFileLoadWarning_ModelOutOfDate.")]
     public List<string> Warnings { get; set; } = new List<string>();
+
+    [Required]
+    [Description("Files the document uses (an assembly's components) that SOLIDWORKS could not find; those components stay suppressed. Empty when nothing is missing.")]
+    public List<string> Missing { get; set; } = new List<string>();
 }
 
 [Operation("document.save", typeof(DocumentSaveResult))]

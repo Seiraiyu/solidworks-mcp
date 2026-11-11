@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "The part created.",
+  "description": "The document created.",
   "properties": {
     "document": {
       "type": "object",

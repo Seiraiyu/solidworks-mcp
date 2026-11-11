@@ -18,27 +18,29 @@ public sealed class DocumentNewOperation : Operation<DocumentNewRequest, Documen
 
     protected override DocumentNewResult Run(DocumentNewRequest request, IOperationContext context)
     {
-        if (request.Type != null && request.Type != DocumentType.Part)
+        var type = request.Type ?? DocumentType.Part;
+        if (type == DocumentType.Drawing)
         {
             throw new SwAgentException(ErrorCode.InvalidArgument,
-                "document.new makes parts only in this version; assemblies and drawings come in later releases",
+                "document.new makes parts and assemblies in this version; drawings come in a later release",
                 new JsonObject { ["field"] = "type" });
         }
-        string? path = request.Path == null ? null : PathRules.Writable(request.Path, "path", overwrite: false, ".SLDPRT");
+        var kind = Kind.Of(type);
+        string? path = request.Path == null ? null : PathRules.Writable(request.Path, "path", overwrite: false, kind.Extension);
         string template;
         if (request.Template != null)
         {
-            template = PathRules.Existing(request.Template, "template", ".PRTDOT");
+            template = PathRules.Existing(request.Template, "template", kind.TemplateExtension);
         }
         else
         {
-            template = _services.SolidWorks.DefaultPartTemplate()
+            template = (type == DocumentType.Assembly ? _services.SolidWorks.DefaultAssemblyTemplate() : _services.SolidWorks.DefaultPartTemplate())
                 ?? throw new SwAgentException(ErrorCode.OperationFailed,
-                    "SOLIDWORKS has no default part template; set one in Tools > Options > Default Templates, or pass template");
+                    $"SOLIDWORKS has no default {kind.Noun} template; set one in Tools > Options > Default Templates, or pass template");
             if (!File.Exists(template))
             {
                 throw new SwAgentException(ErrorCode.OperationFailed,
-                    $"the default part template {template} does not exist; fix it in Tools > Options > Default Templates, or pass template",
+                    $"the default {kind.Noun} template {template} does not exist; fix it in Tools > Options > Default Templates, or pass template",
                     new JsonObject { ["template"] = template });
             }
         }
@@ -52,7 +54,7 @@ public sealed class DocumentNewOperation : Operation<DocumentNewRequest, Documen
                 string title = doc.Info().Title;
                 _services.SolidWorks.Close(doc);
                 throw new SwAgentException(ErrorCode.OperationFailed,
-                    $"the new part could not be saved to {path}, so it was closed: {string.Join(", ", SolidWorksCodes.SaveErrors(saved.Errors).DefaultIfEmpty("no error reported"))}",
+                    $"the new {kind.Noun} could not be saved to {path}, so it was closed: {string.Join(", ", SolidWorksCodes.SaveErrors(saved.Errors).DefaultIfEmpty("no error reported"))}",
                     new JsonObject
                     {
                         ["path"] = path,
@@ -67,19 +69,52 @@ public sealed class DocumentNewOperation : Operation<DocumentNewRequest, Documen
         return new DocumentNewResult { Document = info, Template = template };
     }
 
-    /// <summary>The part exists, is active, has the template's three planes and origin, and is on disk when a path was given.</summary>
+    /// <summary>
+    /// The document exists, is active, is of the type asked, has the template's three planes and origin, and is on disk
+    /// when a path was given; a new assembly has no command left open (Begin Assembly: design 455, Session preferences).
+    /// </summary>
     protected override void Verify(DocumentNewRequest request, DocumentNewResult result, IOperationContext context)
     {
+        var type = request.Type ?? DocumentType.Part;
+        var kind = Kind.Of(type);
         var active = _services.SolidWorks.ActiveDoc();
         var info = active?.Info();
         if (info == null || !DocumentKeys.Same(DocumentKeys.Of(info), DocumentKeys.Of(result.Document)))
-            throw new SwAgentException(ErrorCode.VerificationFailed, $"the new part {result.Document.Title} is not the active document");
-        if (info.Type != DocumentType.Part)
-            throw new SwAgentException(ErrorCode.VerificationFailed, $"the template {result.Template} made {info.Type}, not a part");
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"the new {kind.Noun} {result.Document.Title} is not the active document");
+        if (info.Type != type)
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"the template {result.Template} made {info.Type}, not {kind.Article}");
         if (active!.StandardPlane(2) == null || active.Origin() == null)
-            throw new SwAgentException(ErrorCode.VerificationFailed, $"the new part has no three default planes and origin; is {result.Template} a part template?");
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"the new {kind.Noun} has no three default planes and origin; is {result.Template} {kind.Article} template?");
         if (request.Path != null && !File.Exists(request.Path))
-            throw new SwAgentException(ErrorCode.VerificationFailed, $"SOLIDWORKS reported the part saved to {request.Path}, but the file is not there");
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"SOLIDWORKS reported the {kind.Noun} saved to {request.Path}, but the file is not there");
+        if (type == DocumentType.Assembly && _services.SolidWorks.OpenCommand() is string command)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"SOLIDWORKS left '{command}' open on the new assembly {info.Title}: the automation preference insert_component_for_new_assembly did not take (addin.state lists it under preferences_not_applied). Cancel it in SOLIDWORKS before the next change",
+                new JsonObject { ["command"] = command, ["document"] = DocumentLocator.Label(info) });
+        }
+    }
+
+    /// <summary>The words and extensions that differ between a new part and a new assembly.</summary>
+    sealed class Kind
+    {
+        static readonly Kind Part = new Kind("part", "a part", ".SLDPRT", ".PRTDOT");
+        static readonly Kind Assembly = new Kind("assembly", "an assembly", ".SLDASM", ".ASMDOT");
+
+        Kind(string noun, string article, string extension, string templateExtension)
+        {
+            Noun = noun;
+            Article = article;
+            Extension = extension;
+            TemplateExtension = templateExtension;
+        }
+
+        public string Noun { get; }
+        public string Article { get; }
+        public string Extension { get; }
+        public string TemplateExtension { get; }
+
+        public static Kind Of(DocumentType type) => type == DocumentType.Assembly ? Assembly : Part;
     }
 }
 
@@ -119,7 +154,10 @@ public sealed class DocumentOpenOperation : Operation<DocumentOpenRequest, Docum
         }
         var info = outcome.Document.Info();
         _services.Runtime.DocumentOpened(DocumentKeys.Of(info), owned: true);
-        return new DocumentOpenResult { Document = info, ReadOnly = outcome.Document.ReadOnly, Warnings = warnings };
+        // Design 455: opened silently, so SOLIDWORKS never asked where a component's file went: the files it uses that are not there.
+        var missing = outcome.Document.UsedFiles().Where(f => !File.Exists(f)).ToList();
+        if (missing.Count > 0) context.Log.Warn($"document.open: {path} uses {missing.Count} file(s) that are not there: {string.Join(", ", missing)}");
+        return new DocumentOpenResult { Document = info, ReadOnly = outcome.Document.ReadOnly, Warnings = warnings, Missing = missing };
     }
 
     /// <summary>The file is open as the document reported, read-only when asked.</summary>
