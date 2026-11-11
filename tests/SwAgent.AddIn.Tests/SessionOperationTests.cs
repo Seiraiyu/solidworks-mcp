@@ -105,6 +105,13 @@ sealed class FakeSolidWorks : ISolidWorksApplication
     public OpenOutcome OpenDocument(string path, DocumentType type, bool readOnly)
     {
         Opened.Add((path, type, readOnly));
+        var loaded = Docs.FirstOrDefault(d => string.Equals(d.Document.Path, path, System.StringComparison.OrdinalIgnoreCase));
+        if (loaded != null && OpenWith == null)
+        {
+            loaded.Document.Visible = true;
+            CurrentDoc = loaded;
+            return new OpenOutcome(loaded, 0, 0);
+        }
         var outcome = OpenWith?.Invoke(path)
             ?? new OpenOutcome(new FakeDocument(System.IO.Path.GetFileName(path), path, type) { ReadOnly = readOnly }, 0, 0);
         if (outcome.Document is FakeDocument doc)

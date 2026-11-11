@@ -132,7 +132,8 @@ public sealed class DocumentOpenOperation : Operation<DocumentOpenRequest, Docum
         string path = PathRules.Existing(request.Path, "path", ".SLDPRT", ".SLDASM", ".SLDDRW");
         bool readOnly = request.ReadOnly == true;
         var open = _services.SolidWorks.Documents().FirstOrDefault(d => d.Info().Path is string p && DocumentKeys.Same(Path.GetFullPath(p), path));
-        if (open != null)
+        // A document loaded only because an assembly uses it has no window: opening it gives it one (design 455).
+        if (open != null && open.Info().Visible)
         {
             open.Activate();
             return new DocumentOpenResult { Document = open.Info(), AlreadyOpen = true, ReadOnly = open.ReadOnly };
@@ -166,6 +167,7 @@ public sealed class DocumentOpenOperation : Operation<DocumentOpenRequest, Docum
         string path = Path.GetFullPath(request.Path);
         var doc = _services.SolidWorks.Documents().FirstOrDefault(d => d.Info().Path is string p && DocumentKeys.Same(Path.GetFullPath(p), path));
         if (doc == null) throw new SwAgentException(ErrorCode.VerificationFailed, $"{path} is not open after document.open");
+        if (!doc.Info().Visible) throw new SwAgentException(ErrorCode.VerificationFailed, $"{path} is loaded but has no window after document.open");
         if (request.ReadOnly == true && !result.AlreadyOpen && !doc.ReadOnly)
             throw new SwAgentException(ErrorCode.VerificationFailed, $"{path} was asked to open read-only but is writable");
     }

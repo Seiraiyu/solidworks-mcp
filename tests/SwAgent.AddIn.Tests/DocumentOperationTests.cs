@@ -465,6 +465,20 @@ public class DocumentOpenTests : DocumentTestBase
     }
 
     [Fact]
+    public void A_component_loaded_only_for_an_assembly_gets_a_window_and_is_the_agents()
+    {
+        string path = PathOf("pin.SLDPRT");
+        File.WriteAllText(path, "part");
+        var pin = Sw.Track(FakeDocument.Part("pin.SLDPRT", path));
+        pin.Document.Visible = false;
+        var result = Open(new DocumentOpenRequest { Path = path });
+        Assert.False(result.AlreadyOpen);
+        Assert.True(result.Document.Visible);
+        Assert.Single(Sw.Opened);
+        Assert.True(Services.Runtime.Owned.Contains(path));
+    }
+
+    [Fact]
     public void Nothing_missing_is_an_empty_list()
     {
         string path = PathOf("plate.SLDPRT");
