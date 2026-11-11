@@ -158,7 +158,7 @@ public sealed class DocumentCloseResult
 }
 
 [Operation("document.rebuild", typeof(RebuildResult))]
-[Description("Rebuilds a document (only what changed; everything with force) and reports its rebuild errors and warnings by feature.")]
+[Description("Rebuilds a part or an assembly (only what changed; everything with force) and reports its rebuild errors and warnings by feature; an assembly's include its mates' errors, each named by the mate. After changing a component's part, rebuild the assembly that uses it.")]
 public sealed class DocumentRebuildRequest
 {
     [Description("The document: its title or full path. The active document when absent.")]
@@ -169,7 +169,7 @@ public sealed class DocumentRebuildRequest
 }
 
 [Operation("model.rebuild_status", typeof(RebuildResult), ReadOnly = true)]
-[Description("Reports a document's rebuild errors and warnings by feature (SOLIDWORKS' What's Wrong list), without rebuilding it.")]
+[Description("Reports a part's or an assembly's rebuild errors and warnings by feature (SOLIDWORKS' What's Wrong list; an assembly's include its mates'), without rebuilding it.")]
 public sealed class ModelRebuildStatusRequest
 {
     [Description("The document: its title or full path. The active document when absent.")]
