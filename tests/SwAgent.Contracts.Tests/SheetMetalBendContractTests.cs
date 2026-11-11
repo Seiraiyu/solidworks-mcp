@@ -61,6 +61,6 @@ public class SheetMetalBendContractTests
     [Fact]
     public void Protocol_8_speaks_bends_and_flattening()
     {
-        Assert.Equal(8, Protocol.Version);
+        Assert.True(Protocol.Version >= 8, $"protocol {Protocol.Version} speaks sheet-metal bends from 8 on");
     }
 }
