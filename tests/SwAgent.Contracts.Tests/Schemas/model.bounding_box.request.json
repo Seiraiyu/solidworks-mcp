@@ -1,10 +1,10 @@
 {
   "type": "object",
-  "description": "The axis-aligned box around a part's solid bodies, in mm. SOLIDWORKS' quick box by default (it may be a little larger than the bodies); precise for the exact one.",
+  "description": "The axis-aligned box around a part's solid bodies, or an assembly's resolved components' bodies in the assembly's coordinates, in mm. SOLIDWORKS' quick box by default (it may be a little larger than the bodies); precise for the exact one.",
   "properties": {
     "document": {
       "type": "string",
-      "description": "The part: its title or full path. The active document when absent."
+      "description": "The part or assembly: its title or full path. The active document when absent."
     },
     "precise": {
       "type": "boolean",

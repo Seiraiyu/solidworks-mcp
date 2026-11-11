@@ -132,7 +132,7 @@ public sealed class ModelBoundingBoxOperation : Operation<ModelBoundingBoxReques
 
     protected override ModelBoundingBoxResult Run(ModelBoundingBoxRequest request, IOperationContext context)
     {
-        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "model.bounding_box");
+        var doc = DocumentLocator.FindModel(_services.SolidWorks, request.Document, "model.bounding_box");
         bool precise = request.Precise == true;
         int bodies = doc.SolidBodyCount();
         var box = bodies == 0 ? null : doc.BoundingBox(precise);
@@ -148,11 +148,11 @@ public sealed class ModelBoundingBoxOperation : Operation<ModelBoundingBoxReques
         };
     }
 
-    /// <summary>A part with bodies has a box, and its corners are in order.</summary>
+    /// <summary>A part or assembly with bodies has a box, and its corners are in order.</summary>
     protected override void Verify(ModelBoundingBoxRequest request, ModelBoundingBoxResult result, IOperationContext context)
     {
         if (result.Bodies > 0 && result.Box == null)
-            throw new SwAgentException(ErrorCode.VerificationFailed, $"SOLIDWORKS gave no bounding box for a part with {result.Bodies} solid bodies");
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"SOLIDWORKS gave no bounding box for {result.Document.Title}, which has {result.Bodies} solid bodies");
         if (result.Box != null && (result.SizeX < 0 || result.SizeY < 0 || result.SizeZ < 0))
             throw new SwAgentException(ErrorCode.VerificationFailed, $"SOLIDWORKS gave a box whose corners are out of order: {result.Box.Min} to {result.Box.Max}");
     }

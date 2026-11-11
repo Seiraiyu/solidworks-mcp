@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "A part's bounding box. No box when it has no solid body.",
+  "description": "A part's or assembly's bounding box. No box when it has no solid body.",
   "properties": {
     "document": {
       "type": "object",
@@ -38,11 +38,11 @@
         "visible"
       ],
       "additionalProperties": false,
-      "description": "The part."
+      "description": "The part or assembly."
     },
     "bodies": {
       "type": "integer",
-      "description": "How many solid bodies it has."
+      "description": "How many solid bodies it has (an assembly: its resolved components' bodies)."
     },
     "box": {
       "type": "object",

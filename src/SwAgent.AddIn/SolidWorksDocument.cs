@@ -224,6 +224,7 @@ internal sealed partial class SolidWorksDocument : ISwDocument
 
     public Box3? BoundingBox(bool precise)
     {
+        if (Doc is IAssemblyDoc assembly) return AssemblyBox(assembly, precise);
         if (!precise) return Doc is IPartDoc part && part.GetPartBox(true) is double[] b ? Box(b) : null;
         double[]? box = null;
         foreach (var o in SolidBodies())
@@ -235,6 +236,34 @@ internal sealed partial class SolidWorksDocument : ISwDocument
             {
                 lo[axis] = Extreme(body, axis, -1);
                 hi[axis] = Extreme(body, axis, 1);
+            }
+            box = box == null
+                ? new[] { lo[0], lo[1], lo[2], hi[0], hi[1], hi[2] }
+                : new[] { Math.Min(box[0], lo[0]), Math.Min(box[1], lo[1]), Math.Min(box[2], lo[2]), Math.Max(box[3], hi[0]), Math.Max(box[4], hi[1]), Math.Max(box[5], hi[2]) };
+        }
+        return box == null ? null : Box(box);
+    }
+
+    /// <summary>
+    /// An assembly's box: SOLIDWORKS' quick one of its solid geometry (IAssemblyDoc.GetBox, no planes or sketches), or
+    /// the exact one from the extreme points of a copy of each component body moved by its component's placement (a
+    /// component body's own geometry is in the component's coordinates). Null with no solid body.
+    /// </summary>
+    Box3? AssemblyBox(IAssemblyDoc assembly, bool precise)
+    {
+        if (!ComponentBodies().Any()) return null;
+        if (!precise) return assembly.GetBox(0) is double[] quick && quick.Length >= 6 ? Box(quick) : null;
+        double[]? box = null;
+        foreach (var (body, component) in ComponentBodies())
+        {
+            if (!(body.Copy() is IBody2 copy)) throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS could not copy a body of {component.Name2} to measure it");
+            if (!copy.ApplyTransform(component.Transform2)) throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS could not move a copy of a body of {component.Name2} into the assembly");
+            var lo = new double[3];
+            var hi = new double[3];
+            for (int axis = 0; axis < 3; axis++)
+            {
+                lo[axis] = Extreme(copy, axis, -1);
+                hi[axis] = Extreme(copy, axis, 1);
             }
             box = box == null
                 ? new[] { lo[0], lo[1], lo[2], hi[0], hi[1], hi[2] }

@@ -37,7 +37,7 @@ public class ModelTreeTests : DocumentTestBase
         Assert.Equal(ErrorCode.WrongDocumentType, Fails(() => Run(new ModelTreeOperation(Services), new ModelTreeRequest())).Code);
         Sw.Track(new FakeDocument("Sheet1", null, DocumentType.Drawing));
         Assert.Equal(ErrorCode.WrongDocumentType, Fails(() => Run(new ModelMassOperation(Services), new ModelMassRequest { Document = "Sheet1" })).Code);
-        Assert.Equal(ErrorCode.WrongDocumentType, Fails(() => Run(new ModelBoundingBoxOperation(Services), new ModelBoundingBoxRequest { Document = "Assem1" })).Code);
+        Assert.Equal(ErrorCode.WrongDocumentType, Fails(() => Run(new ModelBoundingBoxOperation(Services), new ModelBoundingBoxRequest { Document = "Sheet1" })).Code);
     }
 }
 
