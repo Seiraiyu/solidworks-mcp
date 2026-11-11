@@ -31,7 +31,7 @@ if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed ($LASTEXITCODE)" }
 foreach ($file in @('swmcp.exe', 'addin\SwAgent.AddIn.dll', 'addin\SwAgent.AddIn.Core.dll', 'addin\SwAgent.Contracts.dll')) {
     if (-not (Test-Path -LiteralPath (Join-Path $stage $file))) { throw "the publish has no $file" }
 }
-Copy-Item -LiteralPath (Join-Path $repo 'README.md'), (Join-Path $repo 'LICENSE') -Destination $stage
+Copy-Item -LiteralPath (Join-Path $repo 'README.md'), (Join-Path $repo 'LICENSE'), (Join-Path $repo 'CHANGELOG.md') -Destination $stage
 
 [IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip, [IO.Compression.CompressionLevel]::Optimal, $false)
 $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()

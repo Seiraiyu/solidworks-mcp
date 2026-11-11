@@ -425,6 +425,10 @@ public sealed class Supervisor : IDisposable
             return $"SOLIDWORKS (process {pid}) is not responding (for {status.NotRespondingMs} ms); swmcp never ends SOLIDWORKS, so wait, or deal with it yourself";
         if (addin.Dialog != null)
         {
+            // sw_dialog_respond refuses a sign-in or licence window (issue #16); same wording as DeadlineErrors.DialogOpen.
+            if (addin.Dialog.NeedsPerson)
+                return $"SOLIDWORKS is showing the dialog \"{addin.Dialog.Title}\", a 3DEXPERIENCE sign-in or licence window " +
+                       "that only a person can answer; ask the user to deal with it in SOLIDWORKS; nothing else runs until it is closed";
             return $"SOLIDWORKS is showing the dialog \"{addin.Dialog.Title}\" (buttons: {string.Join(", ", addin.Dialog.Buttons.Select(b => b.Text))}); " +
                    $"nothing else runs until it is answered with sw_dialog_respond (dialog {addin.Dialog.Id})";
         }

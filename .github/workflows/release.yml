@@ -3,7 +3,8 @@ name: release
 # A v* tag builds, tests, packs and checks the zip, and publishes it with its SHA-256 as a GitHub Release whose notes
 # link the live-suite report for the tagged commit. A pull request that changes this workflow or build/, and a
 # dispatch (dry_run true by default), do all of it but the release, and upload the zip as an artifact (design 371,
-# Installer and release). In swmcp phase 3 it is only ever run as a dry run; swmcp-release:1 cuts v0.1.0.
+# Installer and release). The notes also carry the version's CHANGELOG.md section (changelog.ps1); a version without
+# one fails, dry runs included.
 
 on:
   push:
@@ -43,6 +44,9 @@ jobs:
       - name: Version rules
         shell: pwsh
         run: ./build/release/version.tests.ps1
+      - name: Changelog rules
+        shell: pwsh
+        run: ./build/release/changelog.tests.ps1
       - name: Version
         id: version
         shell: pwsh
