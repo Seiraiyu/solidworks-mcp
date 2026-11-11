@@ -505,6 +505,10 @@
             "type": "string",
             "description": "Its name, for features, planes, axes and points."
           },
+          "component": {
+            "type": "string",
+            "description": "In an assembly, the component it belongs to (bracket-1; sub-1/pin-1 inside a subassembly); absent for the assembly's own planes, axes and origin, and in a part. Its position, direction and box are in the assembly's coordinates."
+          },
           "feature": {
             "type": "string",
             "description": "The feature that made it, for faces, edges and vertices. An edge or vertex where several features meet names the first; see features."
