@@ -442,7 +442,7 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
     });
 
     [SkippableFact, Step(12)]
-    public Task An_assembly_is_measured_weighed_and_boxed() => _run.CaseAsync(12, "model.measure between components; model.mass the sum of its parts; model.bounding_box", async () =>
+    public Task An_assembly_is_measured_weighed_and_boxed() => _run.CaseAsync(12, "model.measure between components; model.mass the sum of its parts, also with a component in another configuration; model.bounding_box", async () =>
     {
         await _run.RequireOnlyOwnDocumentsAsync();
         string asm = LiveScratchPath("refs", ".SLDASM");
@@ -461,6 +461,37 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
         Near(95, mass.Components![1].CenterOfMass!.X, "column-1's centre of mass, x");
         Near(5, mass.Components![1].CenterOfMass!.Y, "column-1's centre of mass, y");
         Near(15, mass.Components![1].CenterOfMass!.Z, "column-1's centre of mass, z");
+        Assert.Empty(mass.Skipped!);
+
+        // Review of 4.B: a share counts the configuration the assembly uses, not the file's active one. column.SLDPRT
+        // gets a Tall configuration 50 mm high, its file left in Default (30 mm), and column-1 is set to Tall.
+        string column = (await Component(asm, "column-1")).Path!;
+        await Call<DocumentOpenRequest, DocumentOpenResult>(new DocumentOpenRequest { Path = column });
+        string first = (await Call<ConfigurationListRequest, ConfigurationListResult>(new ConfigurationListRequest { Document = column })).Active;
+        var height = (await Call<ModelDimensionsRequest, ModelDimensionsResult>(new ModelDimensionsRequest { Document = column }))
+            .Dimensions.Single(d => d.Driving && Math.Abs(d.Value - 30) < Tol);
+        await Call<ConfigurationAddRequest, ConfigurationResult>(new ConfigurationAddRequest { Document = column, Name = "Tall" });
+        await Call<DimensionSetRequest, DimensionSetResult>(new DimensionSetRequest { Document = column, Dimension = height.Name, Value = 50 });
+        await Call<ConfigurationActivateRequest, ConfigurationResult>(new ConfigurationActivateRequest { Document = column, Name = first });
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = column });
+        await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = column });
+        ModelMassResult tall;
+        await Call<ComponentSetRequest, ComponentSetResult>(new ComponentSetRequest { Document = asm, Components = { "column-1" }, Configuration = "Tall" });
+        try
+        {
+            tall = await Call<ModelMassRequest, ModelMassResult>(new ModelMassRequest { Document = asm });
+            Assert.Empty(tall.Skipped!);
+            Near(13000, tall.VolumeMm3, "the assembly's volume with column-1 in Tall");
+            Near(5000, tall.Components![1].VolumeMm3, "column-1's volume in Tall, not its file's active 3000");
+            Near(tall.Components!.Sum(c => c.MassG), tall.MassG, "the components' masses add up with column-1 in Tall");
+            Near(95, tall.Components![1].CenterOfMass!.X, "column-1's centre of mass in Tall, x");
+            Near(25, tall.Components![1].CenterOfMass!.Z, "column-1's centre of mass in Tall, z");
+        }
+        finally
+        {
+            await Call<ComponentSetRequest, ComponentSetResult>(new ComponentSetRequest { Document = asm, Components = { "column-1" }, Configuration = first });
+            await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        }
 
         var exact = await Call<ModelBoundingBoxRequest, ModelBoundingBoxResult>(new ModelBoundingBoxRequest { Document = asm, Precise = true });
         Near(0, exact.Box!.Min.X, "exact box min x");
@@ -470,6 +501,7 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
         var quick = await Call<ModelBoundingBoxRequest, ModelBoundingBoxResult>(new ModelBoundingBoxRequest { Document = asm });
         Assert.True(quick.Box!.Min.X <= Tol && quick.Box.Max.X >= 100 - Tol && quick.Box.Max.Z >= 30 - Tol, $"the quick box {quick.Box.Min}..{quick.Box.Max} does not hold the exact one");
         return $"gap {gap.DistanceMm} mm at {gap.AngleDeg}°; mass {mass.MassG} g = {string.Join(" + ", mass.Components!.Select(c => $"{c.Name} {c.MassG} g"))}, column-1's centre {mass.Components![1].CenterOfMass}; " +
+               $"column-1 in Tall: {tall.MassG} g = {string.Join(" + ", tall.Components!.Select(c => $"{c.Name} {c.VolumeMm3} mm³"))}, centre {tall.Components![1].CenterOfMass}; " +
                $"exact box {exact.Box.Min}..{exact.Box.Max}, quick {quick.Box.Min}..{quick.Box.Max}";
     });
 
