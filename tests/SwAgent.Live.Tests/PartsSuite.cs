@@ -23,7 +23,7 @@ public sealed class PartsSuiteRun : LiveRun
 /// <summary>
 /// The parts live suite (design 371, Testing; plan 3.A covers documents, references, inspection and selection, plan
 /// 3.B sketches, dimensions, rollback and the user_editing precondition, plan 3.C features, reference geometry, suppress, delete and measure,
-/// plan 3.D more features and configurations, plan 3.E export and the escape hatch):
+/// plan 3.D more features and configurations, plan 3.E export and the escape hatch, plan 3.F the build-a-part scenario through the MCP tools):
 /// every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve does, in [Step] order, and
 /// checks geometry against exact values. It never ends SOLIDWORKS. Before every case it stops the run if a document it
 /// did not create is open; it creates documents only in its scratch directory, records each before creating it, and
@@ -847,8 +847,8 @@ public sealed partial class PartsSuite : IClassFixture<PartsSuiteRun>
         return string.Join(" | ", notes);
     });
 
-    [SkippableFact, Step(33)]
-    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(33, "the suite's documents closed", async () =>
+    [SkippableFact, Step(34)]
+    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(34, "the suite's documents closed", async () =>
     {
         var state = await _run.RequireOnlyOwnDocumentsAsync();
         int closed = 0;
