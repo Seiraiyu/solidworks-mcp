@@ -1,0 +1,64 @@
+{
+  "type": "object",
+  "description": "Bends a sheet-metal part along lines the agent drew on one of its planar faces (sketch.create on that face): each line is one bend, so two lines make a U channel in one call. The side of the lines that holds the fixed face's centre stays where it is; the rest turns angle_deg about each line. Folded parts only: a flattened part is refused. Lengths in mm, angles in degrees. Checked before SOLIDWORKS is called: the sketch is lines only, on the fixed face's plane, and the fixed face's centre is on the face and off every line. Checked after: one new bend per line at the angle, inner radius and allowance asked; the volume changed by exactly the bend arithmetic's folded material less what each bend develops to (nothing at K 0.5), wherever a bend's width can be measured; a face of the sheet still lies in the fixed face's plane through its centre, facing the same way; the thickness is unchanged. Otherwise the bend is deleted and the part is as it was (rolled back); the sketch stays. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "sketch": {
+      "type": "string",
+      "description": "The sketch: its name (Sketch2) or reference. Lines only (construction lines are ignored), on a planar face of the sheet; each line is one bend and may run past the sheet's edges."
+    },
+    "fixed_face": {
+      "type": "string",
+      "description": "The planar face of the sheet the sketch is on, by reference (sheetmetal.read gives the base face). The side of the lines holding its centre stays put."
+    },
+    "angle_deg": {
+      "type": "number",
+      "description": "How far each bend turns, degrees, more than 0 and less than 180."
+    },
+    "bend_radius_mm": {
+      "type": "number",
+      "description": "The bends' inner radius, mm, more than 0. The part's default when absent."
+    },
+    "position": {
+      "type": "string",
+      "enum": [
+        "material_inside",
+        "material_outside",
+        "bend_outside"
+      ],
+      "description": "Where each bend sits relative to its line: bend_outside (the default: the bend starts at the line, on the side that turns), material_inside or material_outside."
+    },
+    "flip": {
+      "type": "boolean",
+      "description": "Bend to the other side of the sheet. Default false."
+    },
+    "allowance": {
+      "type": "object",
+      "properties": {
+        "k_factor": {
+          "type": "number",
+          "description": "The K-factor: where the neutral layer sits across the thickness, more than 0 and at most 1 (0.5 is the middle). The bend develops to angle × (inner radius + K × thickness)."
+        },
+        "allowance_mm": {
+          "type": "number",
+          "description": "The bend allowance itself, mm, more than 0: the length the bend develops to, whatever its angle."
+        },
+        "deduction_mm": {
+          "type": "number",
+          "description": "The bend deduction, mm, 0 or more: what the bend takes off the sum of the two flanges' outer lengths to the virtual sharp."
+        }
+      },
+      "additionalProperties": false,
+      "description": "The bends' own allowance: exactly one of k_factor, allowance_mm or deduction_mm. The part's default when absent."
+    }
+  },
+  "required": [
+    "sketch",
+    "fixed_face",
+    "angle_deg"
+  ],
+  "additionalProperties": false
+}

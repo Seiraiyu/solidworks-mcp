@@ -24,6 +24,13 @@ public class SheetMetalBendContractTests
     }
 
     [Fact]
+    public void A_sketched_bend_needs_its_sketch_its_fixed_face_and_its_angle()
+    {
+        IsSheetMetalChange("sheetmetal.sketched_bend", typeof(SheetMetalSketchedBendRequest), typeof(SheetMetalFeatureResult));
+        Assert.Equal(new[] { "sketch", "fixed_face", "angle_deg" }, Required(typeof(SheetMetalSketchedBendRequest)).ToArray());
+    }
+
+    [Fact]
     public void Protocol_8_speaks_bends_and_flattening()
     {
         Assert.Equal(8, Protocol.Version);
