@@ -1,10 +1,14 @@
 {
   "type": "object",
-  "description": "Finds a part's faces, edges or vertices by what they are, each with its persistent reference and shape: by the feature that made them, their geometry, a direction (a planar face's outward normal, or an edge's or cylinder's axis either way), or a point they contain or are near. Use it to get references to pass to other operations, such as the top face of Boss-Extrude1 or the circular edges of a hole. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "description": "Finds a part's or an assembly's faces, edges or vertices by what they are, each with its persistent reference and shape: by the feature that made them, their geometry, a direction (a planar face's outward normal, or an edge's or cylinder's axis either way), or a point they contain or are near. Use it to get references to pass to other operations, such as the top face of Boss-Extrude1 or the circular edges of a hole. In an assembly it searches every resolved component, or only component (a subassembly: every component in it); directions, points and boxes are in the assembly's coordinates, each entity names its component, and its reference is the assembly's own. Components that are suppressed, lightweight or missing have no geometry and are listed in skipped. References are opaque: pass one back exactly as it was given, and never build or change one.",
   "properties": {
     "document": {
       "type": "string",
-      "description": "The part: its title or full path. The active document when absent."
+      "description": "The part or assembly: its title or full path. The active document when absent."
+    },
+    "component": {
+      "type": "string",
+      "description": "In an assembly only: search this component (bracket-1, sub-1/pin-1, or its reference); a subassembly searches every component in it. Every resolved component when absent."
     },
     "kind": {
       "type": "string",
@@ -17,7 +21,7 @@
     },
     "feature": {
       "type": "string",
-      "description": "Only what this feature made (for an edge or vertex, any feature of a face it lies on): its name, or a reference exactly as a result gave it."
+      "description": "Only what this feature made (for an edge or vertex, any feature of a face it lies on): its name, or a reference exactly as a result gave it. In an assembly, a component's feature as name@component (Boss-Extrude1@bracket-1), which also searches only that component."
     },
     "geometry": {
       "type": "string",

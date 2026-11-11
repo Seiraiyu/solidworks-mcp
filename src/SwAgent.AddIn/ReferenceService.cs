@@ -69,7 +69,7 @@ public sealed class ReferenceService
     }
 
     /// <summary>The component an entity of an assembly belongs to: as SOLIDWORKS says, or as it was resolved; null for the assembly's own.</summary>
-    object? ComponentOf(ISwDocument doc, object entity) =>
+    public object? ComponentOf(ISwDocument doc, object entity) =>
         doc.KindOf(entity) == ReferenceKind.Component ? null : doc.ComponentOf(entity) ?? (_components.TryGetValue(entity, out var c) ? c : null);
 
     void Remember(object entity, object component)

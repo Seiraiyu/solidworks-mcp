@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using SwAgent.AddIn.Core;
 using SwAgent.Contracts;
@@ -133,37 +134,84 @@ public sealed class ModelFindOperation : Operation<ModelFindRequest, ModelFindRe
 
     protected override ModelFindResult Run(ModelFindRequest request, IOperationContext context)
     {
-        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "model.find");
-        var query = Query(doc, request);
-        var candidates = doc.Topology(request.Kind).Select(entity =>
+        var doc = DocumentLocator.FindModel(_services.SolidWorks, request.Document, "model.find");
+        var (query, scope) = Query(doc, request);
+        var skipped = new List<SkippedComponent>();
+        var candidates = new List<(object Entity, EntityInfo Info)>();
+        if (doc.Assembly() is ISwAssembly asm)
         {
-            var info = doc.Describe(entity);
-            if (query.Near != null && (query.Feature == null || string.Equals(info.Feature, query.Feature, StringComparison.OrdinalIgnoreCase)))
-                info.DistanceMm = doc.DistanceMm(entity, query.Near);
-            return (Entity: entity, Info: info);
-        }).ToList();
+            foreach (var component in Searched(asm, scope))
+            {
+                var who = asm.Identify(component);
+                if (who.State != ComponentState.Resolved)
+                {
+                    skipped.Add(new SkippedComponent { Name = who.Name, State = who.State });
+                    continue;
+                }
+                foreach (var entity in asm.Topology(component, request.Kind))
+                {
+                    var info = asm.Describe(component, entity);
+                    if (query.Near != null && (query.Feature == null || string.Equals(info.Feature, query.Feature, StringComparison.OrdinalIgnoreCase)))
+                        info.DistanceMm = asm.DistanceMm(component, entity, query.Near);
+                    candidates.Add((entity, info));
+                }
+            }
+        }
+        else
+        {
+            candidates.AddRange(doc.Topology(request.Kind).Select(entity =>
+            {
+                var info = doc.Describe(entity);
+                if (query.Near != null && (query.Feature == null || string.Equals(info.Feature, query.Feature, StringComparison.OrdinalIgnoreCase)))
+                    info.DistanceMm = doc.DistanceMm(entity, query.Near);
+                return (entity, info);
+            }));
+        }
         var (kept, total) = EntityFilter.Apply(candidates, c => c.Info, query);
         foreach (var c in kept) c.Info.Reference = _services.References.Issue(doc, c.Entity, c.Info);
         return new ModelFindResult
         {
             Document = doc.Info(),
+            Skipped = skipped,
             Entities = kept.Select(c => c.Info).ToList(),
             Total = total,
             Truncated = total > kept.Count,
         };
     }
 
-    /// <summary>Everything returned matches the request, within its limit.</summary>
+    /// <summary>
+    /// The part components an assembly search covers, and every subassembly in it that is not loaded (so it is listed as
+    /// skipped): the whole tree, or <paramref name="scope"/> and what is inside it. A loaded subassembly has no bodies of
+    /// its own; its components are searched in its place.
+    /// </summary>
+    static IEnumerable<object> Searched(ISwAssembly asm, ComponentIdentity? scope)
+    {
+        foreach (var component in asm.Components(false))
+        {
+            var who = asm.Identify(component);
+            if (scope != null && !string.Equals(who.Name, scope.Name, StringComparison.OrdinalIgnoreCase)
+                && !who.Name.StartsWith(scope.Name + "/", StringComparison.OrdinalIgnoreCase)) continue;
+            bool subassembly = who.Path != null && who.Path.EndsWith(".SLDASM", StringComparison.OrdinalIgnoreCase);
+            if (subassembly && who.State == ComponentState.Resolved) continue;
+            yield return component;
+        }
+    }
+
+    /// <summary>Everything returned matches the request, within its limit; in an assembly, belongs to a component the search covered.</summary>
     protected override void Verify(ModelFindRequest request, ModelFindResult result, IOperationContext context)
     {
         var doc = DocumentLocator.Find(_services.SolidWorks, DocumentKeys.Of(result.Document));
-        var query = Query(doc, request);
-        var wrong = result.Entities.FirstOrDefault(e => !EntityFilter.Matches(e, query) || e.Kind != Kind(request.Kind));
+        var (query, scope) = Query(doc, request);
+        var wrong = result.Entities.FirstOrDefault(e => !EntityFilter.Matches(e, query) || e.Kind != Kind(request.Kind)
+            || doc.Assembly() != null && (e.Component == null || scope != null && !Within(e.Component, scope.Name)));
         if (wrong != null)
             throw new SwAgentException(ErrorCode.VerificationFailed, $"model.find returned the {EntityFilter.Describe(wrong)}, which does not match the request");
         if (result.Entities.Count > query.Limit)
             throw new SwAgentException(ErrorCode.VerificationFailed, $"model.find returned {result.Entities.Count} entities, more than its limit of {query.Limit}");
     }
+
+    static bool Within(string component, string scope) =>
+        string.Equals(component, scope, StringComparison.OrdinalIgnoreCase) || component.StartsWith(scope + "/", StringComparison.OrdinalIgnoreCase);
 
     static ReferenceKind Kind(TopologyKind kind) => kind switch
     {
@@ -172,13 +220,28 @@ public sealed class ModelFindOperation : Operation<ModelFindRequest, ModelFindRe
         _ => ReferenceKind.Face,
     };
 
-    EntityQuery Query(ISwDocument doc, ModelFindRequest request)
+    /// <summary>The validated query, and in an assembly the component the search is limited to (from component, or the feature's own component).</summary>
+    (EntityQuery Query, ComponentIdentity? Scope) Query(ISwDocument doc, ModelFindRequest request)
     {
         var query = new EntityQuery { Geometry = request.Geometry, Direction = request.Direction, Near = request.Near };
+        var asm = doc.Assembly();
+        ComponentIdentity? scope = null;
+        if (request.Component != null)
+        {
+            if (asm == null) throw Invalid("component", $"component names a component, which only an assembly has; {doc.Info().Title} is a part, so leave it out");
+            scope = asm.Identify(ComponentLookup.Find(_services.References, doc, asm, request.Component, "component"));
+        }
         if (request.Feature != null)
         {
             var (feature, _) = _services.References.Resolve(doc, request.Feature, "feature", ReferenceKind.Feature);
-            query.Feature = doc.Describe(feature).Name;
+            var info = _services.References.Describe(doc, feature);
+            query.Feature = info.Name;
+            if (asm != null && info.Component != null)
+            {
+                if (scope != null && !Within(info.Component, scope.Name))
+                    throw Invalid("feature", $"feature: {request.Feature} is a feature of {info.Component}, which is not in the component searched ({scope.Name})");
+                scope = asm.Identify(_services.References.ComponentOf(doc, feature) ?? asm.ComponentByName(info.Component)!);
+            }
         }
         if (request.Direction != null && request.Direction.X == 0 && request.Direction.Y == 0 && request.Direction.Z == 0)
             throw Invalid("direction", "direction must not be zero");
@@ -199,7 +262,7 @@ public sealed class ModelFindOperation : Operation<ModelFindRequest, ModelFindRe
             if (request.Limit < 1 || request.Limit > EntityQuery.MaxLimit) throw Invalid("limit", $"limit must be from 1 to {EntityQuery.MaxLimit}");
             query.Limit = request.Limit.Value;
         }
-        return query;
+        return (query, scope);
     }
 
     static SwAgentException Invalid(string field, string message) =>

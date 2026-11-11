@@ -132,16 +132,19 @@ public sealed class ModelBoundingBoxResult
 }
 
 [Operation("model.find", typeof(ModelFindResult), ReadOnly = true)]
-[Description("Finds a part's faces, edges or vertices by what they are, each with its persistent reference and shape: by the feature that made them, their geometry, a direction (a planar face's outward normal, or an edge's or cylinder's axis either way), or a point they contain or are near. Use it to get references to pass to other operations, such as the top face of Boss-Extrude1 or the circular edges of a hole. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+[Description("Finds a part's or an assembly's faces, edges or vertices by what they are, each with its persistent reference and shape: by the feature that made them, their geometry, a direction (a planar face's outward normal, or an edge's or cylinder's axis either way), or a point they contain or are near. Use it to get references to pass to other operations, such as the top face of Boss-Extrude1 or the circular edges of a hole. In an assembly it searches every resolved component, or only component (a subassembly: every component in it); directions, points and boxes are in the assembly's coordinates, each entity names its component, and its reference is the assembly's own. Components that are suppressed, lightweight or missing have no geometry and are listed in skipped. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class ModelFindRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part or assembly: its title or full path. The active document when absent.")]
     public string? Document { get; set; }
+
+    [Description("In an assembly only: search this component (bracket-1, sub-1/pin-1, or its reference); a subassembly searches every component in it. Every resolved component when absent.")]
+    public string? Component { get; set; }
 
     [Description("What to find: face, edge or vertex.")]
     public TopologyKind Kind { get; set; }
 
-    [Description("Only what this feature made (for an edge or vertex, any feature of a face it lies on): its name, or a reference exactly as a result gave it.")]
+    [Description("Only what this feature made (for an edge or vertex, any feature of a face it lies on): its name, or a reference exactly as a result gave it. In an assembly, a component's feature as name@component (Boss-Extrude1@bracket-1), which also searches only that component.")]
     public string? Feature { get; set; }
 
     [Description("Only this shape, for example plane or cylinder for faces, line or circle for edges.")]
@@ -167,8 +170,12 @@ public sealed class ModelFindRequest
 public sealed class ModelFindResult
 {
     [Required]
-    [Description("The part.")]
+    [Description("The part or assembly.")]
     public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Required]
+    [Description("In an assembly, the components in the search that were not searched because they have no geometry (suppressed, lightweight or missing); component.set {suppression: resolved} loads one. Empty in a part.")]
+    public List<SkippedComponent> Skipped { get; set; } = new List<SkippedComponent>();
 
     [Required]
     [Description("What matched, nearest first when near was given, else in SOLIDWORKS' order; at most limit.")]
@@ -179,4 +186,15 @@ public sealed class ModelFindResult
 
     [Description("True when more matched than were returned; narrow the search or raise limit.")]
     public bool Truncated { get; set; }
+}
+
+[Description("A component model.find did not search.")]
+public sealed class SkippedComponent
+{
+    [Required]
+    [Description("Its name, for example bracket-1.")]
+    public string Name { get; set; } = "";
+
+    [Description("Why: suppressed, lightweight or missing.")]
+    public ComponentState State { get; set; }
 }
