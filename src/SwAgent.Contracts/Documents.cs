@@ -48,7 +48,7 @@ public sealed class DocumentOpenResult
     [Description("The document.")]
     public DocumentInfo Document { get; set; } = new DocumentInfo();
 
-    [Description("True when it was already open; it was made active and not opened again.")]
+    [Description("True when it was already open in a window; it was made active and not opened again. A document loaded only because an open assembly uses it is opened in a window of its own, and this is false.")]
     public bool AlreadyOpen { get; set; }
 
     [Description("True when it is open read-only.")]

@@ -42,7 +42,7 @@
     },
     "already_open": {
       "type": "boolean",
-      "description": "True when it was already open; it was made active and not opened again."
+      "description": "True when it was already open in a window; it was made active and not opened again. A document loaded only because an open assembly uses it is opened in a window of its own, and this is false."
     },
     "read_only": {
       "type": "boolean",
