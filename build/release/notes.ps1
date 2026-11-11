@@ -44,3 +44,5 @@ $report
 "@
 Set-Content -LiteralPath $Output -Value $notes -Encoding utf8
 Write-Output $notes
+# A dry run allows gh api to fail; GitHub's pwsh step exits with $LASTEXITCODE, so say success here.
+exit 0

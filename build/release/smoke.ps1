@@ -65,3 +65,5 @@ Check (@($removed.removed) -contains $target) "uninstall removed $target"
 $after = Swmcp $exe @('addin', 'status')
 Check ($after.Exit -eq 3) 'nothing is registered afterwards (addin status exits 3)'
 Write-Output "smoke passed for $Version"
+# The last swmcp call exits 3 on purpose; GitHub's pwsh step exits with $LASTEXITCODE, so say success here.
+exit 0
