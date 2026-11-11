@@ -48,6 +48,12 @@ public interface ISwDocument
     /// <summary>True when the document is open read-only.</summary>
     bool ReadOnly { get; }
 
+    /// <summary>
+    /// The full paths of every document this one uses, nested ones included (IModelDoc2.GetDependencies2, traversed):
+    /// an assembly's components and their own references. Empty for a part that references nothing.
+    /// </summary>
+    System.Collections.Generic.IReadOnlyList<string> UsedFiles();
+
     /// <summary>Makes it the active document, without rebuilding it.</summary>
     void Activate();
 

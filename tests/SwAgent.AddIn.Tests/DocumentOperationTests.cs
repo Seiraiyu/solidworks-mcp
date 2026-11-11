@@ -577,6 +577,7 @@ abstract class DelegatingSolidWorks : ISolidWorksApplication
     public ISwDocument? ActiveDoc() => Inner.ActiveDoc();
     public string? OpenCommand() => Inner.OpenCommand();
     public string? DefaultPartTemplate() => Inner.DefaultPartTemplate();
+    public string? DefaultAssemblyTemplate() => Inner.DefaultAssemblyTemplate();
     public virtual ISwDocument NewDocument(string template) => Inner.NewDocument(template);
     public OpenOutcome OpenDocument(string path, DocumentType type, bool readOnly) => Inner.OpenDocument(path, type, readOnly);
     public virtual void Close(ISwDocument document) => Inner.Close(document);
