@@ -63,8 +63,15 @@ internal sealed class TypeMeta
         return false;
     }
 
+    /// <summary>
+    /// <c>object</c> in a contract is any JSON value: null, a boolean, a number, a string, an array or an object, as
+    /// <see cref="Json"/> parses it (long or double, <c>List&lt;object?&gt;</c>, <see cref="JsonObject"/>). Only the
+    /// escape hatch uses it, for SOLIDWORKS' own arguments and results; its schema names no type.
+    /// </summary>
+    internal static bool IsAnyValue(Type t) => t == typeof(object);
+
     internal static bool IsContractClass(Type t) =>
-        t.IsClass && !t.IsAbstract && t != typeof(string) && t != typeof(JsonObject) && !IsList(t, out _);
+        t.IsClass && !t.IsAbstract && t != typeof(string) && t != typeof(JsonObject) && !IsAnyValue(t) && !IsList(t, out _);
 
     static TypeMeta Build(Type type)
     {
@@ -99,7 +106,7 @@ internal sealed class TypeMeta
     static void EnsureSupported(Type t, string where)
     {
         var u = Nullable.GetUnderlyingType(t) ?? t;
-        if (IsScalar(u) || u == typeof(JsonObject)) return;
+        if (IsScalar(u) || u == typeof(JsonObject) || IsAnyValue(u)) return;
         if (IsList(u, out var element)) { EnsureSupported(element, where + "[]"); return; }
         if (IsContractClass(u))
         {
@@ -109,6 +116,6 @@ internal sealed class TypeMeta
             return;
         }
         throw new NotSupportedException(
-            $"{where}: {t.Name} is not a supported contract type (use string, bool, int, long, double, an enum, List<T>, JsonObject or a contract class)");
+            $"{where}: {t.Name} is not a supported contract type (use string, bool, int, long, double, an enum, List<T>, JsonObject, object for any JSON value, or a contract class)");
     }
 }

@@ -63,6 +63,7 @@ public static class JsonCodec
 
     static object? Read(object? json, Type type, string path)
     {
+        if (TypeMeta.IsAnyValue(type)) return json;
         var underlying = Nullable.GetUnderlyingType(type);
         if (underlying != null) return json == null ? null : Read(json, underlying, path);
         if (json == null)

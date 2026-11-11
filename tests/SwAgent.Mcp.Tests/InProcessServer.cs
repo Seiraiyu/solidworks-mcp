@@ -42,7 +42,7 @@ sealed class InProcessServer : IAsyncDisposable
     /// that needs a load says so through <paramref name="attach"/>), and its SOLIDWORKS never exits unless the test
     /// says so through <paramref name="exits"/>.
     /// </summary>
-    public static async Task<InProcessServer> StartAsync(ClientOptions options, ILogger? toolLog = null, FakeAttach? attach = null, FakeProcessWatch? exits = null)
+    public static async Task<InProcessServer> StartAsync(ClientOptions options, ILogger? toolLog = null, FakeAttach? attach = null, FakeProcessWatch? exits = null, bool apiCall = true)
     {
         var toServer = new Pipe();
         var toClient = new Pipe();
@@ -53,6 +53,7 @@ sealed class InProcessServer : IAsyncDisposable
             Registration = new FakeRegistration(),
             Processes = exits ?? new FakeProcessWatch(),
             PipeWait = TimeSpan.FromMilliseconds(300),
+            ApiCall = apiCall,
         });
         var serverOptions = new McpServerOptions();
         McpHost.Configure(serverOptions, ToolCatalog.Create(supervisor, toolLog));

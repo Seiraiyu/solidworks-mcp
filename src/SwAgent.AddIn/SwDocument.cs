@@ -57,6 +57,25 @@ public interface ISwDocument
     /// <summary>Saves it to <paramref name="path"/> in the current version, silently; it is then that file.</summary>
     SaveOutcome SaveAs(string path);
 
+    /// <summary>
+    /// Writes a copy of it to <paramref name="path"/>, in the format its extension names (STEP, Parasolid, STL, 3MF),
+    /// silently, with SOLIDWORKS' export preferences as they are now; it keeps its own path and unsaved changes.
+    /// </summary>
+    SaveOutcome Export(string path);
+
+    /// <summary>
+    /// Writes it to <paramref name="path"/> as STEP AP242 with IModelDocExtension.PublishSTEP242File (3.E live run:
+    /// SaveAs3 with swStepAP = 242 writes AP203). SOLIDWORKS' swStep242Error_e: 0 when it was written.
+    /// </summary>
+    int PublishStep242(string path);
+
+    /// <summary>
+    /// Writes it to <paramref name="path"/> as STEP AP242 with GetMBDSTEP242Data (its PublishFileName set to the path)
+    /// and PublishSTEP242File2. swStep242Error_e: 0 when it was written; swPublishStep242_UnknownError when SOLIDWORKS
+    /// gives no MBD STEP 242 data.
+    /// </summary>
+    int PublishStep242WithData(string path);
+
     /// <summary>Rebuilds what changed, or every feature when <paramref name="force"/>; false when SOLIDWORKS reports it failed.</summary>
     bool Rebuild(bool force);
 
@@ -203,6 +222,9 @@ public interface ISwDocument
 
     /// <summary>The faces <paramref name="feature"/> made.</summary>
     System.Collections.Generic.IReadOnlyList<object> FacesOf(object feature);
+
+    /// <summary>The document's own IModelDoc2, for api.call's document target only (the escape hatch calls it by late binding).</summary>
+    object ApiObject();
 }
 
 /// <summary>One selected object as SOLIDWORKS reports it.</summary>

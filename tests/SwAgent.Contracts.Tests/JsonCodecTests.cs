@@ -27,6 +27,12 @@ public sealed class Sample
     public JsonObject? Extra { get; set; }
 }
 
+public sealed class Loose
+{
+    public object? Value { get; set; }
+    public List<object?>? Values { get; set; }
+}
+
 public sealed class Unsupported
 {
     public decimal Amount { get; set; }
@@ -134,6 +140,23 @@ public class JsonCodecTests
     {
         Assert.Throws<NotSupportedException>(() => JsonCodec.Serialize(new Unsupported()));
         Assert.Throws<NotSupportedException>(() => JsonCodec.Serialize(new Recursive()));
+    }
+
+    [Fact]
+    public void Object_is_any_JSON_value_and_round_trips_as_parsed()
+    {
+        const string json = "{\"value\":{\"ref\":\"r1.face.AAAA\",\"n\":[1,2.5,null,true]},\"values\":[\"Front Plane\",0.01,7,false,null,[1,2],{\"ref\":\"r1.edge.BB\"}]}";
+        var loose = JsonCodec.Deserialize<Loose>(json);
+        var value = Assert.IsType<JsonObject>(loose.Value);
+        Assert.Equal("r1.face.AAAA", value["ref"]);
+        Assert.Equal(7, loose.Values!.Count);
+        Assert.Equal(0.01, loose.Values[1]);
+        Assert.Equal(7L, loose.Values[2]);
+        Assert.Null(loose.Values[4]);
+        Assert.IsType<List<object?>>(loose.Values[5]);
+        Assert.Equal(json, JsonCodec.Serialize(loose));
+        Assert.Null(JsonCodec.Deserialize<Loose>("{\"value\":null}").Value);
+        Assert.Equal(42L, JsonCodec.Deserialize<Loose>("{\"value\":42}").Value);
     }
 
     [Fact]

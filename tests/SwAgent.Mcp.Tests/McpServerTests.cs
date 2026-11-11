@@ -258,6 +258,36 @@ public class McpServerTests
     }
 
     [Fact]
+    public void The_escape_hatch_is_a_tool_unless_it_is_turned_off()
+    {
+        Assert.Contains(ToolCatalog.For(true), t => t.Name == "sw_api_call" && t.Operation == "api.call" && !t.ReadOnly);
+        Assert.Equal(ToolCatalog.All, ToolCatalog.For(true));
+        var off = ToolCatalog.For(false);
+        Assert.DoesNotContain(off, t => t.Name == "sw_api_call");
+        Assert.Equal(ToolCatalog.All.Count - 1, off.Count);
+    }
+
+    [Fact]
+    public async Task Turned_off_the_server_lists_no_sw_api_call_and_the_supervisor_refuses_api_call()
+    {
+        await using var server = await InProcessServer.StartAsync(NoSolidWorks(), apiCall: false);
+        var tools = (await server.Client.ListToolsAsync()).Select(t => t.Name).ToList();
+        Assert.DoesNotContain("sw_api_call", tools);
+        Assert.Contains("sw_export_part", tools);
+        var e = await Assert.ThrowsAsync<SwAgentException>(() => server.Supervisor.CallAsync("api.call", new JsonObject { ["target"] = "app", ["member"] = "RevisionNumber" }));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Contains("turned off", e.Message);
+    }
+
+    [Fact]
+    public async Task On_by_default_the_server_lists_sw_api_call_with_its_units_first()
+    {
+        await using var server = await InProcessServer.StartAsync(NoSolidWorks());
+        var tool = (await server.Client.ListToolsAsync()).Single(t => t.Name == "sw_api_call");
+        Assert.StartsWith("SOLIDWORKS' own units: metres and radians", tool.Description);
+    }
+
+    [Fact]
     public void No_internal_operation_is_a_tool()
     {
         foreach (var tool in ToolCatalog.All.Where(t => t.Operation != null))

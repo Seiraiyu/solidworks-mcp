@@ -25,6 +25,7 @@ public static class JsonSchema
             schema["enum"] = WireNames.EnumNames(t).Select(n => (object?)n).ToList();
         }
         else if (t == typeof(JsonObject)) schema = Typed("object");
+        else if (TypeMeta.IsAnyValue(t)) schema = new JsonObject();
         else if (TypeMeta.IsList(t, out var element))
         {
             schema = Typed("array");

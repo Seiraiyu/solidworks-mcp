@@ -22,6 +22,14 @@ public class JsonSchemaTests
             schema);
     }
 
+    [Fact]
+    public void Any_value_has_a_schema_without_a_type()
+    {
+        Assert.Equal(
+            "{\"type\":\"object\",\"properties\":{\"value\":{},\"values\":{\"type\":\"array\",\"items\":{}}},\"additionalProperties\":false}",
+            Json.Write(JsonSchema.For(typeof(Loose))));
+    }
+
     [Theory]
     [MemberData(nameof(Sides))]
     public void Schema_matches_its_pinned_snapshot(string operation, string side)

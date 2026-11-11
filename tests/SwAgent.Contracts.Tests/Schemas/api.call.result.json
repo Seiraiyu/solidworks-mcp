@@ -1,0 +1,116 @@
+{
+  "type": "object",
+  "description": "What the member returned, as JSON, and the document afterwards.",
+  "properties": {
+    "member": {
+      "type": "string",
+      "description": "The member path as SOLIDWORKS spells it."
+    },
+    "interfaces": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The interface of each object the path was called on, in order, for example IModelDoc2, IModelDocExtension."
+    },
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty"
+      ],
+      "additionalProperties": false,
+      "description": "The document a document or reference target was in, or the one rebuilt; absent for an app call that rebuilt nothing."
+    },
+    "result": {
+      "description": "The member's value, in SOLIDWORKS' units: a number, string, boolean or array as SOLIDWORKS returned it (enums as their number, NaN as null); an object as {\"ref\": \"r1...\", \"interface\": \"IFace2\"} when SOLIDWORKS can persist it, else {\"interface\": \"IModelDocExtension\"} only. Absent for nothing returned."
+    },
+    "out": {
+      "type": "object",
+      "description": "Each ref or out argument after the call, by its parameter's name, for example {\"Status\": 0}."
+    },
+    "rebuild": {
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "integer",
+          "description": "How many features have a rebuild error."
+        },
+        "warnings": {
+          "type": "integer",
+          "description": "How many features have a rebuild warning."
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A feature with a rebuild error or warning.",
+            "properties": {
+              "feature": {
+                "type": "string",
+                "description": "The feature's name."
+              },
+              "code": {
+                "type": "string",
+                "description": "SOLIDWORKS' error code name (swFeatureError_e), for example swFeatureErrorFilletNoEdge."
+              },
+              "warning": {
+                "type": "boolean",
+                "description": "True for a warning, false for an error."
+              }
+            },
+            "required": [
+              "feature",
+              "code",
+              "warning"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Each feature with an error or warning."
+        }
+      },
+      "required": [
+        "errors",
+        "warnings",
+        "items"
+      ],
+      "additionalProperties": false,
+      "description": "When the document was rebuilt: its rebuild errors and warnings afterwards."
+    },
+    "duration_ms": {
+      "type": "integer",
+      "description": "How long the call took, ms."
+    }
+  },
+  "required": [
+    "member",
+    "interfaces",
+    "out",
+    "duration_ms"
+  ],
+  "additionalProperties": false
+}

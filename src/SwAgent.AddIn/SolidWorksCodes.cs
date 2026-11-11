@@ -13,6 +13,10 @@ public static class SolidWorksCodes
 
     public static IReadOnlyList<string> SaveWarnings(int flags) => Names<swFileSaveWarning_e>(flags);
 
+    /// <summary>PublishSTEP242File's answer (a value, not flags) as its swStep242Error_e name, or the number when it has none.</summary>
+    public static string Step242Error(int code) =>
+        Enum.IsDefined(typeof(swStep242Error_e), code) ? ((swStep242Error_e)code).ToString() : code.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
     public static IReadOnlyList<string> LoadErrors(int flags) => Names<swFileLoadError_e>(flags);
 
     public static IReadOnlyList<string> LoadWarnings(int flags) => Names<swFileLoadWarning_e>(flags);

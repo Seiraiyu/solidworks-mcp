@@ -51,7 +51,26 @@ internal sealed partial class SolidWorksDocument : ISwDocument
         return new SaveOutcome(saved, errors, warnings);
     }
 
+    public SaveOutcome Export(string path)
+    {
+        int errors = 0, warnings = 0;
+        bool saved = Doc.Extension.SaveAs3(path, (int)swSaveAsVersion_e.swSaveAsCurrentVersion,
+            (int)(swSaveAsOptions_e.swSaveAsOptions_Silent | swSaveAsOptions_e.swSaveAsOptions_Copy), null, null, ref errors, ref warnings);
+        return new SaveOutcome(saved, errors, warnings);
+    }
+
+    public int PublishStep242(string path) => Doc.Extension.PublishSTEP242File(path);
+
+    public int PublishStep242WithData(string path)
+    {
+        if (!(Doc.Extension.GetMBDSTEP242Data() is IMBDSTEP242Data data)) return (int)swStep242Error_e.swPublishStep242_UnknownError;
+        data.PublishFileName = path;
+        return Doc.Extension.PublishSTEP242File2(data);
+    }
+
     public DocumentInfo Info() => SolidWorksApplication.Describe(Doc);
+
+    public object ApiObject() => Doc;
 
     public byte[]? PersistId(object entity) => Doc.Extension.GetPersistReference3(entity) as byte[];
 
