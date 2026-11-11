@@ -90,4 +90,61 @@ public static class Placement
             throw new SwAgentException(ErrorCode.InvalidArgument, $"{field} has no length; give a direction", new JsonObject { ["field"] = field });
         return new Vector3(v.X / length, v.Y / length, v.Z / length);
     }
+
+    /// <summary>A point given in the component's own coordinates (mm), in the assembly's: its origin plus the point along its axes.</summary>
+    public static Point3 ToAssembly(Transform t, Point3 p) => new Point3(
+        t.Origin.X + p.X * t.XAxis.X + p.Y * t.YAxis.X + p.Z * t.ZAxis.X,
+        t.Origin.Y + p.X * t.XAxis.Y + p.Y * t.YAxis.Y + p.Z * t.ZAxis.Y,
+        t.Origin.Z + p.X * t.XAxis.Z + p.Y * t.YAxis.Z + p.Z * t.ZAxis.Z);
+
+    /// <summary>A direction given in the component's own coordinates, in the assembly's (turned, not moved).</summary>
+    public static Vector3 ToAssembly(Transform t, Vector3 v) => new Vector3(
+        Clean(v.X * t.XAxis.X + v.Y * t.YAxis.X + v.Z * t.ZAxis.X),
+        Clean(v.X * t.XAxis.Y + v.Y * t.YAxis.Y + v.Z * t.ZAxis.Y),
+        Clean(v.X * t.XAxis.Z + v.Y * t.YAxis.Z + v.Z * t.ZAxis.Z));
+
+    /// <summary>A point given in the assembly's coordinates (mm), in the component's own: the inverse of <see cref="ToAssembly(Transform, Point3)"/>.</summary>
+    public static Point3 ToComponent(Transform t, Point3 p)
+    {
+        double dx = p.X - t.Origin.X, dy = p.Y - t.Origin.Y, dz = p.Z - t.Origin.Z;
+        return new Point3(
+            dx * t.XAxis.X + dy * t.XAxis.Y + dz * t.XAxis.Z,
+            dx * t.YAxis.X + dy * t.YAxis.Y + dz * t.YAxis.Z,
+            dx * t.ZAxis.X + dy * t.ZAxis.Y + dz * t.ZAxis.Z);
+    }
+
+    /// <summary>The axis-aligned box, in the assembly, around a box given in the component's own coordinates: the box of its eight corners moved.</summary>
+    public static Box3 ToAssembly(Transform t, Box3 b)
+    {
+        double[] xs = { b.Min.X, b.Max.X }, ys = { b.Min.Y, b.Max.Y }, zs = { b.Min.Z, b.Max.Z };
+        Point3? lo = null, hi = null;
+        foreach (double x in xs)
+        {
+            foreach (double y in ys)
+            {
+                foreach (double z in zs)
+                {
+                    var p = ToAssembly(t, new Point3(x, y, z));
+                    lo = lo == null ? p : new Point3(Math.Min(lo.X, p.X), Math.Min(lo.Y, p.Y), Math.Min(lo.Z, p.Z));
+                    hi = hi == null ? p : new Point3(Math.Max(hi.X, p.X), Math.Max(hi.Y, p.Y), Math.Max(hi.Z, p.Z));
+                }
+            }
+        }
+        return new Box3 { Min = lo!, Max = hi! };
+    }
+
+    /// <summary>
+    /// Moves a description made in the component's own coordinates into the assembly's (design 455, Assembly references):
+    /// its point, normal, axis and box. Lengths, areas, radii and names do not change.
+    /// </summary>
+    public static void MoveToAssembly(Transform t, EntityInfo e)
+    {
+        if (e.Origin != null) e.Origin = ToAssembly(t, e.Origin);
+        if (e.Normal != null) e.Normal = ToAssembly(t, e.Normal);
+        if (e.Axis != null) e.Axis = ToAssembly(t, e.Axis);
+        if (e.Box != null) e.Box = ToAssembly(t, e.Box);
+    }
+
+    /// <summary>Rounds away floating-point dust (1e-17 becomes 0) so directions read cleanly.</summary>
+    static double Clean(double v) => Math.Abs(v) < 1e-12 ? 0 : v;
 }
