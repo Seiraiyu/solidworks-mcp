@@ -201,7 +201,8 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
 
         await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
         var closed = await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = asm });
-        Assert.Equal(new[] { "base.SLDPRT", "post.SLDPRT" }, closed.Unloaded.Select(u => u.Title).OrderBy(t => t, StringComparer.OrdinalIgnoreCase));
+        // By file name: SOLIDWORKS titles carry the extension only when Windows shows extensions (4.A live run, round 3).
+        Assert.Equal(new[] { "base.SLDPRT", "post.SLDPRT" }, closed.Unloaded.Select(u => Path.GetFileName(u.Path!)).OrderBy(t => t, StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
         await Call<DocumentOpenRequest, DocumentOpenResult>(new DocumentOpenRequest { Path = asm });
         var again = await Call<ComponentSetRequest, ComponentSetResult>(new ComponentSetRequest { Document = asm, Components = { post.Reference! }, Hidden = true });
         Assert.Equal("post-1", again.Components[0].Name);
@@ -266,7 +267,7 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
 
         var refused = await Refused(() => Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = asm }));
         Assert.Equal("discard", refused.Error.Details!["field"]);
-        Assert.Contains("post.SLDPRT", refused.Message);
+        Assert.Contains(post, ((System.Collections.Generic.List<object?>)refused.Error.Details["unsaved"]!).Cast<string>(), StringComparer.OrdinalIgnoreCase);
         var closed = await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = asm, Discard = true });
         Assert.True(closed.Discarded);
         Assert.DoesNotContain((await _run.AddinStateAsync()).Documents, d => string.Equals(d.Path, post, StringComparison.OrdinalIgnoreCase));
@@ -278,7 +279,9 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
     public Task A_missing_component_is_listed_without_a_dialog() => _run.CaseAsync(7, "document.open lists a missing component file; assembly.components says missing", async () =>
     {
         await _run.RequireOnlyOwnDocumentsAsync();
-        string gone = await ClosedBlock("gone", 10, 10, 10);
+        // A name no earlier run used: SOLIDWORKS looks for a missing file in folders it has opened this session, and loaded
+        // another run's gone.SLDPRT instead (4.A live run, round 2).
+        string gone = await ClosedBlock("gone-" + Guid.NewGuid().ToString("N").Substring(0, 8), 10, 10, 10);
         string asm = await NewAssembly("missing");
         await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = gone });
         await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
