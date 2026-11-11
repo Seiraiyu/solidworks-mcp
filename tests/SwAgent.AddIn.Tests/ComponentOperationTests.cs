@@ -67,6 +67,89 @@ public class AssemblyComponentsTests : AssemblyTestBase
     }
 }
 
+public class ComponentPlaceTests : AssemblyTestBase
+{
+    ComponentPlaceResult Place(ComponentPlaceRequest request) => Run(new ComponentPlaceOperation(Services), request);
+
+    public ComponentPlaceTests()
+    {
+        Asm.AddComponent("base-1", PathOf("base.SLDPRT"), fix: true);
+        Asm.AddComponent("pin-1", PathOf("pin.SLDPRT"));
+    }
+
+    [Fact]
+    public void Moves_a_floating_component_keeping_its_axes_and_records_the_move()
+    {
+        Asm.Named("pin-1").Info.Transform.XAxis = new Vector3(0, 1, 0);
+        var result = Place(new ComponentPlaceRequest { Component = "pin-1", Origin = new Point3(5, 6, 7) });
+        Assert.Equal(7, result.Component.Transform.Origin.Z);
+        Assert.Equal(1, result.Component.Transform.XAxis.Y);
+        Assert.False(result.Solved);
+        var changed = result.Change.Changed.Single();
+        Assert.Equal(("pin-1", "position", "(0, 0, 0) mm", "(5, 6, 7) mm"), (changed.Name, changed.Property, changed.Before, changed.After));
+        Assert.Equal("pin-1", result.Change.Moved.Single().Name);
+    }
+
+    [Fact]
+    public void New_axes_turn_it()
+    {
+        var result = Place(new ComponentPlaceRequest { Component = "pin-1", Origin = new Point3(), XAxis = new Vector3(0, 0, 1), ZAxis = new Vector3(1, 0, 0) });
+        Assert.Equal(1, result.Component.Transform.XAxis.Z, 12);
+        Assert.True(result.Change.Moved.Single().Rotated);
+    }
+
+    [Fact]
+    public void A_mated_component_is_solved_and_says_where_the_solve_left_it()
+    {
+        Asm.Named("pin-1").Mates.Add("Concentric1");
+        Asm.OnSolve = a => a.Named("pin-1").Info.Transform.Origin.X = 0;
+        var result = Place(new ComponentPlaceRequest { Component = "pin-1", Origin = new Point3(5, 0, 7) });
+        Assert.True(result.Solved);
+        Assert.Equal(0, result.Component.Transform.Origin.X);
+        Assert.Equal(7, result.Component.Transform.Origin.Z);
+        Assert.Equal(1, Asm.Rebuilds);
+    }
+
+    [Fact]
+    public void An_unmated_component_that_did_not_move_fails_and_stays_put()
+    {
+        Asm.PlacementIgnored = true;
+        var e = Fails(() => Place(new ComponentPlaceRequest { Component = "pin-1", Origin = new Point3(5, 0, 0) }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("origin", e.Error.Details!["check"]);
+    }
+
+    [Fact]
+    public void A_fixed_component_is_refused()
+    {
+        var e = Fails(() => Place(new ComponentPlaceRequest { Component = "base-1", Origin = new Point3(1, 0, 0) }));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Contains("component.set", e.Message);
+        Assert.Empty(Asm.Calls);
+    }
+
+    [Fact]
+    public void A_fully_defined_component_is_refused_naming_its_mates()
+    {
+        var pin = Asm.Named("pin-1");
+        pin.Mates.AddRange(new[] { "Concentric1", "Coincident1" });
+        pin.Info.Constraint = Constraint.FullyDefined;
+        var e = Fails(() => Place(new ComponentPlaceRequest { Component = "pin-1", Origin = new Point3(1, 0, 0) }));
+        Assert.Equal(new object?[] { "Concentric1", "Coincident1" }, (List<object?>)e.Error.Details!["mates"]!);
+    }
+
+    [Fact]
+    public void A_component_carried_by_a_rigid_subassembly_is_refused_but_a_flexible_one_moves()
+    {
+        Asm.AddComponent("sub-1", PathOf("sub.SLDASM"));
+        Asm.AddComponent("sub-1/bolt-1", PathOf("pin.SLDPRT"), parent: "sub-1");
+        var e = Fails(() => Place(new ComponentPlaceRequest { Component = "sub-1/bolt-1", Origin = new Point3(1, 0, 0) }));
+        Assert.Equal("sub-1", e.Error.Details!["subassembly"]);
+        Asm.Named("sub-1").Info.SolveAs = SolveAs.Flexible;
+        Assert.Equal(1, Place(new ComponentPlaceRequest { Component = "sub-1/bolt-1", Origin = new Point3(1, 0, 0) }).Component.Transform.Origin.X);
+    }
+}
+
 public class AssemblyInsertTests : AssemblyTestBase
 {
     AssemblyInsertResult Insert(AssemblyInsertRequest request) => Run(new AssemblyInsertOperation(Services), request);

@@ -53,6 +53,43 @@ public sealed class AssemblyComponentsResult
     public List<ComponentInfo> Components { get; set; } = new List<ComponentInfo>();
 }
 
+[Operation("component.place", typeof(ComponentPlaceResult))]
+[Description("Moves a component to a point (mm, assembly coordinates), with new axes when x_axis and z_axis are given, so it sits near where it belongs before it is mated (a mate's closest alignment depends on where things are). Refuses a fixed component, one its mates leave no freedom (fully defined), and one inside a rigid subassembly. A component with mates is placed and then solved: solved says whether the solve moved it from where it was put. Checked: an unmated component reads back where it was put. Rolled back on failure.")]
+public sealed class ComponentPlaceRequest
+{
+    [Description("The assembly: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The component: its reference (r1.component.…) or its name (bracket-1; sub-1/pin-1 inside a subassembly).")]
+    public string Component { get; set; } = "";
+
+    [Required]
+    [Description("Where the component's origin goes, mm in the assembly.")]
+    public Point3 Origin { get; set; } = new Point3();
+
+    [Description("The component's x axis in the assembly, with z_axis (both or neither, perpendicular). Its present axes when absent.")]
+    public Vector3? XAxis { get; set; }
+
+    [Description("The component's z axis in the assembly, with x_axis.")]
+    public Vector3? ZAxis { get; set; }
+}
+
+[Description("The component placed.")]
+public sealed class ComponentPlaceResult : IAssemblyChangeResult
+{
+    [Required]
+    [Description("The component, where it is now.")]
+    public ComponentInfo Component { get; set; } = new ComponentInfo();
+
+    [Description("True when its mates were solved and moved it from where it was put.")]
+    public bool Solved { get; set; }
+
+    [Required]
+    [Description("What changed in the assembly.")]
+    public AssemblyChange Change { get; set; } = new AssemblyChange();
+}
+
 [Description("The component inserted.")]
 public sealed class AssemblyInsertResult : IAssemblyChangeResult
 {
