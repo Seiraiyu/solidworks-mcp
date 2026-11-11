@@ -54,6 +54,9 @@ public interface ISwDocument
     /// </summary>
     System.Collections.Generic.IReadOnlyList<string> UsedFiles();
 
+    /// <summary>The document as an assembly, or null when it is a part or a drawing.</summary>
+    ISwAssembly? Assembly();
+
     /// <summary>Makes it the active document, without rebuilding it.</summary>
     void Activate();
 
