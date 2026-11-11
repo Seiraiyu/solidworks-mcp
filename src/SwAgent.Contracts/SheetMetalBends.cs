@@ -65,3 +65,32 @@ public sealed class SheetMetalFlattenResult : IModelChangeResult
     [Description("The checks made, each as a sentence with what was expected and measured.")]
     public List<string> Checks { get; set; } = new List<string>();
 }
+
+[Operation("sheetmetal.unfold", typeof(SheetMetalFeatureResult))]
+[Description("Unfolds chosen bends of a sheet-metal part with an Unfold feature, keeping fixed_face where it is, so a cut can be made across them (feature.extrude); sheetmetal.fold folds them back with the cut in them. bends names the bends (sheetmetal.read lists them, by name or reference); every folded bend when absent. A bend already unfolded is refused. Folded parts only: a flattened part is refused. Checked: the feature is an Unfold; each bend named has no cylindrical face left; a face of the sheet still lies in the fixed face's plane through its centre; the volume changed by exactly the bend arithmetic's sum over those bends where each is whole, and by no more than that where one is cut across. Otherwise it is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class SheetMetalUnfoldRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("A planar face of the sheet, by reference, that stays where it is (sheetmetal.read gives the base face).")]
+    public string FixedFace { get; set; } = "";
+
+    [Description("The bends to unfold, each by name (EdgeBend1) or reference. Every folded bend when absent.")]
+    public List<string>? Bends { get; set; }
+}
+
+[Operation("sheetmetal.fold", typeof(SheetMetalFeatureResult))]
+[Description("Folds back bends a sheet-metal part's Unfold features unfolded, with a Fold feature, keeping the face fixed that the unfold kept (or fixed_face): what was cut across them while unfolded is folded with them. bends names the bends; every unfolded bend when absent. A bend that is not unfolded is refused. Folded parts only (the Flat-Pattern feature off): a flattened part is refused. Checked: the feature is a Fold; each bend named has its cylindrical faces back; the fixed face is where it was; the volume changed by exactly the bend arithmetic's sum over those bends, the other way, where each is whole again, and by no more than that where one was cut across (so at K 0.5 the part is its folded volume less what was cut). Otherwise it is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class SheetMetalFoldRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("The bends to fold, each by name (EdgeBend1) or reference. Every unfolded bend when absent.")]
+    public List<string>? Bends { get; set; }
+
+    [Description("A planar face of the sheet, by reference, that stays where it is. The fixed face of the Unfold that unfolded the bends when absent.")]
+    public string? FixedFace { get; set; }
+}

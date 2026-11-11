@@ -247,3 +247,133 @@ public class SheetMetalFlattenTests : SheetMetalBendTestBase
         Assert.Equal("sheet_metal", Fails(() => Flatten(true)).Error.Details!["needs"]);
     }
 }
+
+public class SheetMetalUnfoldFoldTests : SheetMetalBendTestBase
+{
+    internal SheetMetalFeatureResult Unfold(SheetMetalUnfoldRequest request) => Run(new SheetMetalUnfoldOperation(Services), request);
+
+    internal SheetMetalFeatureResult Fold(SheetMetalFoldRequest request) => Run(new SheetMetalFoldOperation(Services), request);
+
+    /// <summary>The tab with a 25 mm flange (EdgeBend1) on its 40 mm edge at y = 20, and another (EdgeBend2) on the one at y = 0 when asked.</summary>
+    FakeDocument Flanged(BendAllowance? allowance = null, bool two = false)
+    {
+        var doc = Tabbed();
+        var edges = new List<string> { Top(doc) };
+        if (two) edges.Add(Bottom(doc));
+        EdgeFlange(new SheetMetalEdgeFlangeRequest { Edges = edges, LengthMm = 25, LengthFrom = FlangeLengthFrom.InnerVirtualSharp, Allowance = allowance });
+        return doc;
+    }
+
+    [Fact]
+    public void Unfold_develops_a_bend_keeping_the_base_face_and_fold_folds_it_back_on_the_same_face()
+    {
+        var doc = Flanged();
+        double folded = doc.MassProperties!.VolumeMm3;
+        var unfold = Unfold(new SheetMetalUnfoldRequest { FixedFace = Base(doc), Bends = new List<string> { "EdgeBend1" } });
+        Assert.Equal("UnFold1", unfold.Feature.Name);
+        Assert.Equal("EdgeBend1", Assert.Single(unfold.Sheet.Bends).Name);
+        Assert.Equal(folded, unfold.Change.VolumeAfterMm3, 6);
+        Assert.Contains("EdgeBend1 unfolded: no cylindrical face left", unfold.Checks);
+        Assert.Contains(unfold.Checks, c => c.StartsWith("the fixed face stayed put"));
+        Assert.Contains(unfold.Checks, c => c.StartsWith("the volume changed by 0 mm³, the bend arithmetic's 0 mm³ (developing 1 bends"));
+        var (face, bends, isUnfold) = doc.FoldCalls.Single();
+        Assert.True(isUnfold);
+        Assert.Same(doc.SheetFaceList[0], face);
+        Assert.Equal(new[] { "EdgeBend1" }, bends.Cast<FakeEntity>().Select(b => b.Info.Name));
+        var fold = Fold(new SheetMetalFoldRequest());
+        Assert.Equal("Fold1", fold.Feature.Name);
+        Assert.Contains("EdgeBend1 folded: their cylindrical faces are back", fold.Checks);
+        Assert.Same(doc.SheetFaceList[0], doc.FoldCalls.Last().FixedFace);
+        Assert.Equal(folded, fold.Change.VolumeAfterMm3, 6);
+        Assert.Empty(SheetMetalParts.Unfolded(doc));
+    }
+
+    [Fact]
+    public void Away_from_half_unfold_and_fold_move_the_volume_by_the_bend_arithmetic_each_way()
+    {
+        var doc = Flanged(new BendAllowance { KFactor = 0.1 });
+        double folded = doc.MassProperties!.VolumeMm3;
+        double change = 40 * 2 * Math.PI / 2 * (3.2 - 4);
+        Assert.Equal(folded + change, Unfold(new SheetMetalUnfoldRequest { FixedFace = Base(doc) }).Change.VolumeAfterMm3, 6);
+        Assert.Equal(folded, Fold(new SheetMetalFoldRequest { FixedFace = Base(doc) }).Change.VolumeAfterMm3, 6);
+    }
+
+    [Fact]
+    public void Without_bends_every_folded_bend_is_unfolded_and_every_unfolded_one_folded()
+    {
+        var doc = Flanged(two: true);
+        var unfold = Unfold(new SheetMetalUnfoldRequest { FixedFace = Base(doc) });
+        Assert.Equal(new[] { "EdgeBend1", "EdgeBend2" }, unfold.Sheet.Bends.Select(b => b.Name));
+        var fold = Fold(new SheetMetalFoldRequest { Bends = new List<string> { "EdgeBend2" } });
+        Assert.Equal("EdgeBend2", Assert.Single(fold.Sheet.Bends).Name);
+        Assert.Equal(new[] { "EdgeBend1" }, SheetMetalParts.Unfolded(doc).Keys);
+        var rest = Fold(new SheetMetalFoldRequest());
+        Assert.Equal("EdgeBend1", Assert.Single(rest.Sheet.Bends).Name);
+    }
+
+    [Fact]
+    public void A_bend_named_by_its_reference_is_found_and_what_is_not_a_bend_is_refused()
+    {
+        var doc = Flanged(two: true);
+        string reference = Ref(doc, doc.FeatureByName("EdgeBend2")!);
+        Assert.Equal("EdgeBend2", Assert.Single(Unfold(new SheetMetalUnfoldRequest { FixedFace = Base(doc), Bends = new List<string> { reference } }).Sheet.Bends).Name);
+        string Field(Func<SheetMetalFeatureResult> call) => (string)Fails(() => call()).Error.Details!["field"]!;
+        Assert.Equal("/bends/0", Field(() => Unfold(new SheetMetalUnfoldRequest { FixedFace = Base(doc), Bends = new List<string> { "Base-Flange1" } })));
+        Assert.Equal("/bends/1", Field(() => Unfold(new SheetMetalUnfoldRequest { FixedFace = Base(doc), Bends = new List<string> { "EdgeBend1", "EdgeBend1" } })));
+        Assert.Equal("/bends/0", Field(() => Unfold(new SheetMetalUnfoldRequest { FixedFace = Base(doc), Bends = new List<string> { "EdgeBend2" } })));
+        Assert.Equal("/bends/0", Field(() => Fold(new SheetMetalFoldRequest { Bends = new List<string> { "EdgeBend1" } })));
+        Assert.Equal("fixed_face", Field(() => Unfold(new SheetMetalUnfoldRequest { FixedFace = Ref(doc, doc.FakeBends[0].Faces[0]) })));
+    }
+
+    [Fact]
+    public void Folding_needs_something_unfolded_and_a_fixed_face_when_SOLIDWORKS_does_not_give_the_unfolds()
+    {
+        var doc = Flanged();
+        Assert.Equal("bends", Fails(() => Fold(new SheetMetalFoldRequest())).Error.Details!["field"]);
+        Unfold(new SheetMetalUnfoldRequest { FixedFace = Base(doc) });
+        doc.FoldsHideFixedFace = true;
+        var e = Fails(() => Fold(new SheetMetalFoldRequest()));
+        Assert.Equal("fixed_face", e.Error.Details!["field"]);
+        Assert.Contains("did not give the face UnFold1 kept put", e.Message);
+        Assert.Equal("Fold1", Fold(new SheetMetalFoldRequest { FixedFace = Base(doc) }).Feature.Name);
+    }
+
+    [Theory]
+    [InlineData("nothing", "bend_faces")]
+    [InlineData("fixed", "fixed_face")]
+    public void An_unfold_that_did_not_unfold_or_moved_the_fixed_face_is_deleted(string fault, string check)
+    {
+        var doc = Flanged();
+        if (fault == "nothing") doc.FoldsDoNothing = true;
+        if (fault == "fixed") doc.FixedFaceMoves = 2;
+        var e = Fails(() => Unfold(new SheetMetalUnfoldRequest { FixedFace = Base(doc) }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal(check, e.Error.Details!["check"]);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == SheetMetalParts.UnfoldType);
+        Assert.Empty(SheetMetalParts.Unfolded(doc));
+        Assert.Equal(2, SheetMetalParts.Cylinders(doc, doc.SheetMetal.Bends().Single()).Count);
+    }
+
+    [Fact]
+    public void A_fold_that_did_not_fold_is_deleted_and_the_bend_stays_unfolded()
+    {
+        var doc = Flanged();
+        Unfold(new SheetMetalUnfoldRequest { FixedFace = Base(doc) });
+        doc.FoldsDoNothing = true;
+        Assert.Equal("bend_faces", Fails(() => Fold(new SheetMetalFoldRequest())).Error.Details!["check"]);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == SheetMetalParts.FoldType);
+        Assert.Equal(new[] { "EdgeBend1" }, SheetMetalParts.Unfolded(doc).Keys);
+    }
+
+    [Fact]
+    public void SOLIDWORKS_making_no_feature_fails_and_a_flattened_part_is_refused()
+    {
+        var doc = Flanged();
+        doc.FeatureRefuses = true;
+        Assert.Equal(ErrorCode.OperationFailed, Fails(() => Unfold(new SheetMetalUnfoldRequest { FixedFace = Base(doc) })).Code);
+        doc.FeatureRefuses = false;
+        doc.Suppress(doc.FeatureByName("Flat-Pattern1")!, false);
+        Assert.Equal("flattened", Fails(() => Unfold(new SheetMetalUnfoldRequest { FixedFace = Base(doc) })).Error.Details!["state"]);
+        Assert.Equal("flattened", Fails(() => Fold(new SheetMetalFoldRequest())).Error.Details!["state"]);
+    }
+}

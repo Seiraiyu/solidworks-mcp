@@ -43,6 +43,15 @@ public class SheetMetalBendContractTests
     }
 
     [Fact]
+    public void Unfold_needs_a_fixed_face_and_fold_needs_nothing()
+    {
+        IsSheetMetalChange("sheetmetal.unfold", typeof(SheetMetalUnfoldRequest), typeof(SheetMetalFeatureResult));
+        IsSheetMetalChange("sheetmetal.fold", typeof(SheetMetalFoldRequest), typeof(SheetMetalFeatureResult));
+        Assert.Equal(new[] { "fixed_face" }, Required(typeof(SheetMetalUnfoldRequest)).ToArray());
+        Assert.Empty(Required(typeof(SheetMetalFoldRequest)));
+    }
+
+    [Fact]
     public void Protocol_8_speaks_bends_and_flattening()
     {
         Assert.Equal(8, Protocol.Version);

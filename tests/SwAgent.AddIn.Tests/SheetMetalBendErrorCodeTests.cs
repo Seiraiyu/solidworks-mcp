@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using SwAgent.AddIn.Operations;
 using SwAgent.Contracts;
 using Xunit;
@@ -86,5 +87,57 @@ public class SheetMetalBendErrorCodeTests : SheetMetalBendTestBase
         Assert.Equal(code, Fails(() => Flatten()).Code);
         Assert.Equal(SheetState.Folded, SheetMetalParts.State(doc));
         Assert.Equal(1600, doc.MassProperties!.VolumeMm3, 9);
+    }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Sheetmetal_unfold_and_fold_reach_every_listed_code(ErrorCode code)
+    {
+        SheetMetalFeatureResult Unfold(SheetMetalUnfoldRequest r) => Run(new SheetMetalUnfoldOperation(Services), r);
+        SheetMetalFeatureResult Fold(SheetMetalFoldRequest r) => Run(new SheetMetalFoldOperation(Services), r);
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Part();
+            Block();
+            Assert.Equal(code, Fails(() => Unfold(new SheetMetalUnfoldRequest { FixedFace = "r1.face.x" })).Code);
+            Assert.Equal(code, Fails(() => Fold(new SheetMetalFoldRequest())).Code);
+            return;
+        }
+        var doc = Tabbed();
+        EdgeFlange(new SheetMetalEdgeFlangeRequest { Edges = new List<string> { Top(doc) }, LengthMm = 25 });
+        var unfold = new SheetMetalUnfoldRequest { FixedFace = Base(doc) };
+        double folded = doc.MassProperties!.VolumeMm3;
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                unfold.Bends = new List<string> { "Base-Flange1" };
+                Assert.Equal(code, Fails(() => Fold(new SheetMetalFoldRequest())).Code);
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                doc.SheetFaceList[0].State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch1";
+                Assert.Equal(code, Fails(() => Fold(new SheetMetalFoldRequest())).Code);
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.FoldsDoNothing = true;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Unfold(unfold)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == SheetMetalParts.UnfoldType);
+        Assert.Equal(folded, doc.MassProperties.VolumeMm3, 9);
     }
 }

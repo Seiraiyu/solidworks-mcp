@@ -206,3 +206,174 @@ public sealed class SheetMetalFlattenOperation : ModelChangeOperation<SheetMetal
         checks.Add(FormattableString.Invariant($"the flattened part is {across:0.####} mm across its base face, the sheet's thickness"));
     }
 }
+
+/// <summary>What unfold and fold share: the bends named, by name or reference, and the feature SOLIDWORKS made, found by its new name.</summary>
+static class Folding
+{
+    /// <summary>The bends named, each by its name or a reference to it, each once; fields /bends/i.</summary>
+    public static List<BendRecord> Named(ReferenceService references, ISwDocument doc, IReadOnlyList<string> texts)
+    {
+        var all = doc.SheetMetal.Bends();
+        var list = new List<BendRecord>();
+        for (int i = 0; i < texts.Count; i++)
+        {
+            string at = $"/bends/{i}";
+            var bend = all.FirstOrDefault(b => b.Name == texts[i]);
+            if (bend == null)
+            {
+                var (entity, _) = references.Resolve(doc, texts[i], at, ReferenceKind.Feature);
+                string? name = doc.Describe(entity).Name;
+                bend = all.FirstOrDefault(b => b.Name == name)
+                    ?? throw FeatureFacts.Invalid(at, $"{at} names {name ?? "a feature"}, which is not a bend (sheetmetal.read lists the bends)");
+            }
+            if (list.Any(b => b.Name == bend.Name)) throw FeatureFacts.Invalid(at, $"{at} names {bend.Name} again");
+            list.Add(bend);
+        }
+        return list;
+    }
+
+    /// <summary>The top-level feature of <paramref name="type"/> whose name was not in the tree before; null when SOLIDWORKS made none.</summary>
+    public static object? NewFeature(ISwDocument doc, HashSet<string> before, string type) =>
+        doc.Features().FirstOrDefault(f => f.Parent == null && f.Type == type && !before.Contains(f.Name))?.Feature;
+
+    public static HashSet<string> Names(ISwDocument doc) => new HashSet<string>(doc.Features().Select(f => f.Name), StringComparer.Ordinal);
+
+    /// <summary>The bends named as SOLIDWORKS reads them now.</summary>
+    public static List<BendRecord> Now(ISwDocument doc, IEnumerable<string> names)
+    {
+        var wanted = new HashSet<string>(names, StringComparer.Ordinal);
+        return doc.SheetMetal.Bends().Where(b => wanted.Contains(b.Name)).ToList();
+    }
+}
+
+public sealed class SheetMetalUnfoldOperation : ModelChangeOperation<SheetMetalUnfoldRequest, SheetMetalFeatureResult>
+{
+    const string What = "unfold";
+
+    FixedPlane? _fixed;
+    List<string> _bends = new List<string>();
+    BendVolumeChange? _change;
+
+    public SheetMetalUnfoldOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(SheetMetalUnfoldRequest request) => request.Document;
+
+    protected override SheetMetalFeatureResult Change(ISwDocument doc, SheetMetalUnfoldRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        var defaults = SheetMetalParts.Require(doc, Name);
+        SheetMetalParts.RequireFolded(doc, Name);
+        var references = Services.References;
+        var (face, _) = references.Resolve(doc, request.FixedFace, "fixed_face", ReferenceKind.Face);
+        var plane = SheetMetalParts.Fixed(doc, face, "fixed_face");
+        var unfolded = SheetMetalParts.Unfolded(doc);
+        var bends = request.Bends == null
+            ? doc.SheetMetal.Bends().Where(b => !unfolded.ContainsKey(b.Name)).ToList()
+            : Folding.Named(references, doc, request.Bends);
+        if (bends.Count == 0) throw FeatureFacts.Invalid("bends", $"{doc.Info().Title} has no folded bend to unfold");
+        for (int i = 0; i < bends.Count; i++)
+        {
+            if (unfolded.TryGetValue(bends[i].Name, out var by))
+                throw FeatureFacts.Invalid($"/bends/{i}", $"{bends[i].Name} is already unfolded by {by.Name}; fold it first (sheetmetal.fold)");
+        }
+        _fixed = plane;
+        _bends = bends.Select(b => b.Name).ToList();
+        _change = BendDevelopment.Develop(SheetMetalParts.Developed(doc, bends), defaults.ThicknessMm, flatten: true);
+        var before = Folding.Names(doc);
+        doc.SheetMetal.Unfold(face, bends.Select(b => b.Feature).ToList());
+        var made = Folding.NewFeature(doc, before, SheetMetalParts.UnfoldType)
+            ?? throw FeatureFacts.NotMade(doc, "unfold", $"of {string.Join(", ", _bends)}", "check that the fixed face is a planar face of the sheet that no bend named runs through");
+        return Flanges.Result(new[] { FeatureFacts.Made(references, doc, made, tx) });
+    }
+
+    /// <summary>An Unfold whose bends have no cylindrical face left, the fixed face put, and the volume developed as the bend arithmetic says.</summary>
+    protected override void Check(ISwDocument doc, SheetMetalUnfoldRequest request, SheetMetalFeatureResult result)
+    {
+        var checks = result.Checks;
+        var probe = new FeatureResult { Feature = result.Feature, Faces = result.Faces, Checks = checks };
+        FeatureFacts.ExpectType(doc, probe, SheetMetalParts.UnfoldType, What);
+        var bends = Folding.Now(doc, _bends);
+        var folded = bends.Where(b => SheetMetalParts.Cylinders(doc, b).Count > 0).Select(b => b.Name).ToList();
+        if (folded.Count > 0)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"{string.Join(", ", folded)} still has cylindrical faces after the unfold: SOLIDWORKS made {result.Feature.Name} and did not unfold it",
+                new JsonObject { ["check"] = "bend_faces", ["bends"] = folded.Select(n => (object?)n).ToList() });
+        }
+        checks.Add($"{string.Join(", ", _bends)} unfolded: no cylindrical face left");
+        SheetMetalParts.StaysPut(doc, _fixed!, What, checks);
+        SheetMetalParts.VolumeDeveloped(_change, VolumeBefore, Volume(doc, doc.SolidBodyCount()), What, checks);
+        result.Sheet = SheetMetalParts.Facts(Services.References, doc, bends);
+    }
+}
+
+public sealed class SheetMetalFoldOperation : ModelChangeOperation<SheetMetalFoldRequest, SheetMetalFeatureResult>
+{
+    const string What = "fold";
+
+    FixedPlane? _fixed;
+    List<string> _bends = new List<string>();
+    double _thickness;
+
+    public SheetMetalFoldOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(SheetMetalFoldRequest request) => request.Document;
+
+    protected override SheetMetalFeatureResult Change(ISwDocument doc, SheetMetalFoldRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        var defaults = SheetMetalParts.Require(doc, Name);
+        SheetMetalParts.RequireFolded(doc, Name);
+        var references = Services.References;
+        var unfolded = SheetMetalParts.Unfolded(doc);
+        if (unfolded.Count == 0) throw FeatureFacts.Invalid("bends", $"nothing is unfolded in {doc.Info().Title}: sheetmetal.fold folds back what sheetmetal.unfold unfolded");
+        var bends = request.Bends == null
+            ? doc.SheetMetal.Bends().Where(b => unfolded.ContainsKey(b.Name)).ToList()
+            : Folding.Named(references, doc, request.Bends);
+        for (int i = 0; i < bends.Count; i++)
+        {
+            if (!unfolded.ContainsKey(bends[i].Name))
+                throw FeatureFacts.Invalid($"/bends/{i}", $"{bends[i].Name} is not unfolded, so there is nothing to fold back");
+        }
+        object face;
+        if (request.FixedFace != null) face = references.Resolve(doc, request.FixedFace, "fixed_face", ReferenceKind.Face).Entity;
+        else
+        {
+            var unfold = unfolded[bends[0].Name];
+            face = unfold.FixedFace
+                ?? throw FeatureFacts.Invalid("fixed_face", $"SOLIDWORKS did not give the face {unfold.Name} kept put; name it in fixed_face");
+        }
+        var plane = SheetMetalParts.Fixed(doc, face, "fixed_face");
+        _fixed = plane;
+        _bends = bends.Select(b => b.Name).ToList();
+        _thickness = defaults.ThicknessMm;
+        var before = Folding.Names(doc);
+        doc.SheetMetal.Fold(face, bends.Select(b => b.Feature).ToList());
+        var made = Folding.NewFeature(doc, before, SheetMetalParts.FoldType)
+            ?? throw FeatureFacts.NotMade(doc, "fold", $"of {string.Join(", ", _bends)}", "check that the fixed face is the one the unfold kept and that what was cut leaves each bend whole enough to fold");
+        return Flanges.Result(new[] { FeatureFacts.Made(references, doc, made, tx) });
+    }
+
+    /// <summary>A Fold whose bends have their cylindrical faces back, the fixed face put, and the volume folded as the bend arithmetic says.</summary>
+    protected override void Check(ISwDocument doc, SheetMetalFoldRequest request, SheetMetalFeatureResult result)
+    {
+        var checks = result.Checks;
+        var probe = new FeatureResult { Feature = result.Feature, Faces = result.Faces, Checks = checks };
+        FeatureFacts.ExpectType(doc, probe, SheetMetalParts.FoldType, What);
+        var bends = Folding.Now(doc, _bends);
+        var flat = bends.Where(b => SheetMetalParts.Cylinders(doc, b).Count == 0).Select(b => b.Name).ToList();
+        if (flat.Count > 0)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"{string.Join(", ", flat)} has no cylindrical face after the fold: SOLIDWORKS made {result.Feature.Name} and did not fold it",
+                new JsonObject { ["check"] = "bend_faces", ["bends"] = flat.Select(n => (object?)n).ToList() });
+        }
+        checks.Add($"{string.Join(", ", _bends)} folded: their cylindrical faces are back");
+        SheetMetalParts.StaysPut(doc, _fixed!, What, checks);
+        var change = BendDevelopment.Develop(SheetMetalParts.Developed(doc, bends), _thickness, flatten: false);
+        SheetMetalParts.VolumeDeveloped(change, VolumeBefore, Volume(doc, doc.SolidBodyCount()), What, checks);
+        result.Sheet = SheetMetalParts.Facts(Services.References, doc, bends);
+    }
+}
