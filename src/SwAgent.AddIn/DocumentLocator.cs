@@ -38,18 +38,35 @@ public static class DocumentLocator
     }
 
     /// <summary>As <see cref="Find"/>, and wrong_document_type unless it is a part.</summary>
-    public static ISwDocument FindPart(ISolidWorksApplication sw, string? document, string operation, string field = "document")
+    public static ISwDocument FindPart(ISolidWorksApplication sw, string? document, string operation, string field = "document") =>
+        FindOfType(sw, document, operation, DocumentType.Part, field);
+
+    /// <summary>As <see cref="Find"/>, and wrong_document_type unless it is an assembly; returns the document and the assembly it is.</summary>
+    public static (ISwDocument Doc, ISwAssembly Assembly) FindAssembly(ISolidWorksApplication sw, string? document, string operation, string field = "document")
+    {
+        var doc = FindOfType(sw, document, operation, DocumentType.Assembly, field);
+        return (doc, doc.Assembly() ?? throw new SwAgentException(ErrorCode.ApiError, $"{doc.Info().Title} says it is an assembly, but SOLIDWORKS gives no assembly for it"));
+    }
+
+    static ISwDocument FindOfType(ISolidWorksApplication sw, string? document, string operation, DocumentType type, string field)
     {
         var doc = Find(sw, document, field);
         var info = doc.Info();
-        if (info.Type != DocumentType.Part)
+        if (info.Type != type)
         {
             throw new SwAgentException(ErrorCode.WrongDocumentType,
-                $"{operation} works on parts, and {info.Title} is {(info.Type == DocumentType.Assembly ? "an assembly" : "a drawing")}",
+                $"{operation} works on {(type == DocumentType.Assembly ? "assemblies" : "parts")}, and {info.Title} is {Article(info.Type)}",
                 new JsonObject { ["document"] = Label(info), ["type"] = WireNames.ForEnum(info.Type) });
         }
         return doc;
     }
+
+    static string Article(DocumentType type) => type switch
+    {
+        DocumentType.Assembly => "an assembly",
+        DocumentType.Drawing => "a drawing",
+        _ => "a part",
+    };
 
     static bool Names(DocumentInfo info, string name)
     {

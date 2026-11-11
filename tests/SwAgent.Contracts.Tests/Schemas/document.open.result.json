@@ -25,19 +25,24 @@
         "dirty": {
           "type": "boolean",
           "description": "True when the document has unsaved changes."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "False for a document SOLIDWORKS loaded only because an open assembly uses it: it has no window of its own."
         }
       },
       "required": [
         "title",
         "type",
-        "dirty"
+        "dirty",
+        "visible"
       ],
       "additionalProperties": false,
       "description": "The document."
     },
     "already_open": {
       "type": "boolean",
-      "description": "True when it was already open; it was made active and not opened again."
+      "description": "True when it was already open in a window; it was made active and not opened again. A document loaded only because an open assembly uses it is opened in a window of its own, and this is false."
     },
     "read_only": {
       "type": "boolean",
@@ -49,13 +54,21 @@
         "type": "string"
       },
       "description": "What SOLIDWORKS warned about while opening it (swFileLoadWarning_e names), for example swFileLoadWarning_ModelOutOfDate."
+    },
+    "missing": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Files the document uses (an assembly's components) that SOLIDWORKS could not find; those components stay suppressed. Empty when nothing is missing."
     }
   },
   "required": [
     "document",
     "already_open",
     "read_only",
-    "warnings"
+    "warnings",
+    "missing"
   ],
   "additionalProperties": false
 }

@@ -45,10 +45,13 @@ public interface ISolidWorksApplication
     /// <summary>The user's default part template (Tools > Options > Default Templates), or null when none is set.</summary>
     string? DefaultPartTemplate();
 
+    /// <summary>The user's default assembly template (Tools > Options > Default Templates), or null when none is set.</summary>
+    string? DefaultAssemblyTemplate();
+
     /// <summary>A new document from <paramref name="template"/>, made active; api_error when SOLIDWORKS makes none.</summary>
     ISwDocument NewDocument(string template);
 
-    /// <summary>Opens <paramref name="path"/> silently as a document of <paramref name="type"/>.</summary>
+    /// <summary>Opens <paramref name="path"/> silently as a document of <paramref name="type"/>; an assembly with every component resolved, never lightweight.</summary>
     OpenOutcome OpenDocument(string path, DocumentType type, bool readOnly);
 
     /// <summary>Closes <paramref name="document"/> without saving it.</summary>
@@ -115,6 +118,12 @@ internal sealed class SolidWorksApplication : ISolidWorksApplication
         return string.IsNullOrEmpty(template) ? null : template;
     }
 
+    public string? DefaultAssemblyTemplate()
+    {
+        string template = _sw.GetUserPreferenceStringValue((int)swUserPreferenceStringValue_e.swDefaultTemplateAssembly);
+        return string.IsNullOrEmpty(template) ? null : template;
+    }
+
     public ISwDocument NewDocument(string template) =>
         _sw.NewDocument(template, 0, 0, 0) is IModelDoc2 doc
             ? new SolidWorksDocument(_sw, doc)
@@ -130,7 +139,17 @@ internal sealed class SolidWorksApplication : ISolidWorksApplication
             _ => (int)swDocumentTypes_e.swDocPART,
         };
         int options = (int)swOpenDocOptions_e.swOpenDocOptions_Silent | (readOnly ? (int)swOpenDocOptions_e.swOpenDocOptions_ReadOnly : 0);
+        // Design 455, Assembly documents: resolved, whatever the user's lightweight setting, so every component can be referenced.
+        if (type == DocumentType.Assembly) options |= (int)swOpenDocOptions_e.swOpenDocOptions_OverrideDefaultLoadLightweight;
         var doc = _sw.OpenDoc6(path, swType, options, "", ref errors, ref warnings);
+        if (doc != null && !doc.Visible)
+        {
+            // A component loaded only for an assembly: OpenDoc6 hands it back with no window of its own, and ActivateDoc3
+            // gives it one (4.A live run, round 3). Visible is set too, in case activating alone ever leaves it hidden.
+            int activateErrors = 0;
+            _sw.ActivateDoc3(path, false, (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, ref activateErrors);
+            if (!doc.Visible) doc.Visible = true;
+        }
         return new OpenOutcome(doc == null ? null : new SolidWorksDocument(_sw, doc), errors, warnings);
     }
 
@@ -220,6 +239,7 @@ internal sealed class SolidWorksApplication : ISolidWorksApplication
             Path = string.IsNullOrEmpty(path) ? null : path,
             Type = MapType(doc.GetType()),
             Dirty = doc.GetSaveFlag(),
+            Visible = doc.Visible,
         };
     }
 

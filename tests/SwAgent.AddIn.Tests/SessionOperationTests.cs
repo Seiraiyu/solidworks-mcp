@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using SolidWorks.Interop.swconst;
 using SwAgent.AddIn.Core;
 using SwAgent.AddIn.Operations;
@@ -78,10 +79,18 @@ sealed class FakeSolidWorks : ISolidWorksApplication
 
     public string? DefaultPartTemplate() => DefaultTemplate;
 
+    /// <summary>What DefaultAssemblyTemplate returns.</summary>
+    public string? DefaultAsmTemplate { get; set; }
+
+    public string? DefaultAssemblyTemplate() => DefaultAsmTemplate;
+
     public ISwDocument NewDocument(string template)
     {
         NewFrom.Add(template);
-        var doc = NewHasPlanes ? FakeDocument.Part("Part" + (NewFrom.Count + 1)) : new FakeDocument("Part" + (NewFrom.Count + 1));
+        bool assembly = template.EndsWith(".ASMDOT", System.StringComparison.OrdinalIgnoreCase);
+        string title = (assembly ? "Assem" : "Part") + (NewFrom.Count + 1);
+        var doc = NewHasPlanes ? FakeDocument.Part(title) : new FakeDocument(title);
+        if (assembly) doc.Document.Type = DocumentType.Assembly;
         Track(doc);
         doc.Document.Dirty = false;
         CurrentDoc = doc;
@@ -96,6 +105,13 @@ sealed class FakeSolidWorks : ISolidWorksApplication
     public OpenOutcome OpenDocument(string path, DocumentType type, bool readOnly)
     {
         Opened.Add((path, type, readOnly));
+        var loaded = Docs.FirstOrDefault(d => string.Equals(d.Document.Path, path, System.StringComparison.OrdinalIgnoreCase));
+        if (loaded != null && OpenWith == null)
+        {
+            loaded.Document.Visible = true;
+            CurrentDoc = loaded;
+            return new OpenOutcome(loaded, 0, 0);
+        }
         var outcome = OpenWith?.Invoke(path)
             ?? new OpenOutcome(new FakeDocument(System.IO.Path.GetFileName(path), path, type) { ReadOnly = readOnly }, 0, 0);
         if (outcome.Document is FakeDocument doc)
@@ -108,13 +124,33 @@ sealed class FakeSolidWorks : ISolidWorksApplication
 
     public System.Collections.Generic.List<string> ClosedTitles { get; } = new System.Collections.Generic.List<string>();
 
+    /// <summary>When true, closing an assembly leaves the hidden documents it used loaded (a SOLIDWORKS that did not unload them).</summary>
+    public bool CloseKeepsComponents { get; set; }
+
+    /// <summary>
+    /// As SOLIDWORKS closes: a document another open document uses only loses its window; otherwise it goes, with every
+    /// hidden document nothing still open uses.
+    /// </summary>
     public void Close(ISwDocument document)
     {
         var doc = (FakeDocument)document;
         ClosedTitles.Add(doc.Document.Title);
-        Docs.Remove(doc);
         if (ReferenceEquals(CurrentDoc, doc)) CurrentDoc = null;
+        if (!CloseUnloadsUsed && doc.Document.Path != null && Docs.Any(d => !ReferenceEquals(d, doc) && d.Uses.Any(u => string.Equals(u, doc.Document.Path, System.StringComparison.OrdinalIgnoreCase))))
+        {
+            doc.Document.Visible = false;
+            // SOLIDWORKS keeps the changes in memory but clears the part's save flag (4.A live run, round 4).
+            doc.Document.Dirty = false;
+            return;
+        }
+        Docs.Remove(doc);
+        if (CloseKeepsComponents) return;
+        var used = Docs.SelectMany(d => d.Uses).ToList();
+        Docs.RemoveAll(d => !d.Document.Visible && !used.Any(u => string.Equals(u, d.Document.Path, System.StringComparison.OrdinalIgnoreCase)));
     }
+
+    /// <summary>When true, closing a document an open assembly lists as used unloads it anyway (4.A live run, case 6).</summary>
+    public bool CloseUnloadsUsed { get; set; }
 
     /// <summary>Adds a document the operations can see, wired so Activate makes it the active one.</summary>
     FakeApiApp? _api;
@@ -246,7 +282,7 @@ public class SessionOperationTests
         var result = op.Run(request, new TestContext());
         op.Verify(request, result, new TestContext());
         Assert.True(guard.Applied);
-        Assert.All(AutomationPreferences.All, p => Assert.False(store.Values[p.Id]));
+        Assert.All(AutomationPreferences.All, p => Assert.Equal(p.AutomationValue, store.Values.TryGetValue(p.Id, out var v) ? v : true));
         guard.Restore("test");
     }
 
@@ -266,7 +302,7 @@ public class SessionOperationTests
         var request = new SessionHelloRequest { ProtocolVersion = Protocol.Version };
         var result = op.Run(request, new TestContext());
         op.Verify(request, result, new TestContext());
-        Assert.Equal(AutomationPreferences.All.Count, guard.NotTaken.Count);
+        Assert.Equal(System.Linq.Enumerable.Count(AutomationPreferences.All, p => !p.AutomationValue), guard.NotTaken.Count);
         guard.Restore("test");
     }
 }

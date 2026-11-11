@@ -89,11 +89,11 @@ public sealed class OwnerGuard
     /// <summary>The documents this run created, by full path.</summary>
     public IReadOnlyCollection<string> CreatedPaths => _created;
 
-    /// <summary>A path for a new scratch part named <paramref name="name"/>; creates the directory.</summary>
-    public string NewScratchPath(string name)
+    /// <summary>A path for a new scratch document named <paramref name="name"/> (a part unless <paramref name="extension"/> says otherwise); creates the directory.</summary>
+    public string NewScratchPath(string name, string extension = ".SLDPRT")
     {
         Directory.CreateDirectory(ScratchDirectory);
-        return Path.Combine(ScratchDirectory, name + ".SLDPRT");
+        return Path.Combine(ScratchDirectory, name + extension);
     }
 
     /// <summary>Records a document this run created, in memory and in created.txt beside it.</summary>

@@ -79,6 +79,9 @@ public sealed class DocumentInfo
 
     [Description("True when the document has unsaved changes.")]
     public bool Dirty { get; set; }
+
+    [Description("False for a document SOLIDWORKS loaded only because an open assembly uses it: it has no window of its own.")]
+    public bool Visible { get; set; } = true;
 }
 
 public enum DocumentType

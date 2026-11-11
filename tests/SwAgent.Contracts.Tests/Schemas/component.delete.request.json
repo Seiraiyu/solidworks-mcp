@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "description": "Deletes top-level components from an assembly, and with them the mates that use them (listed in mates_deleted). A component inside a subassembly is deleted in that subassembly's own document. Checked: the components and their mates are gone. A deletion is not rolled back: what SOLIDWORKS deleted stays deleted, and a failed check says what is left.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The components: each a reference (r1.component.…) or a name (bracket-1)."
+    }
+  },
+  "required": [
+    "components"
+  ],
+  "additionalProperties": false
+}

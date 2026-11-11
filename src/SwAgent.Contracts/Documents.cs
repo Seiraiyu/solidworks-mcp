@@ -4,20 +4,20 @@ using System.ComponentModel;
 namespace SwAgent.Contracts;
 
 [Operation("document.new", typeof(DocumentNewResult))]
-[Description("Creates a part from the user's default part template (or a named template) and makes it the active document. With path, saves it there at once. The part is the agent's own, so document.close may close it.")]
+[Description("Creates a part or an assembly from the user's default template for it (or a named template) and makes it the active document. With path, saves it there at once. The document is the agent's own, so document.close may close it.")]
 public sealed class DocumentNewRequest
 {
-    [Description("What to create; only part in this version. Default part.")]
+    [Description("What to create: part or assembly (drawings come in a later release). Default part.")]
     public DocumentType? Type { get; set; }
 
-    [Description("Full path of a part template (.PRTDOT); the user's default part template when absent.")]
+    [Description("Full path of a template: .PRTDOT for a part, .ASMDOT for an assembly; the user's default template for the type when absent.")]
     public string? Template { get; set; }
 
-    [Description("Full path of a .SLDPRT file that does not exist yet, in an existing folder: the new part is saved there at once.")]
+    [Description("Full path of a file that does not exist yet, in an existing folder, with the type's extension (.SLDPRT, .SLDASM): the new document is saved there at once.")]
     public string? Path { get; set; }
 }
 
-[Description("The part created.")]
+[Description("The document created.")]
 public sealed class DocumentNewResult
 {
     [Required]
@@ -30,7 +30,7 @@ public sealed class DocumentNewResult
 }
 
 [Operation("document.open", typeof(DocumentOpenResult))]
-[Description("Opens a part, assembly or drawing from a local file and makes it the active document. A document that is already open is made active, not opened again. A document this call opened is the agent's own, so document.close may close it.")]
+[Description("Opens a part, assembly or drawing from a local file and makes it the active document. An assembly opens with every component resolved (never lightweight); component files that are missing are listed, never searched for with a dialog. A document that is already open is made active, not opened again. A document this call opened is the agent's own, so document.close may close it.")]
 public sealed class DocumentOpenRequest
 {
     [Required]
@@ -48,7 +48,7 @@ public sealed class DocumentOpenResult
     [Description("The document.")]
     public DocumentInfo Document { get; set; } = new DocumentInfo();
 
-    [Description("True when it was already open; it was made active and not opened again.")]
+    [Description("True when it was already open in a window; it was made active and not opened again. A document loaded only because an open assembly uses it is opened in a window of its own, and this is false.")]
     public bool AlreadyOpen { get; set; }
 
     [Description("True when it is open read-only.")]
@@ -57,10 +57,14 @@ public sealed class DocumentOpenResult
     [Required]
     [Description("What SOLIDWORKS warned about while opening it (swFileLoadWarning_e names), for example swFileLoadWarning_ModelOutOfDate.")]
     public List<string> Warnings { get; set; } = new List<string>();
+
+    [Required]
+    [Description("Files the document uses (an assembly's components) that SOLIDWORKS could not find; those components stay suppressed. Empty when nothing is missing.")]
+    public List<string> Missing { get; set; } = new List<string>();
 }
 
 [Operation("document.save", typeof(DocumentSaveResult))]
-[Description("Saves a document where it already is. A document never saved needs document.save_as. Checked on disk: the file was written by this call.")]
+[Description("Saves a document where it already is. A document never saved needs document.save_as. Saving an assembly first saves every document it uses that has unsaved changes (its components, nested ones included), so the saved assembly never points at changes that exist only in memory; each file written is listed in referenced. Checked on disk: every file was written by this call.")]
 public sealed class DocumentSaveRequest
 {
     [Description("The document: its title or full path. The active document when absent.")]
@@ -99,10 +103,29 @@ public sealed class DocumentSaveResult
     [Required]
     [Description("What SOLIDWORKS warned about while saving (swFileSaveWarning_e names).")]
     public List<string> Warnings { get; set; } = new List<string>();
+
+    [Required]
+    [Description("For document.save of an assembly: the documents it uses that had unsaved changes and were saved first, each where it already was. Empty otherwise.")]
+    public List<SavedFile> Referenced { get; set; } = new List<SavedFile>();
+}
+
+[Description("A document saved along with the assembly that uses it.")]
+public sealed class SavedFile
+{
+    [Required]
+    [Description("The document, now without unsaved changes.")]
+    public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Required]
+    [Description("The file written.")]
+    public string Path { get; set; } = "";
+
+    [Description("The file's size in bytes.")]
+    public long Bytes { get; set; }
 }
 
 [Operation("document.close", typeof(DocumentCloseResult))]
-[Description("Closes a document. Refuses one with unsaved changes unless discard, and one the agent did not open or create (document.new, document.open) unless users_document, which is only for when the user asked for it to be closed.")]
+[Description("Closes a document. Refuses one with unsaved changes unless discard, and one the agent did not open or create (document.new, document.open) unless users_document, which is only for when the user asked for it to be closed. Closing an assembly also unloads the components no other open document uses (listed in unloaded), so it is refused, unless discard, when any of them has unsaved changes too. A part an open assembly uses only loses its window: it stays loaded for the assembly, with its changes (still_used_by).")]
 public sealed class DocumentCloseRequest
 {
     [Description("The document: its title or full path. The active document when absent.")]
@@ -122,8 +145,16 @@ public sealed class DocumentCloseResult
     [Description("The document as it was just before it closed.")]
     public DocumentInfo Closed { get; set; } = new DocumentInfo();
 
-    [Description("True when it had unsaved changes, which were lost.")]
+    [Description("True when unsaved changes were lost: its own, or those of a document it unloaded.")]
     public bool Discarded { get; set; }
+
+    [Required]
+    [Description("For an assembly: the documents it used that SOLIDWORKS unloaded with it, as they were just before. Empty otherwise.")]
+    public List<DocumentInfo> Unloaded { get; set; } = new List<DocumentInfo>();
+
+    [Required]
+    [Description("The open documents (assemblies) that still use it: it lost its window but stays loaded for them, unsaved changes included. Empty when it was unloaded.")]
+    public List<string> StillUsedBy { get; set; } = new List<string>();
 }
 
 [Operation("document.rebuild", typeof(RebuildResult))]

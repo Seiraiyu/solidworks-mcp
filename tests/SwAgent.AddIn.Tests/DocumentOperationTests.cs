@@ -81,12 +81,70 @@ public class DocumentNewTests : DocumentTestBase
     }
 
     [Fact]
-    public void Only_parts_in_this_version()
+    public void Drawings_are_not_made_in_this_version()
     {
-        var e = Fails(() => New(new DocumentNewRequest { Type = DocumentType.Assembly }));
+        var e = Fails(() => New(new DocumentNewRequest { Type = DocumentType.Drawing }));
         Assert.Equal(ErrorCode.InvalidArgument, e.Code);
         Assert.Equal("type", e.Error.Details!["field"]);
         Assert.Empty(Sw.NewFrom);
+    }
+
+    string AssemblyTemplate()
+    {
+        string template = PathOf("Assembly.ASMDOT");
+        File.WriteAllText(template, "template");
+        Sw.DefaultAsmTemplate = template;
+        return template;
+    }
+
+    [Fact]
+    public void Makes_an_assembly_from_the_default_assembly_template_and_owns_it()
+    {
+        string template = AssemblyTemplate();
+        string path = PathOf("stand.SLDASM");
+        var result = New(new DocumentNewRequest { Type = DocumentType.Assembly, Path = path });
+        Assert.Equal(DocumentType.Assembly, result.Document.Type);
+        Assert.Equal(template, result.Template);
+        Assert.Equal(new[] { template }, Sw.NewFrom);
+        Assert.Equal(path, result.Document.Path);
+        Assert.True(Services.Runtime.Owned.Contains(path));
+    }
+
+    [Fact]
+    public void An_assembly_takes_an_assembly_template_and_path_only()
+    {
+        AssemblyTemplate();
+        var e = Fails(() => New(new DocumentNewRequest { Type = DocumentType.Assembly, Template = Template }));
+        Assert.Equal("template", e.Error.Details!["field"]);
+        e = Fails(() => New(new DocumentNewRequest { Type = DocumentType.Assembly, Path = PathOf("stand.SLDPRT") }));
+        Assert.Equal("path", e.Error.Details!["field"]);
+        Assert.Empty(Sw.NewFrom);
+    }
+
+    [Fact]
+    public void No_default_assembly_template_says_where_to_set_one()
+    {
+        var e = Fails(() => New(new DocumentNewRequest { Type = DocumentType.Assembly }));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.Contains("default assembly template", e.Message);
+    }
+
+    [Fact]
+    public void A_command_left_open_on_a_new_assembly_fails_verification()
+    {
+        AssemblyTemplate();
+        Sw.OpenCommandTitle = "Begin Assembly";
+        var e = Fails(() => New(new DocumentNewRequest { Type = DocumentType.Assembly }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("Begin Assembly", e.Error.Details!["command"]);
+        Assert.Contains("insert_component_for_new_assembly", e.Message);
+    }
+
+    [Fact]
+    public void A_command_open_after_a_new_part_is_not_this_operations_concern()
+    {
+        Sw.OpenCommandTitle = "Extrude";
+        Assert.Equal(DocumentType.Part, New(new DocumentNewRequest()).Document.Type);
     }
 
     [Theory]
@@ -206,6 +264,213 @@ public class DocumentNewTests : DocumentTestBase
     }
 }
 
+public class AssemblyCloseTests : DocumentTestBase
+{
+    DocumentCloseResult Close(string document, bool discard = false, bool users = false) =>
+        Run(new DocumentCloseOperation(Services), new DocumentCloseRequest { Document = document, Discard = discard, UsersDocument = users });
+
+    /// <summary>An assembly the agent opened, using a bracket and a pin loaded only for it.</summary>
+    (FakeDocument Asm, FakeDocument Bracket, FakeDocument Pin) Scene()
+    {
+        var asm = Sw.Track(new FakeDocument("stand.SLDASM", PathOf("stand.SLDASM"), DocumentType.Assembly));
+        var bracket = Sw.Track(FakeDocument.Part("bracket.SLDPRT", PathOf("bracket.SLDPRT")));
+        var pin = Sw.Track(FakeDocument.Part("pin.SLDPRT", PathOf("pin.SLDPRT")));
+        bracket.Document.Visible = pin.Document.Visible = false;
+        asm.Uses.AddRange(new[] { bracket.Document.Path!, pin.Document.Path! });
+        Services.Runtime.DocumentOpened(asm.Document.Path!, owned: true);
+        return (asm, bracket, pin);
+    }
+
+    [Fact]
+    public void Closing_an_assembly_unloads_its_components_and_lists_them()
+    {
+        var (asm, bracket, pin) = Scene();
+        var result = Close("stand.SLDASM");
+        Assert.Equal(new[] { "bracket.SLDPRT", "pin.SLDPRT" }, result.Unloaded.Select(u => u.Title));
+        Assert.Empty(result.StillUsedBy);
+        Assert.False(result.Discarded);
+        Assert.Empty(Sw.Docs);
+        Assert.False(Services.Runtime.Owned.Contains(asm.Document.Path!));
+    }
+
+    [Fact]
+    public void A_dirty_component_it_would_unload_refuses_the_close_and_is_named()
+    {
+        var (asm, _, pin) = Scene();
+        pin.Document.Dirty = true;
+        var e = Fails(() => Close("stand.SLDASM"));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal("discard", e.Error.Details!["field"]);
+        Assert.Equal(new object?[] { pin.Document.Path }, (System.Collections.Generic.List<object?>)e.Error.Details["unsaved"]!);
+        Assert.Contains("pin.SLDPRT", e.Message);
+        Assert.Contains(asm, Sw.Docs);
+    }
+
+    [Fact]
+    public void Discard_closes_it_and_says_changes_were_lost()
+    {
+        var (_, _, pin) = Scene();
+        pin.Document.Dirty = true;
+        var result = Close("stand.SLDASM", discard: true);
+        Assert.True(result.Discarded);
+        Assert.Empty(Sw.Docs);
+    }
+
+    [Fact]
+    public void A_part_an_open_assembly_uses_loses_its_window_and_keeps_its_changes()
+    {
+        var (asm, _, _) = Scene();
+        var plate = Sw.Track(FakeDocument.Part("plate.SLDPRT", PathOf("plate.SLDPRT")));
+        asm.Uses.Add(plate.Document.Path!);
+        plate.Document.Dirty = true;
+        var result = Close("plate.SLDPRT");
+        Assert.Equal(new[] { asm.Document.Path }, result.StillUsedBy);
+        Assert.False(result.Discarded);
+        Assert.Contains(plate, Sw.Docs);
+        Assert.False(plate.Document.Visible);
+        // SOLIDWORKS cleared its save flag with the window; it is set again, so the assembly's save writes the part and
+        // its close asks for discard (4.A live run, round 4).
+        Assert.True(plate.Document.Dirty);
+        Assert.Equal(1, plate.SaveFlagsSet);
+    }
+
+    [Fact]
+    public void A_clean_part_an_open_assembly_uses_is_not_marked_dirty()
+    {
+        var (asm, _, _) = Scene();
+        var plate = Sw.Track(FakeDocument.Part("plate.SLDPRT", PathOf("plate.SLDPRT")));
+        asm.Uses.Add(plate.Document.Path!);
+        Close("plate.SLDPRT");
+        Assert.False(plate.Document.Dirty);
+        Assert.Equal(0, plate.SaveFlagsSet);
+    }
+
+    [Fact]
+    public void A_used_part_that_stays_clean_after_its_flag_is_set_fails_verification()
+    {
+        var (asm, _, _) = Scene();
+        var plate = Sw.Track(FakeDocument.Part("plate.SLDPRT", PathOf("plate.SLDPRT")));
+        asm.Uses.Add(plate.Document.Path!);
+        plate.Document.Dirty = true;
+        plate.SaveFlagIgnored = true;
+        var e = Fails(() => Close("plate.SLDPRT"));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Contains("save it from the assembly", e.Message);
+    }
+
+    // 4.A live run, case 6: SOLIDWORKS unloaded a part the assembly was said to use. That is never a quiet success.
+    [Fact]
+    public void A_used_part_solidworks_unloads_anyway_is_a_verification_failure_naming_the_lost_changes()
+    {
+        var (asm, _, _) = Scene();
+        var plate = Sw.Track(FakeDocument.Part("plate.SLDPRT", PathOf("plate.SLDPRT")));
+        asm.Uses.Add(plate.Document.Path!);
+        plate.Document.Dirty = true;
+        Sw.CloseUnloadsUsed = true;
+        var e = Fails(() => Close("plate.SLDPRT"));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Contains("unsaved changes are lost", e.Message);
+        Assert.Equal(true, e.Error.Details!["unloaded"]);
+    }
+
+    [Fact]
+    public void A_component_with_no_window_cannot_be_closed_by_itself()
+    {
+        var (asm, _, pin) = Scene();
+        var e = Fails(() => Close("pin.SLDPRT"));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal(new object?[] { asm.Document.Path }, (System.Collections.Generic.List<object?>)e.Error.Details!["used_by"]!);
+        Assert.Contains(pin, Sw.Docs);
+    }
+
+    [Fact]
+    public void A_users_part_inside_the_agents_assembly_is_the_agents_to_close()
+    {
+        var (asm, _, _) = Scene();
+        var plate = Sw.Track(FakeDocument.Part("plate.SLDPRT", PathOf("plate.SLDPRT")));
+        asm.Uses.Add(plate.Document.Path!);
+        Assert.Equal(new[] { asm.Document.Path }, Close("plate.SLDPRT").StillUsedBy);
+    }
+
+    [Fact]
+    public void The_users_assembly_is_still_refused()
+    {
+        var (asm, _, _) = Scene();
+        Services.Runtime.Owned.Remove(asm.Document.Path!);
+        Assert.Equal("users_document", Fails(() => Close("stand.SLDASM")).Error.Details!["field"]);
+        Assert.Equal("stand.SLDASM", Close("stand.SLDASM", users: true).Closed.Title);
+    }
+
+    [Fact]
+    public void Components_SOLIDWORKS_kept_loaded_fail_verification()
+    {
+        Scene();
+        Sw.CloseKeepsComponents = true;
+        var e = Fails(() => Close("stand.SLDASM"));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Contains("bracket.SLDPRT", e.Message);
+    }
+}
+
+public class AssemblySaveTests : DocumentTestBase
+{
+    DocumentSaveResult Save(string? document = null) => Run(new DocumentSaveOperation(Services), new DocumentSaveRequest { Document = document });
+
+    (FakeDocument Asm, FakeDocument Bracket, FakeDocument Pin) Scene()
+    {
+        var asm = Sw.Track(new FakeDocument("stand.SLDASM", PathOf("stand.SLDASM"), DocumentType.Assembly));
+        var bracket = Sw.Track(FakeDocument.Part("bracket.SLDPRT", PathOf("bracket.SLDPRT")));
+        var pin = Sw.Track(FakeDocument.Part("pin.SLDPRT", PathOf("pin.SLDPRT")));
+        bracket.Document.Visible = pin.Document.Visible = false;
+        asm.Uses.AddRange(new[] { bracket.Document.Path!, pin.Document.Path! });
+        asm.Document.Dirty = true;
+        return (asm, bracket, pin);
+    }
+
+    [Fact]
+    public void Saves_the_dirty_components_first_then_the_assembly_and_lists_each()
+    {
+        var (asm, bracket, pin) = Scene();
+        bracket.Document.Dirty = true;
+        var result = Save("stand.SLDASM");
+        Assert.Equal(new[] { bracket.Document.Path, asm.Document.Path }, bracket.Saves.Concat(asm.Saves).ToArray());
+        Assert.Empty(pin.Saves);
+        Assert.Equal(new[] { bracket.Document.Path }, result.Referenced.Select(r => r.Path));
+        Assert.False(result.Referenced[0].Document.Dirty);
+        Assert.Equal(asm.Document.Path, result.Path);
+    }
+
+    [Fact]
+    public void An_assembly_with_nothing_dirty_inside_saves_only_itself()
+    {
+        var (asm, _, _) = Scene();
+        Assert.Empty(Save("stand.SLDASM").Referenced);
+        Assert.Single(asm.Saves);
+    }
+
+    [Fact]
+    public void A_part_saves_only_itself_even_when_an_assembly_it_belongs_to_is_dirty()
+    {
+        var (asm, bracket, _) = Scene();
+        bracket.Document.Dirty = true;
+        Assert.Empty(Save("bracket.SLDPRT").Referenced);
+        Assert.Empty(asm.Saves);
+    }
+
+    [Fact]
+    public void A_component_that_will_not_save_stops_before_the_assembly_and_says_what_was_saved()
+    {
+        var (asm, bracket, pin) = Scene();
+        bracket.Document.Dirty = pin.Document.Dirty = true;
+        pin.FailNextSave = new SaveOutcome(false, 1, 0);
+        var e = Fails(() => Save("stand.SLDASM"));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.Empty(asm.Saves);
+        Assert.Equal(new object?[] { bracket.Document.Path }, (System.Collections.Generic.List<object?>)e.Error.Details!["saved"]!);
+        Assert.Contains("stand.SLDASM was not saved", e.Message);
+    }
+}
+
 public class DocumentOpenTests : DocumentTestBase
 {
     DocumentOpenResult Open(DocumentOpenRequest request) => Run(new DocumentOpenOperation(Services), request);
@@ -222,6 +487,46 @@ public class DocumentOpenTests : DocumentTestBase
         Assert.Equal(new[] { "swFileLoadWarning_ModelOutOfDate" }, result.Warnings);
         Assert.Equal((path, DocumentType.Part, false), Sw.Opened[0]);
         Assert.True(Services.Runtime.Owned.Contains(path));
+    }
+
+    [Fact]
+    public void An_assembly_lists_the_component_files_that_are_not_there()
+    {
+        string path = PathOf("stand.SLDASM");
+        File.WriteAllText(path, "asm");
+        string bracket = PathOf("bracket.SLDPRT");
+        File.WriteAllText(bracket, "part");
+        string pin = PathOf("pin.SLDPRT");
+        Sw.OpenWith = p =>
+        {
+            var asm = new FakeDocument("stand.SLDASM", p, DocumentType.Assembly);
+            asm.Uses.AddRange(new[] { bracket, pin });
+            return new OpenOutcome(Sw.Track(asm), 0, 0);
+        };
+        var result = Open(new DocumentOpenRequest { Path = path });
+        Assert.Equal(new[] { pin }, result.Missing);
+    }
+
+    [Fact]
+    public void A_component_loaded_only_for_an_assembly_gets_a_window_and_is_the_agents()
+    {
+        string path = PathOf("pin.SLDPRT");
+        File.WriteAllText(path, "part");
+        var pin = Sw.Track(FakeDocument.Part("pin.SLDPRT", path));
+        pin.Document.Visible = false;
+        var result = Open(new DocumentOpenRequest { Path = path });
+        Assert.False(result.AlreadyOpen);
+        Assert.True(result.Document.Visible);
+        Assert.Single(Sw.Opened);
+        Assert.True(Services.Runtime.Owned.Contains(path));
+    }
+
+    [Fact]
+    public void Nothing_missing_is_an_empty_list()
+    {
+        string path = PathOf("plate.SLDPRT");
+        File.WriteAllText(path, "part");
+        Assert.Empty(Open(new DocumentOpenRequest { Path = path }).Missing);
     }
 
     [Fact]
@@ -577,6 +882,7 @@ abstract class DelegatingSolidWorks : ISolidWorksApplication
     public ISwDocument? ActiveDoc() => Inner.ActiveDoc();
     public string? OpenCommand() => Inner.OpenCommand();
     public string? DefaultPartTemplate() => Inner.DefaultPartTemplate();
+    public string? DefaultAssemblyTemplate() => Inner.DefaultAssemblyTemplate();
     public virtual ISwDocument NewDocument(string template) => Inner.NewDocument(template);
     public OpenOutcome OpenDocument(string path, DocumentType type, bool readOnly) => Inner.OpenDocument(path, type, readOnly);
     public virtual void Close(ISwDocument document) => Inner.Close(document);

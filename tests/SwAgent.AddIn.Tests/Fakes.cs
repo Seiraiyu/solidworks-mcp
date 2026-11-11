@@ -59,12 +59,23 @@ sealed partial class FakeDocument : ISwDocument
         return e;
     }
 
-    public DocumentInfo Info() => new DocumentInfo { Title = Document.Title, Path = Document.Path, Type = Document.Type, Dirty = Document.Dirty };
+    public DocumentInfo Info() => new DocumentInfo { Title = Document.Title, Path = Document.Path, Type = Document.Type, Dirty = Document.Dirty, Visible = Document.Visible };
+
+    /// <summary>The full paths UsedFiles reports: an assembly's components, nested ones included.</summary>
+    public List<string> Uses { get; } = new List<string>();
+
+    public IReadOnlyList<string> UsedFiles() => Uses.ToList();
 
     public byte[]? PersistId(object entity) => ((FakeEntity)entity).Id;
 
     /// <summary>SOLIDWORKS reports a suppressed feature but returns no object for it.</summary>
     public bool SuppressedResolvesToNothing { get; set; }
+
+    /// <summary>
+    /// SOLIDWORKS reports a suppressed component as suppressed; when this is set it also hands back the component, when
+    /// not it returns no object (the 4.A live run saw the reference refused, so one of the two).
+    /// </summary>
+    public bool SuppressedComponentResolves { get; set; }
 
     public object? Resolve(byte[] persistId, out PersistState state)
     {
@@ -77,6 +88,7 @@ sealed partial class FakeDocument : ISwDocument
         state = e.State;
         // A suppressed feature is still an object SOLIDWORKS can hand back; the live run (3.E, round 3) checks that.
         if (e.State == PersistState.Suppressed && e.Kind == ReferenceKind.Feature && !SuppressedResolvesToNothing) return e;
+        if (e.State == PersistState.Suppressed && e.Kind == ReferenceKind.Component && SuppressedComponentResolves) return e;
         return e.State == PersistState.Ok ? e.ResolvesTo ?? e : null;
     }
 
@@ -113,6 +125,18 @@ sealed partial class FakeDocument : ISwDocument
     {
         Activations++;
         Activated?.Invoke();
+    }
+
+    /// <summary>How many times MarkDirty was called.</summary>
+    public int SaveFlagsSet { get; private set; }
+
+    /// <summary>When true, MarkDirty leaves the document clean (SOLIDWORKS ignoring SetSaveFlag).</summary>
+    public bool SaveFlagIgnored { get; set; }
+
+    public void MarkDirty()
+    {
+        SaveFlagsSet++;
+        if (!SaveFlagIgnored) Document.Dirty = true;
     }
 
     /// <summary>When set, the next save reports this instead of saving.</summary>

@@ -36,6 +36,8 @@ internal sealed partial class SolidWorksDocument : ISwDocument
         _sw.ActivateDoc3(Doc.GetTitle(), false, (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, ref errors);
     }
 
+    public void MarkDirty() => Doc.SetSaveFlag();
+
     public SaveOutcome Save()
     {
         int errors = 0, warnings = 0;
@@ -241,6 +243,7 @@ internal sealed partial class SolidWorksDocument : ISwDocument
 
     public bool Select(object entity, bool append) => entity switch
     {
+        IComponent2 component => component.Select4(append, null, false),
         IFeature feature => feature.Select2(append, 0),
         IEntity e => e.Select4(append, null),
         _ => false,
@@ -248,6 +251,7 @@ internal sealed partial class SolidWorksDocument : ISwDocument
 
     public ReferenceKind? KindOf(object entity) => entity switch
     {
+        IComponent2 _ => ReferenceKind.Component,
         IFeature f => FeatureKind(f.GetTypeName2()),
         IFace2 _ => ReferenceKind.Face,
         IEdge _ => ReferenceKind.Edge,
@@ -272,6 +276,7 @@ internal sealed partial class SolidWorksDocument : ISwDocument
 
     public EntityInfo Describe(object entity) => entity switch
     {
+        IComponent2 c => new EntityInfo { Kind = ReferenceKind.Component, Name = c.Name2, Geometry = GeometryType.Other },
         IFeature f => DescribeFeature(f),
         IFace2 face => DescribeFace(face),
         IEdge edge => DescribeEdge(edge),

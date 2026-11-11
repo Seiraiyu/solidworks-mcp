@@ -18,9 +18,9 @@ public sealed class EmptyResult { }
 public class OperationCatalogTests
 {
     [Fact]
-    public void Catalog_holds_the_phase_6A_operations()
+    public void Catalog_holds_the_phase_4A_and_6A_operations()
     {
-        Assert.Equal(new[] { "addin.events", "addin.state", "api.call", "configuration.activate", "configuration.add", "configuration.list", "diag.arm_dialog", "diag.dialog", "diag.edit_sketch", "diag.editing", "diag.scratch_block", "diag.scratch_part", "diag.select", "diag.sleep", "dialog.respond", "dimension.set", "document.close", "document.new", "document.open", "document.rebuild", "document.save", "document.save_as", "export.part", "feature.chamfer", "feature.circular_pattern", "feature.delete", "feature.draft", "feature.extrude", "feature.fillet", "feature.hole", "feature.linear_pattern", "feature.loft", "feature.mirror", "feature.revolve", "feature.rib", "feature.shell", "feature.suppress", "feature.sweep", "model.bounding_box", "model.dimensions", "model.find", "model.mass", "model.measure", "model.rebuild_status", "model.tree", "refgeom.axis", "refgeom.plane", "refgeom.point", "selection.get", "session.hello", "session.status", "sheetmetal.base_flange", "sheetmetal.read", "sheetmetal.set_parameters", "sketch.create", "sketch.modify", "sketch.read" },
+        Assert.Equal(new[] { "addin.events", "addin.state", "api.call", "assembly.components", "assembly.insert", "component.delete", "component.place", "component.set", "configuration.activate", "configuration.add", "configuration.list", "diag.arm_dialog", "diag.dialog", "diag.edit_component", "diag.edit_sketch", "diag.editing", "diag.scratch_block", "diag.scratch_part", "diag.select", "diag.sleep", "dialog.respond", "dimension.set", "document.close", "document.new", "document.open", "document.rebuild", "document.save", "document.save_as", "export.part", "feature.chamfer", "feature.circular_pattern", "feature.delete", "feature.draft", "feature.extrude", "feature.fillet", "feature.hole", "feature.linear_pattern", "feature.loft", "feature.mirror", "feature.revolve", "feature.rib", "feature.shell", "feature.suppress", "feature.sweep", "model.bounding_box", "model.dimensions", "model.find", "model.mass", "model.measure", "model.rebuild_status", "model.tree", "refgeom.axis", "refgeom.plane", "refgeom.point", "selection.get", "session.hello", "session.status", "sheetmetal.base_flange", "sheetmetal.read", "sheetmetal.set_parameters", "sketch.create", "sketch.modify", "sketch.read" },
             OperationCatalog.All.Select(o => o.Name).ToArray());
         var status = OperationCatalog.Find("session.status")!;
         Assert.Equal("session", status.Family);
@@ -147,7 +147,7 @@ public class OperationCatalogTests
     public void Pipe_name_carries_the_process_id()
     {
         Assert.Equal("solidworks-mcp-1234", Protocol.PipeName(1234));
-        Assert.Equal(4, Protocol.Version);
+        Assert.Equal(5, Protocol.Version);
     }
 
     [Fact]
@@ -160,7 +160,7 @@ public class OperationCatalogTests
             OpenDocumentCount = 1, QueuedRequests = 0,
         };
         string json = JsonCodec.Serialize(status);
-        Assert.Contains("\"active_document\":{\"title\":\"Part1\",\"type\":\"part\",\"dirty\":true}", json);
+        Assert.Contains("\"active_document\":{\"title\":\"Part1\",\"type\":\"part\",\"dirty\":true,\"visible\":true}", json);
         Assert.Equal(json, JsonCodec.Serialize(JsonCodec.Deserialize<SessionStatusResult>(json)));
     }
 

@@ -48,8 +48,21 @@ public interface ISwDocument
     /// <summary>True when the document is open read-only.</summary>
     bool ReadOnly { get; }
 
+    /// <summary>
+    /// The full paths of every document this one uses, nested ones included: for an assembly, the files of the components
+    /// SOLIDWORKS holds loaded in its active configuration (not a suppressed one, unless its file is missing); for a part,
+    /// its references (IModelDoc2.GetDependencies2, traversed). Empty for a part that references nothing.
+    /// </summary>
+    System.Collections.Generic.IReadOnlyList<string> UsedFiles();
+
+    /// <summary>The document as an assembly, or null when it is a part or a drawing.</summary>
+    ISwAssembly? Assembly();
+
     /// <summary>Makes it the active document, without rebuilding it.</summary>
     void Activate();
+
+    /// <summary>Marks it as having unsaved changes (IModelDoc2.SetSaveFlag).</summary>
+    void MarkDirty();
 
     /// <summary>Saves it where it is, silently. SOLIDWORKS' swFileSaveError_e and swFileSaveWarning_e flags.</summary>
     SaveOutcome Save();

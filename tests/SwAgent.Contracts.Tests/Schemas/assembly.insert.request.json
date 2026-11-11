@@ -1,0 +1,98 @@
+{
+  "type": "object",
+  "description": "Inserts a part or assembly file into an assembly as a component, at a point (mm, assembly coordinates; the assembly origin by default) with its axes aligned to the assembly's unless x_axis and z_axis are given. The first component of an empty assembly is fixed unless fixed is false; later ones float unless fixed is true. Checked: one more component, of that file and configuration, where it was asked to be; otherwise it is removed again. Returns its reference (r1.component.…): opaque, pass it back exactly as given.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "path": {
+      "type": "string",
+      "description": "Full path of an existing .SLDPRT or .SLDASM file."
+    },
+    "configuration": {
+      "type": "string",
+      "description": "The configuration of the file to use; its active configuration when absent."
+    },
+    "at": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "X, mm."
+        },
+        "y": {
+          "type": "number",
+          "description": "Y, mm."
+        },
+        "z": {
+          "type": "number",
+          "description": "Z, mm."
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "additionalProperties": false,
+      "description": "Where the component's origin goes, mm in the assembly. The assembly origin when absent."
+    },
+    "x_axis": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "X component."
+        },
+        "y": {
+          "type": "number",
+          "description": "Y component."
+        },
+        "z": {
+          "type": "number",
+          "description": "Z component."
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "additionalProperties": false,
+      "description": "The component's x axis in the assembly, with z_axis (both or neither, perpendicular). The assembly's x axis when absent."
+    },
+    "z_axis": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "X component."
+        },
+        "y": {
+          "type": "number",
+          "description": "Y component."
+        },
+        "z": {
+          "type": "number",
+          "description": "Z component."
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "additionalProperties": false,
+      "description": "The component's z axis in the assembly, with x_axis. The assembly's z axis when absent."
+    },
+    "fixed": {
+      "type": "boolean",
+      "description": "Fix it in place. Default: true for the first component of an empty assembly, false otherwise."
+    }
+  },
+  "required": [
+    "path"
+  ],
+  "additionalProperties": false
+}
