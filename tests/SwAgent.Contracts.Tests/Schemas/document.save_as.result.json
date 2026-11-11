@@ -54,13 +54,76 @@
         "type": "string"
       },
       "description": "What SOLIDWORKS warned about while saving (swFileSaveWarning_e names)."
+    },
+    "referenced": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A document saved along with the assembly that uses it.",
+        "properties": {
+          "document": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "description": "The document's title as SOLIDWORKS shows it."
+              },
+              "path": {
+                "type": "string",
+                "description": "The full path, absent while the document has never been saved."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "part",
+                  "assembly",
+                  "drawing"
+                ],
+                "description": "Part, assembly or drawing."
+              },
+              "dirty": {
+                "type": "boolean",
+                "description": "True when the document has unsaved changes."
+              },
+              "visible": {
+                "type": "boolean",
+                "description": "False for a document SOLIDWORKS loaded only because an open assembly uses it: it has no window of its own."
+              }
+            },
+            "required": [
+              "title",
+              "type",
+              "dirty",
+              "visible"
+            ],
+            "additionalProperties": false,
+            "description": "The document, now without unsaved changes."
+          },
+          "path": {
+            "type": "string",
+            "description": "The file written."
+          },
+          "bytes": {
+            "type": "integer",
+            "description": "The file's size in bytes."
+          }
+        },
+        "required": [
+          "document",
+          "path",
+          "bytes"
+        ],
+        "additionalProperties": false
+      },
+      "description": "For document.save of an assembly: the documents it uses that had unsaved changes and were saved first, each where it already was. Empty otherwise."
     }
   },
   "required": [
     "document",
     "path",
     "bytes",
-    "warnings"
+    "warnings",
+    "referenced"
   ],
   "additionalProperties": false
 }

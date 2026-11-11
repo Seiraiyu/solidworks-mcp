@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "Saves a document where it already is. A document never saved needs document.save_as. Checked on disk: the file was written by this call.",
+  "description": "Saves a document where it already is. A document never saved needs document.save_as. Saving an assembly first saves every document it uses that has unsaved changes (its components, nested ones included), so the saved assembly never points at changes that exist only in memory; each file written is listed in referenced. Checked on disk: every file was written by this call.",
   "properties": {
     "document": {
       "type": "string",
