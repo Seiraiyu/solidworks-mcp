@@ -39,6 +39,9 @@ public sealed class EntityInfo
     [Description("Its name, for features, planes, axes and points.")]
     public string? Name { get; set; }
 
+    [Description("In an assembly, the component it belongs to (bracket-1; sub-1/pin-1 inside a subassembly); absent for the assembly's own planes, axes and origin, and in a part. Its position, direction and box are in the assembly's coordinates.")]
+    public string? Component { get; set; }
+
     [Description("The feature that made it, for faces, edges and vertices. An edge or vertex where several features meet names the first; see features.")]
     public string? Feature { get; set; }
 

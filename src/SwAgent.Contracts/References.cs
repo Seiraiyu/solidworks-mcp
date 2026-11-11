@@ -27,12 +27,14 @@ public enum ReferenceKind
 /// <summary>What a reference string carries (design 371, References).</summary>
 public sealed class ReferenceData
 {
-    public ReferenceData(ReferenceKind kind, string documentKey, byte[] persistId, string description)
+    public ReferenceData(ReferenceKind kind, string documentKey, byte[] persistId, string description, string? component = null, string? componentPath = null)
     {
         Kind = kind;
         DocumentKey = documentKey ?? throw new ArgumentNullException(nameof(documentKey));
         PersistId = persistId ?? throw new ArgumentNullException(nameof(persistId));
         Description = description ?? "";
+        Component = string.IsNullOrEmpty(component) ? null : component;
+        ComponentPath = Component == null || string.IsNullOrEmpty(componentPath) ? null : componentPath;
     }
 
     public ReferenceKind Kind { get; }
@@ -45,14 +47,25 @@ public sealed class ReferenceData
 
     /// <summary>What the entity was when the reference was issued; reported by reference_unresolved.</summary>
     public string Description { get; }
+
+    /// <summary>
+    /// For an entity of a component, issued in an assembly (design 455, Assembly references): the component's name at
+    /// issue (sub-1/pin-1), so a reference that no longer resolves can say why (the component is suppressed, lightweight
+    /// or missing). For a component reference, its own name. Null for a part's own entities.
+    /// </summary>
+    public string? Component { get; }
+
+    /// <summary>The full path of the component's file at issue, so a reference never resolves into a file SOLIDWORKS substituted for it; null when it has none or <see cref="Component"/> is null.</summary>
+    public string? ComponentPath { get; }
 }
 
 /// <summary>
 /// Encodes and decodes references: <c>r1.&lt;kind&gt;.&lt;payload&gt;</c>, the payload base64url of a version byte and three
 /// length-prefixed blocks (document key, persistent id, description at issue). Payload version 1 holds the blocks as they
 /// are; version 2 holds them deflated, after the deflated length, and is issued whenever it is shorter (SOLIDWORKS'
-/// persistent ids are long and repetitive: 3.A measured a face reference at 1047 characters). Both are read, so a
-/// reference issued by an earlier add-in keeps working. A string that does not start with <c>r1.</c> is a name, not a
+/// persistent ids are long and repetitive: 3.A measured a face reference at 1047 characters). Versions 3 and 4 are 1 and
+/// 2 with two more blocks, the component's name and file at issue, for an entity of a component named in an assembly
+/// (design 455). All four are read, so a reference issued by an earlier add-in keeps working. A string that does not start with <c>r1.</c> is a name, not a
 /// reference. Opaque to agents; only the kind is meant to be read.
 /// </summary>
 public static class References
@@ -61,6 +74,8 @@ public static class References
 
     const byte Plain = 1;
     const byte Deflated = 2;
+    const byte PlainWithComponent = 3;
+    const byte DeflatedWithComponent = 4;
     const int MaxBlock = 1 << 20;
 
     public static bool IsReference(string? text) => text != null && text.StartsWith(Prefix, StringComparison.Ordinal);
@@ -76,13 +91,19 @@ public static class References
                 WriteBlock(writer, Encoding.UTF8.GetBytes(data.DocumentKey));
                 WriteBlock(writer, data.PersistId);
                 WriteBlock(writer, Encoding.UTF8.GetBytes(data.Description));
+                if (data.Component != null)
+                {
+                    WriteBlock(writer, Encoding.UTF8.GetBytes(data.Component));
+                    WriteBlock(writer, Encoding.UTF8.GetBytes(data.ComponentPath ?? ""));
+                }
             }
             blocks = buffer.ToArray();
         }
+        bool component = data.Component != null;
         byte[] deflated = Deflate(blocks);
         byte[] payload = deflated.Length + 4 < blocks.Length
-            ? Concat(new[] { Deflated }, BitConverter.GetBytes(deflated.Length), deflated)
-            : Concat(new[] { Plain }, blocks);
+            ? Concat(new[] { component ? DeflatedWithComponent : Deflated }, BitConverter.GetBytes(deflated.Length), deflated)
+            : Concat(new[] { component ? PlainWithComponent : Plain }, blocks);
         return Prefix + WireNames.ForEnum(data.Kind) + "." + ToBase64Url(payload);
     }
 
@@ -107,17 +128,24 @@ public static class References
         {
             byte[] blocks = payload[0] switch
             {
-                Plain => Sub(payload, 1, payload.Length - 1),
-                Deflated => Inflate(payload, text, field),
+                Plain or PlainWithComponent => Sub(payload, 1, payload.Length - 1),
+                Deflated or DeflatedWithComponent => Inflate(payload, text, field),
                 _ => throw Malformed(text, field, "has an unknown payload version"),
             };
             using var reader = new BinaryReader(new MemoryStream(blocks), Encoding.UTF8);
             string documentKey = Encoding.UTF8.GetString(ReadBlock(reader));
             byte[] persistId = ReadBlock(reader);
             string description = Encoding.UTF8.GetString(ReadBlock(reader));
+            string? component = null, componentPath = null;
+            if (payload[0] == PlainWithComponent || payload[0] == DeflatedWithComponent)
+            {
+                component = Encoding.UTF8.GetString(ReadBlock(reader));
+                componentPath = Encoding.UTF8.GetString(ReadBlock(reader));
+                if (component.Length == 0) throw Malformed(text, field, "has an empty component");
+            }
             if (reader.BaseStream.Position != blocks.Length) throw Malformed(text, field, "has bytes after its payload");
             if (persistId.Length == 0 || documentKey.Length == 0) throw Malformed(text, field, "has an empty document or persistent id");
-            return new ReferenceData((ReferenceKind)kind!, documentKey, persistId, description);
+            return new ReferenceData((ReferenceKind)kind!, documentKey, persistId, description, component, componentPath);
         }
         catch (EndOfStreamException)
         {
