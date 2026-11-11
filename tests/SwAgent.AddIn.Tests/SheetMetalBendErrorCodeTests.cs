@@ -140,4 +140,54 @@ public class SheetMetalBendErrorCodeTests : SheetMetalBendTestBase
         Assert.DoesNotContain(doc.Tree, f => f.Type == SheetMetalParts.UnfoldType);
         Assert.Equal(folded, doc.MassProperties.VolumeMm3, 9);
     }
+
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Sheetmetal_convert_reaches_every_listed_code(ErrorCode code)
+    {
+        SheetMetalFeatureResult Convert(SheetMetalConvertRequest r) => Run(new SheetMetalConvertOperation(Services), r);
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Fails(() => Convert(new SheetMetalConvertRequest { FixedFace = "r1.face.x", BendEdges = new List<string> { "r1.edge.x" }, ThicknessMm = 2, BendRadiusMm = 3 })).Code);
+            return;
+        }
+        var doc = Part();
+        Block();
+        doc.ExactBox = new Box3 { Min = new Point3(0, 0, 0), Max = new Point3(60, 40, 50) };
+        var floor = doc.Add(ReferenceKind.Face, new EntityInfo { Feature = "Boss-Extrude1", Geometry = GeometryType.Plane, Normal = new Vector3(0, 1, 0), Origin = new Point3(31, 2, 25), DistanceMm = 0 });
+        var wall = doc.Add(ReferenceKind.Face, new EntityInfo { Feature = "Boss-Extrude1", Geometry = GeometryType.Plane, Normal = new Vector3(1, 0, 0), Origin = new Point3(2, 21, 25), DistanceMm = 0 });
+        var edge = doc.Corner(floor, wall, new Point3(2, 2, 25), new Vector3(0, 0, 1), 50);
+        var request = new SheetMetalConvertRequest { FixedFace = Ref(doc, floor), BendEdges = new List<string> { Ref(doc, edge) }, ThicknessMm = 2, BendRadiusMm = 3 };
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.ThicknessMm = 0;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                edge.State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch1";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.ConvertBoxGrowth = 5;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Convert(request)).Code);
+        Assert.False(SheetMetalParts.IsSheetMetal(doc));
+        Assert.Equal(8000, doc.MassProperties!.VolumeMm3, 9);
+    }
 }

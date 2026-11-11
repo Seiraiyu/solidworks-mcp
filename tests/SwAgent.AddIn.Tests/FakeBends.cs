@@ -171,6 +171,14 @@ sealed partial class FakeDocument
         }
     }
 
+    /// <summary>A straight edge of a solid between faces <paramref name="a"/> and <paramref name="b"/>, through <paramref name="middle"/> along <paramref name="axis"/>.</summary>
+    public FakeEntity Corner(FakeEntity a, FakeEntity b, Point3 middle, Vector3 axis, double length)
+    {
+        var edge = Add(ReferenceKind.Edge, new EntityInfo { Feature = a.Info.Feature, Geometry = GeometryType.Line, LengthMm = length, Axis = axis, Origin = middle });
+        _adjacent[edge] = new List<FakeEntity> { a, b };
+        return edge;
+    }
+
     public List<(object FixedFace, IReadOnlyList<object> Edges, ConvertSpec Spec)> Converts { get; } = new List<(object, IReadOnlyList<object>, ConvertSpec)>();
 
     /// <summary>The part's default allowance after a convert (SOLIDWORKS' own default).</summary>

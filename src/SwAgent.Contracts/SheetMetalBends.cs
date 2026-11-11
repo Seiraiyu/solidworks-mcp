@@ -94,3 +94,34 @@ public sealed class SheetMetalFoldRequest
     [Description("A planar face of the sheet, by reference, that stays where it is. The fixed face of the Unfold that unfolded the bends when absent.")]
     public string? FixedFace { get; set; }
 }
+
+[Operation("sheetmetal.convert", typeof(SheetMetalFeatureResult))]
+[Description("Turns an ordinary solid of constant wall thickness (an L or U profile extruded) into the part's sheet metal: fixed_face stays where it is, and each sharp inner edge named becomes a bend of bend_radius_mm (inner radius). The allowance becomes the part's default (SOLIDWORKS' own when absent). Refused on a part that is already sheet metal: a part has one sheet-metal body. Lengths in mm. Checked before SOLIDWORKS is called: the fixed face is planar and borders a bend edge; each bend edge is straight, between two planar faces, and an inner (concave) corner. Checked after: the part is sheet metal with one sheet body, Sheet-Metal and Flat-Pattern exist, the thickness reads back and measures thickness_mm; one bend per edge named at the radius asked; the part's box is unchanged within the thickness. Otherwise everything it made is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class SheetMetalConvertRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The face that stays put, by reference: a planar inner face of the solid, one that borders a bend edge (model.find gives it). An outer face is refused.")]
+    public string FixedFace { get; set; } = "";
+
+    [Required]
+    [Description("The sharp inner edges that become bends, by reference (model.find gives them).")]
+    public List<string> BendEdges { get; set; } = new List<string>();
+
+    [Description("The sheet's thickness, mm, more than 0: the solid's wall thickness.")]
+    public double ThicknessMm { get; set; }
+
+    [Description("The bends' inner radius, mm, more than 0; it becomes the part's default.")]
+    public double BendRadiusMm { get; set; }
+
+    [Description("The part's default bend allowance: exactly one of k_factor, allowance_mm or deduction_mm. SOLIDWORKS' own default when absent.")]
+    public BendAllowance? Allowance { get; set; }
+
+    [Description("Thicken to the other side of the fixed face (inward, so the part shrinks by the thickness). Default false.")]
+    public bool? ReverseThickness { get; set; }
+
+    [Description("Keep the original solid as a body beside the sheet. Default false.")]
+    public bool? KeepBody { get; set; }
+}

@@ -52,6 +52,13 @@ public class SheetMetalBendContractTests
     }
 
     [Fact]
+    public void Convert_needs_its_fixed_face_bend_edges_thickness_and_radius()
+    {
+        IsSheetMetalChange("sheetmetal.convert", typeof(SheetMetalConvertRequest), typeof(SheetMetalFeatureResult));
+        Assert.Equal(new[] { "fixed_face", "bend_edges", "thickness_mm", "bend_radius_mm" }, Required(typeof(SheetMetalConvertRequest)).ToArray());
+    }
+
+    [Fact]
     public void Protocol_8_speaks_bends_and_flattening()
     {
         Assert.Equal(8, Protocol.Version);

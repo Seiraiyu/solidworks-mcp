@@ -377,3 +377,153 @@ public sealed class SheetMetalFoldOperation : ModelChangeOperation<SheetMetalFol
         result.Sheet = SheetMetalParts.Facts(Services.References, doc, bends);
     }
 }
+
+public sealed class SheetMetalConvertOperation : ModelChangeOperation<SheetMetalConvertRequest, SheetMetalFeatureResult>
+{
+    const string What = "convert to sheet metal";
+
+    /// <summary>SOLIDWORKS' type name of the convert feature (CADapter: Convert-Solid1).</summary>
+    const string Type = "SolidToSheetMetal";
+
+    ConvertSpec? _spec;
+    BendAllowance? _allowance;
+    int _edges;
+    Box3? _boxBefore;
+
+    public SheetMetalConvertOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(SheetMetalConvertRequest request) => request.Document;
+
+    /// <summary>Two faces are the same face of the part: the same object, or the same persistent id.</summary>
+    static bool Same(ISwDocument doc, object a, object b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        byte[]? x = doc.PersistId(a), y = doc.PersistId(b);
+        return x != null && y != null && x.SequenceEqual(y);
+    }
+
+    protected override SheetMetalFeatureResult Change(ISwDocument doc, SheetMetalConvertRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        var spec = new ConvertSpec
+        {
+            ThicknessMm = FeatureFacts.Length(request.ThicknessMm, "thickness_mm", "a conversion to sheet metal"),
+            BendRadiusMm = FeatureFacts.Length(request.BendRadiusMm, "bend_radius_mm", "a conversion to sheet metal"),
+            ReverseThickness = request.ReverseThickness == true,
+            KeepBody = request.KeepBody == true,
+        };
+        var allowance = request.Allowance == null ? null : SheetMetalParts.Allowance(request.Allowance, "allowance");
+        if (SheetMetalParts.IsSheetMetal(doc) || doc.SheetMetal.SheetBodyCount() > 0)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{doc.Info().Title} is already sheet metal, and a part has one sheet-metal body: its thickness belongs to the part. Nothing was changed",
+                new JsonObject { ["field"] = "document" });
+        }
+        if (doc.SolidBodyCount() == 0) throw FeatureFacts.Invalid("document", $"{doc.Info().Title} has no solid body to convert");
+        var references = Services.References;
+        var (face, _) = references.Resolve(doc, request.FixedFace, "fixed_face", ReferenceKind.Face);
+        if (doc.Describe(face).Geometry != GeometryType.Plane)
+            throw FeatureFacts.Invalid("fixed_face", "fixed_face is not planar: the face that stays put is a planar inner face of the solid");
+        if (request.BendEdges.Count == 0) throw FeatureFacts.Invalid("bend_edges", "name at least one sharp inner edge to become a bend (model.find gives them)");
+        var edges = FeatureFacts.Entities(references, doc, request.BendEdges, "bend_edges", ReferenceKind.Edge);
+        bool borders = false;
+        for (int i = 0; i < edges.Count; i++)
+        {
+            string at = $"/bend_edges/{i}";
+            var info = doc.Describe(edges[i]);
+            var faces = doc.SheetMetal.AdjacentFaces(edges[i]).Select(f => (Face: f, Info: doc.Describe(f))).ToList();
+            if (info.Geometry != GeometryType.Line || info.Origin == null || info.Axis == null || faces.Count != 2
+                || faces.Any(f => f.Info.Geometry != GeometryType.Plane || f.Info.Normal == null || f.Info.Origin == null))
+                throw FeatureFacts.Invalid(at, $"{at} is not a straight edge between two planar faces: a bend edge is a sharp corner of the solid's walls");
+            if (!ConvertGeometry.Concave(info.Origin, info.Axis, faces[0].Info.Normal!, faces[0].Info.Origin!, faces[1].Info.Normal!, faces[1].Info.Origin!))
+                throw FeatureFacts.Invalid(at, $"{at} is an outer (convex) corner: SOLIDWORKS bends the inner corner of a wall, so name the edge inside it");
+            borders |= faces.Any(f => Same(doc, f.Face, face));
+        }
+        if (!borders)
+            throw FeatureFacts.Invalid("fixed_face", "fixed_face borders none of the bend edges: name an inner face beside one (SOLIDWORKS converts nothing from an outer face, without saying why)");
+        _spec = spec;
+        _allowance = allowance;
+        _edges = edges.Count;
+        _boxBefore = doc.BoundingBox(true);
+        var before = new HashSet<string>(doc.Features().Select(f => f.Name), StringComparer.Ordinal);
+        doc.SheetMetal.ConvertToSheet(face, edges, spec);
+        var made = doc.Features().Where(f => f.Parent == null && !before.Contains(f.Name)).ToList();
+        var convert = made.FirstOrDefault(f => f.Type == Type)
+            ?? throw FeatureFacts.NotMade(doc, "conversion to sheet metal", $"of {doc.Info().Title}", "check that fixed_face is an inner face beside a bend edge and each bend edge a sharp inner corner of walls thickness_mm thick");
+        foreach (var other in made.Where(f => !ReferenceEquals(f.Feature, convert.Feature)))
+        {
+            string name = other.Name;
+            tx.Made(new CreatedItem { Name = name, Kind = ReferenceKind.Feature, Reference = references.Describe(doc, other.Feature).Reference }, () =>
+            {
+                if (doc.FeatureByName(name) is object left)
+                {
+                    doc.Delete(left, children: false, absorbed: false);
+                    doc.Rebuild(false);
+                }
+            });
+        }
+        var result = FeatureFacts.Made(references, doc, convert.Feature, tx);
+        if (allowance != null)
+        {
+            doc.SheetMetal.SetDefaults(new SheetDefaultsEdit { Allowance = allowance });
+            doc.Rebuild(false);
+        }
+        return Flanges.Result(new[] { result });
+    }
+
+    /// <summary>One sheet body of the thickness asked, a bend per edge at the radius asked, and the box as it was within the thickness.</summary>
+    protected override void Check(ISwDocument doc, SheetMetalConvertRequest request, SheetMetalFeatureResult result)
+    {
+        var spec = _spec!;
+        var checks = result.Checks;
+        var probe = new FeatureResult { Feature = result.Feature, Faces = result.Faces, Checks = checks };
+        FeatureFacts.ExpectType(doc, probe, Type, What);
+        int sheets = doc.SheetMetal.SheetBodyCount();
+        bool flat = doc.Features().Any(f => f.Type == SheetMetalParts.FlatPatternType);
+        if (!SheetMetalParts.IsSheetMetal(doc) || !flat || sheets != 1)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"the part is not one sheet-metal body after the conversion: SheetMetal feature {(SheetMetalParts.IsSheetMetal(doc) ? "present" : "missing")}, Flat-Pattern {(flat ? "present" : "missing")}, {sheets} sheet bodies",
+                new JsonObject { ["check"] = "sheet_metal", ["sheet_bodies"] = sheets });
+        }
+        SheetMetalParts.ThicknessIs(doc, spec.ThicknessMm, checks);
+        var defaults = doc.SheetMetal.Defaults()!;
+        FeatureChecks.Near("bend_radius", "the part's default bend radius as SOLIDWORKS reads it back", spec.BendRadiusMm, defaults.BendRadiusMm, 1e-6, "mm");
+        var bends = doc.SheetMetal.Bends().ToList();
+        if (bends.Count != _edges)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"the conversion made {bends.Count} bends from {_edges} bend edges, not one per edge",
+                new JsonObject { ["check"] = "bends", ["expected"] = _edges, ["measured"] = bends.Count });
+        }
+        Flanges.BendsAre(bends, null, spec.BendRadiusMm, _allowance ?? defaults.Allowance);
+        checks.Add(FormattableString.Invariant($"{bends.Count} bends, one per edge, at inner radius {spec.BendRadiusMm:0.####} mm and {_allowance ?? defaults.Allowance}"));
+        Box(doc, spec.ThicknessMm, checks);
+        result.Sheet = SheetMetalParts.Facts(Services.References, doc, bends);
+    }
+
+    /// <summary>Every side of the part's box is where it was, within the thickness (a reversed thickness moves the walls in by it).</summary>
+    void Box(ISwDocument doc, double t, List<string> checks)
+    {
+        var before = _boxBefore;
+        var after = doc.BoundingBox(true);
+        if (before == null || after == null)
+        {
+            checks.Add("the part's box was not compared: SOLIDWORKS gave none");
+            return;
+        }
+        double moved = new[]
+        {
+            after.Min.X - before.Min.X, after.Min.Y - before.Min.Y, after.Min.Z - before.Min.Z,
+            after.Max.X - before.Max.X, after.Max.Y - before.Max.Y, after.Max.Z - before.Max.Z,
+        }.Max(Math.Abs);
+        if (moved > t + 1e-3)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                FormattableString.Invariant($"a side of the part's box moved {moved:0.####} mm in the conversion, more than the {t:0.####} mm thickness: the solid was not converted as it was"),
+                new JsonObject { ["check"] = "box", ["expected"] = t, ["measured"] = moved });
+        }
+        checks.Add(FormattableString.Invariant($"the part's box is as it was within {moved:0.####} mm (the thickness is {t:0.####} mm)"));
+    }
+}

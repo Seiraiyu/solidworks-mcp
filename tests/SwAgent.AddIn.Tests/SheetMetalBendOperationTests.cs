@@ -377,3 +377,137 @@ public class SheetMetalUnfoldFoldTests : SheetMetalBendTestBase
         Assert.Equal("flattened", Fails(() => Fold(new SheetMetalFoldRequest())).Error.Details!["state"]);
     }
 }
+
+/// <summary>
+/// An extruded L of 60 × 40 mm with a 2 mm wall, 50 mm deep, its outer corner at the origin: the inner face of its
+/// 60 mm leg (the floor, facing +y) and of its 40 mm leg (the wall, facing +x) meet at the inner corner (2, 2); the
+/// outer faces meet at (0, 0). For a U, a second wall faces -x at x = 58.
+/// </summary>
+public class SheetMetalConvertTests : SheetMetalBendTestBase
+{
+    internal SheetMetalFeatureResult Convert(SheetMetalConvertRequest request) => Run(new SheetMetalConvertOperation(Services), request);
+
+    FakeDocument _doc = null!;
+    FakeEntity _floor = null!, _wall = null!, _inner = null!, _outer = null!, _bottom = null!;
+
+    FakeEntity Face(Vector3 normal, Point3 centre) =>
+        _doc.Add(ReferenceKind.Face, new EntityInfo { Feature = "Boss-Extrude1", Geometry = GeometryType.Plane, Normal = normal, Origin = centre, DistanceMm = 0, AreaMm2 = 1000 });
+
+    void L()
+    {
+        _doc = Part();
+        Block();
+        _doc.ExactBox = new Box3 { Min = new Point3(0, 0, 0), Max = new Point3(60, 40, 50) };
+        _floor = Face(new Vector3(0, 1, 0), new Point3(31, 2, 25));
+        _wall = Face(new Vector3(1, 0, 0), new Point3(2, 21, 25));
+        _bottom = Face(new Vector3(0, -1, 0), new Point3(30, 0, 25));
+        var back = Face(new Vector3(-1, 0, 0), new Point3(0, 20, 25));
+        _inner = _doc.Corner(_floor, _wall, new Point3(2, 2, 25), new Vector3(0, 0, 1), 50);
+        _outer = _doc.Corner(_bottom, back, new Point3(0, 0, 25), new Vector3(0, 0, 1), 50);
+    }
+
+    SheetMetalConvertRequest Request(params FakeEntity[] edges) => new SheetMetalConvertRequest
+    {
+        FixedFace = Ref(_doc, _floor),
+        BendEdges = edges.Select(e => Ref(_doc, e)).ToList(),
+        ThicknessMm = 2,
+        BendRadiusMm = 3,
+    };
+
+    [Fact]
+    public void An_L_becomes_sheet_metal_with_one_bend_at_its_inner_corner_and_its_box_as_it_was()
+    {
+        L();
+        var made = Convert(Request(_inner));
+        Assert.Equal("Convert-Solid1", made.Feature.Name);
+        Assert.Equal(new[] { "Sheet-Metal1", "Flat-Pattern1", "Convert-Solid1" }, made.Change.Created.Select(c => c.Name));
+        var bend = Assert.Single(made.Sheet.Bends);
+        Assert.Equal(3, bend.InnerRadiusMm);
+        Assert.Equal(2, made.Sheet.ThicknessMm);
+        Assert.Contains(made.Checks, c => c.Contains("measures 2 mm between the sheet's two faces"));
+        Assert.Contains("1 bends, one per edge, at inner radius 3 mm and K 0.5", made.Checks);
+        Assert.Contains("the part's box is as it was within 0 mm (the thickness is 2 mm)", made.Checks);
+        var (face, edges, spec) = _doc.Converts.Single();
+        Assert.Same(_floor, face);
+        Assert.Same(_inner, Assert.Single(edges));
+        Assert.Equal((2.0, 3.0, false, false, 2.0), (spec.ThicknessMm, spec.BendRadiusMm, spec.ReverseThickness, spec.KeepBody, spec.GapMm));
+        Assert.Empty(_doc.DefaultEdits);
+    }
+
+    [Fact]
+    public void A_U_converts_with_a_bend_per_edge_and_an_allowance_given_becomes_the_parts_default()
+    {
+        L();
+        var right = Face(new Vector3(-1, 0, 0), new Point3(58, 21, 25));
+        var second = _doc.Corner(_floor, right, new Point3(58, 2, 25), new Vector3(0, 0, 1), 50);
+        var request = Request(_inner, second);
+        request.Allowance = new BendAllowance { KFactor = 0.1 };
+        request.KeepBody = true;
+        var made = Convert(request);
+        Assert.Equal(2, made.Sheet.Bends.Count);
+        Assert.All(made.Sheet.Bends, b => Assert.Equal(0.1, b.Allowance.KFactor));
+        Assert.Equal(0.1, _doc.DefaultEdits.Single().Allowance!.KFactor);
+        Assert.True(_doc.Converts.Single().Spec.KeepBody);
+    }
+
+    [Fact]
+    public void What_cannot_convert_is_refused_before_SOLIDWORKS_sees_it()
+    {
+        L();
+        string Field(SheetMetalConvertRequest r) => (string)Fails(() => Convert(r)).Error.Details!["field"]!;
+        var r = Request(_inner);
+        r.ThicknessMm = 0;
+        Assert.Equal("thickness_mm", Field(r));
+        r = Request(_inner);
+        r.BendRadiusMm = 0;
+        Assert.Equal("bend_radius_mm", Field(r));
+        Assert.Equal("bend_edges", Field(Request()));
+        Assert.Equal("/bend_edges/0", Field(Request(_outer)));
+        var arc = _doc.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Circle, Feature = "Boss-Extrude1" });
+        Assert.Equal("/bend_edges/0", Field(Request(arc)));
+        r = Request(_inner);
+        r.FixedFace = Ref(_doc, _bottom);
+        Assert.Equal("fixed_face", Field(r));
+        Assert.Contains("borders none of the bend edges", Fails(() => Convert(r)).Message);
+        Assert.Empty(_doc.Converts);
+    }
+
+    [Fact]
+    public void A_part_that_is_already_sheet_metal_is_refused()
+    {
+        var doc = Tabbed();
+        var e = Fails(() => Convert(new SheetMetalConvertRequest { FixedFace = Base(doc), BendEdges = new List<string> { Top(doc) }, ThicknessMm = 2, BendRadiusMm = 3 }));
+        Assert.Equal("document", e.Error.Details!["field"]);
+        Assert.Contains("already sheet metal", e.Message);
+    }
+
+    [Theory]
+    [InlineData("edge", "bends")]
+    [InlineData("box", "box")]
+    public void A_conversion_that_is_not_what_was_asked_is_deleted_whole(string fault, string check)
+    {
+        L();
+        var right = Face(new Vector3(-1, 0, 0), new Point3(58, 21, 25));
+        var second = _doc.Corner(_floor, right, new Point3(58, 2, 25), new Vector3(0, 0, 1), 50);
+        if (fault == "edge") _doc.ConvertDropsAnEdge = true;
+        if (fault == "box") _doc.ConvertBoxGrowth = 5;
+        var e = Fails(() => Convert(Request(_inner, second)));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal(check, e.Error.Details!["check"]);
+        Assert.DoesNotContain(_doc.Tree, f => f.Type == SheetMetalParts.SheetMetalType || f.Type == SheetMetalParts.FlatPatternType || f.Type == "SolidToSheetMetal");
+        Assert.False(SheetMetalParts.IsSheetMetal(_doc));
+        Assert.Equal(0, _doc.SheetBodies);
+        Assert.Empty(_doc.SheetMetal.Bends());
+        Assert.Equal(60, _doc.ExactBox!.Max.X);
+    }
+
+    [Fact]
+    public void SOLIDWORKS_converting_nothing_fails()
+    {
+        L();
+        _doc.FeatureRefuses = true;
+        var e = Fails(() => Convert(Request(_inner)));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.Contains("SOLIDWORKS made no conversion to sheet metal", e.Message);
+    }
+}

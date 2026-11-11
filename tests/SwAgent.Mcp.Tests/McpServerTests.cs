@@ -71,6 +71,27 @@ public class McpServerTests
         Assert.Equal(TimeSpan.FromSeconds(60), OperationFamilies.DefaultFor("sheetmetal.hem", TimeSpan.Zero));
     }
     [Fact]
+    public async Task The_bend_and_flattening_tools_are_listed_with_their_contracts()
+    {
+        await using var server = await InProcessServer.StartAsync(NoSolidWorks());
+        var tools = (await server.Client.ListToolsAsync()).ToDictionary(t => t.Name);
+        foreach (var (name, request) in new[]
+        {
+            ("sw_sheetmetal_sketched_bend", typeof(SheetMetalSketchedBendRequest)),
+            ("sw_sheetmetal_flatten", typeof(SheetMetalFlattenRequest)),
+            ("sw_sheetmetal_unfold", typeof(SheetMetalUnfoldRequest)),
+            ("sw_sheetmetal_fold", typeof(SheetMetalFoldRequest)),
+            ("sw_sheetmetal_convert", typeof(SheetMetalConvertRequest)),
+        })
+        {
+            Assert.Equal(Json.Write(SwTool.WithDeadline(JsonSchema.For(request))), Json.Write(Json.Parse(tools[name].JsonSchema.GetRawText())));
+            Assert.False(tools[name].ProtocolTool.Annotations!.ReadOnlyHint);
+        }
+        Assert.StartsWith("Flattens a sheet-metal part (flat true)", tools["sw_sheetmetal_flatten"].Description);
+        Assert.Equal(TimeSpan.FromSeconds(60), OperationFamilies.DefaultFor("sheetmetal.convert", TimeSpan.Zero));
+    }
+
+    [Fact]
     public async Task Sw_status_composes_the_state_the_addin_state_and_the_session()
     {
         using var addin = new FakeAddin();
