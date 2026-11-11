@@ -171,13 +171,18 @@ internal sealed class SolidWorksAssembly : ISwAssembly
     public double DistanceMm(object component, object entity, Point3 point) =>
         SolidWorksDocument.Distance(entity, Placement.ToComponent(TransformOf((IComponent2)component), point));
 
+    /// <summary>
+    /// A component's share: its own document's mass, its centre moved into the assembly. Not IMassProperty2.SelectedItems:
+    /// on SOLIDWORKS 2026 SP4 setting it to a component crashed SOLIDWORKS (auCmdTarget_c::objectFromDispatch; plan 4.B,
+    /// Task 14 round 1). The share is therefore the file's active configuration, not necessarily the one the assembly uses.
+    /// </summary>
     public ModelMassResult? Mass(object component)
     {
-        if (!(_doc.Extension.CreateMassProperty2() is IMassProperty2 mp)) return null;
-        mp.UseSystemUnits = true;
-        mp.IncludeHiddenBodiesOrComponents = true;
-        mp.SelectedItems = new object[] { component };
-        return SolidWorksDocument.MassOf(mp);
+        var c = (IComponent2)component;
+        if (!(c.GetModelDoc2() is IModelDoc2 model)) return null;
+        var mass = new SolidWorksDocument(_sw, model).Mass();
+        if (mass?.CenterOfMass != null) mass.CenterOfMass = Placement.ToAssembly(TransformOf(c), mass.CenterOfMass);
+        return mass;
     }
 
     internal static Constraint MapConstraint(int status) => status switch
