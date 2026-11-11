@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "Opens a part, assembly or drawing from a local file and makes it the active document. A document that is already open is made active, not opened again. A document this call opened is the agent's own, so document.close may close it.",
+  "description": "Opens a part, assembly or drawing from a local file and makes it the active document. An assembly opens with every component resolved (never lightweight); component files that are missing are listed, never searched for with a dialog. A document that is already open is made active, not opened again. A document this call opened is the agent's own, so document.close may close it.",
   "properties": {
     "path": {
       "type": "string",

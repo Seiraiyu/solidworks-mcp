@@ -86,7 +86,10 @@ sealed class FakeSolidWorks : ISolidWorksApplication
     public ISwDocument NewDocument(string template)
     {
         NewFrom.Add(template);
-        var doc = NewHasPlanes ? FakeDocument.Part("Part" + (NewFrom.Count + 1)) : new FakeDocument("Part" + (NewFrom.Count + 1));
+        bool assembly = template.EndsWith(".ASMDOT", System.StringComparison.OrdinalIgnoreCase);
+        string title = (assembly ? "Assem" : "Part") + (NewFrom.Count + 1);
+        var doc = NewHasPlanes ? FakeDocument.Part(title) : new FakeDocument(title);
+        if (assembly) doc.Document.Type = DocumentType.Assembly;
         Track(doc);
         doc.Document.Dirty = false;
         CurrentDoc = doc;

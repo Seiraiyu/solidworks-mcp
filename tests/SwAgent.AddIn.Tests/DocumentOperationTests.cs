@@ -81,12 +81,70 @@ public class DocumentNewTests : DocumentTestBase
     }
 
     [Fact]
-    public void Only_parts_in_this_version()
+    public void Drawings_are_not_made_in_this_version()
     {
-        var e = Fails(() => New(new DocumentNewRequest { Type = DocumentType.Assembly }));
+        var e = Fails(() => New(new DocumentNewRequest { Type = DocumentType.Drawing }));
         Assert.Equal(ErrorCode.InvalidArgument, e.Code);
         Assert.Equal("type", e.Error.Details!["field"]);
         Assert.Empty(Sw.NewFrom);
+    }
+
+    string AssemblyTemplate()
+    {
+        string template = PathOf("Assembly.ASMDOT");
+        File.WriteAllText(template, "template");
+        Sw.DefaultAsmTemplate = template;
+        return template;
+    }
+
+    [Fact]
+    public void Makes_an_assembly_from_the_default_assembly_template_and_owns_it()
+    {
+        string template = AssemblyTemplate();
+        string path = PathOf("stand.SLDASM");
+        var result = New(new DocumentNewRequest { Type = DocumentType.Assembly, Path = path });
+        Assert.Equal(DocumentType.Assembly, result.Document.Type);
+        Assert.Equal(template, result.Template);
+        Assert.Equal(new[] { template }, Sw.NewFrom);
+        Assert.Equal(path, result.Document.Path);
+        Assert.True(Services.Runtime.Owned.Contains(path));
+    }
+
+    [Fact]
+    public void An_assembly_takes_an_assembly_template_and_path_only()
+    {
+        AssemblyTemplate();
+        var e = Fails(() => New(new DocumentNewRequest { Type = DocumentType.Assembly, Template = Template }));
+        Assert.Equal("template", e.Error.Details!["field"]);
+        e = Fails(() => New(new DocumentNewRequest { Type = DocumentType.Assembly, Path = PathOf("stand.SLDPRT") }));
+        Assert.Equal("path", e.Error.Details!["field"]);
+        Assert.Empty(Sw.NewFrom);
+    }
+
+    [Fact]
+    public void No_default_assembly_template_says_where_to_set_one()
+    {
+        var e = Fails(() => New(new DocumentNewRequest { Type = DocumentType.Assembly }));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.Contains("default assembly template", e.Message);
+    }
+
+    [Fact]
+    public void A_command_left_open_on_a_new_assembly_fails_verification()
+    {
+        AssemblyTemplate();
+        Sw.OpenCommandTitle = "Begin Assembly";
+        var e = Fails(() => New(new DocumentNewRequest { Type = DocumentType.Assembly }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("Begin Assembly", e.Error.Details!["command"]);
+        Assert.Contains("insert_component_for_new_assembly", e.Message);
+    }
+
+    [Fact]
+    public void A_command_open_after_a_new_part_is_not_this_operations_concern()
+    {
+        Sw.OpenCommandTitle = "Extrude";
+        Assert.Equal(DocumentType.Part, New(new DocumentNewRequest()).Document.Type);
     }
 
     [Theory]
@@ -222,6 +280,32 @@ public class DocumentOpenTests : DocumentTestBase
         Assert.Equal(new[] { "swFileLoadWarning_ModelOutOfDate" }, result.Warnings);
         Assert.Equal((path, DocumentType.Part, false), Sw.Opened[0]);
         Assert.True(Services.Runtime.Owned.Contains(path));
+    }
+
+    [Fact]
+    public void An_assembly_lists_the_component_files_that_are_not_there()
+    {
+        string path = PathOf("stand.SLDASM");
+        File.WriteAllText(path, "asm");
+        string bracket = PathOf("bracket.SLDPRT");
+        File.WriteAllText(bracket, "part");
+        string pin = PathOf("pin.SLDPRT");
+        Sw.OpenWith = p =>
+        {
+            var asm = new FakeDocument("stand.SLDASM", p, DocumentType.Assembly);
+            asm.Uses.AddRange(new[] { bracket, pin });
+            return new OpenOutcome(Sw.Track(asm), 0, 0);
+        };
+        var result = Open(new DocumentOpenRequest { Path = path });
+        Assert.Equal(new[] { pin }, result.Missing);
+    }
+
+    [Fact]
+    public void Nothing_missing_is_an_empty_list()
+    {
+        string path = PathOf("plate.SLDPRT");
+        File.WriteAllText(path, "part");
+        Assert.Empty(Open(new DocumentOpenRequest { Path = path }).Missing);
     }
 
     [Fact]

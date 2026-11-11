@@ -54,13 +54,21 @@
         "type": "string"
       },
       "description": "What SOLIDWORKS warned about while opening it (swFileLoadWarning_e names), for example swFileLoadWarning_ModelOutOfDate."
+    },
+    "missing": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Files the document uses (an assembly's components) that SOLIDWORKS could not find; those components stay suppressed. Empty when nothing is missing."
     }
   },
   "required": [
     "document",
     "already_open",
     "read_only",
-    "warnings"
+    "warnings",
+    "missing"
   ],
   "additionalProperties": false
 }
