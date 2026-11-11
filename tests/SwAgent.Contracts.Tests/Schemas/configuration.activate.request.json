@@ -1,10 +1,10 @@
 {
   "type": "object",
-  "description": "Makes one of a part's configurations active; SOLIDWORKS then shows and rebuilds the part as that configuration has it. Checked: it is active and the part rebuilds without a new error; otherwise the one that was active is active again (rolled back). The evidence block's volume before and after shows what changed. Busy with user_editing while the user is editing a sketch or has a command open.",
+  "description": "Makes one of a part's or an assembly's configurations active; SOLIDWORKS then shows and rebuilds the document as that configuration has it (in an assembly, with each component's suppression, configuration and position as it sets them). Checked: it is active and the document rebuilds without a new error; otherwise the one that was active is active again (rolled back). The evidence block's volume before and after shows what changed. Busy with user_editing while the user is editing a sketch, has a command open, or is editing a component in the assembly's context.",
   "properties": {
     "document": {
       "type": "string",
-      "description": "The part: its title or full path. The active document when absent."
+      "description": "The part or assembly: its title or full path. The active document when absent."
     },
     "name": {
       "type": "string",

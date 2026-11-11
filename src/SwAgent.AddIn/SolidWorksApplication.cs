@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using SolidWorks.Interop.sldworks;
@@ -56,6 +57,13 @@ public interface ISolidWorksApplication
 
     /// <summary>Closes <paramref name="document"/> without saving it.</summary>
     void Close(ISwDocument document);
+
+    /// <summary>
+    /// The full paths the file at <paramref name="path"/> stores for the documents it uses, nested ones included, read
+    /// from the file without opening it or searching for them (ISldWorks.GetDocumentDependencies2, no search). Empty for
+    /// a file that uses nothing.
+    /// </summary>
+    IReadOnlyList<string> StoredReferences(string path);
 
     /// <summary>SOLIDWORKS' own ISldWorks, for api.call's app target only (the escape hatch calls it by late binding).</summary>
     object ApiObject();
@@ -154,6 +162,18 @@ internal sealed class SolidWorksApplication : ISolidWorksApplication
     }
 
     public void Close(ISwDocument document) => _sw.CloseDoc(((SolidWorksDocument)document).Doc.GetTitle());
+
+    public IReadOnlyList<string> StoredReferences(string path)
+    {
+        var paths = new List<string>();
+        // Pairs of file name and full path, in turns (4.A live run: GetDependencies2 answers the same way).
+        if (!(_sw.GetDocumentDependencies2(path, true, false, false) is object[] pairs)) return paths;
+        for (int i = 1; i < pairs.Length; i += 2)
+        {
+            if (pairs[i] is string stored && stored.Length > 0 && !paths.Exists(p => string.Equals(p, stored, StringComparison.OrdinalIgnoreCase))) paths.Add(stored);
+        }
+        return paths;
+    }
 
     public object ApiObject() => _sw;
 

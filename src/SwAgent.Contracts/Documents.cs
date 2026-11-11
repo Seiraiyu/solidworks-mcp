@@ -30,7 +30,7 @@ public sealed class DocumentNewResult
 }
 
 [Operation("document.open", typeof(DocumentOpenResult))]
-[Description("Opens a part, assembly or drawing from a local file and makes it the active document. An assembly opens with every component resolved (never lightweight); component files that are missing are listed, never searched for with a dialog. A document that is already open is made active, not opened again. A document this call opened is the agent's own, so document.close may close it.")]
+[Description("Opens a part, assembly or drawing from a local file and makes it the active document. An assembly opens with every component resolved (never lightweight), and never with a dialog. When a component's file is not where the assembly says, SOLIDWORKS looks for the same file name in other folders (ones it opened this session, the assembly's own) and loads what it finds without asking: each such file is listed in substituted, and references issued before to that component's entities no longer resolve (component_file_changed). A file it finds nowhere is listed in missing. A document that is already open is made active, not opened again. A document this call opened is the agent's own, so document.close may close it.")]
 public sealed class DocumentOpenRequest
 {
     [Required]
@@ -61,6 +61,22 @@ public sealed class DocumentOpenResult
     [Required]
     [Description("Files the document uses (an assembly's components) that SOLIDWORKS could not find; those components stay suppressed. Empty when nothing is missing.")]
     public List<string> Missing { get; set; } = new List<string>();
+
+    [Required]
+    [Description("An assembly's component files SOLIDWORKS loaded from another folder than the assembly says, because the file was not there: check each is the file meant before saving the assembly, which would then point at it. Empty when nothing was substituted.")]
+    public List<SubstitutedFile> Substituted { get; set; } = new List<SubstitutedFile>();
+}
+
+[Description("A component file SOLIDWORKS loaded in place of the one an assembly names.")]
+public sealed class SubstitutedFile
+{
+    [Required]
+    [Description("The full path the assembly stores for it.")]
+    public string Expected { get; set; } = "";
+
+    [Required]
+    [Description("The full path of the same-named file SOLIDWORKS loaded instead.")]
+    public string Loaded { get; set; } = "";
 }
 
 [Operation("document.save", typeof(DocumentSaveResult))]
@@ -158,7 +174,7 @@ public sealed class DocumentCloseResult
 }
 
 [Operation("document.rebuild", typeof(RebuildResult))]
-[Description("Rebuilds a document (only what changed; everything with force) and reports its rebuild errors and warnings by feature.")]
+[Description("Rebuilds a part or an assembly (only what changed; everything with force) and reports its rebuild errors and warnings by feature; an assembly's include its mates' errors, each named by the mate. After changing a component's part, rebuild the assembly that uses it.")]
 public sealed class DocumentRebuildRequest
 {
     [Description("The document: its title or full path. The active document when absent.")]
@@ -169,7 +185,7 @@ public sealed class DocumentRebuildRequest
 }
 
 [Operation("model.rebuild_status", typeof(RebuildResult), ReadOnly = true)]
-[Description("Reports a document's rebuild errors and warnings by feature (SOLIDWORKS' What's Wrong list), without rebuilding it.")]
+[Description("Reports a part's or an assembly's rebuild errors and warnings by feature (SOLIDWORKS' What's Wrong list; an assembly's include its mates'), without rebuilding it.")]
 public sealed class ModelRebuildStatusRequest
 {
     [Description("The document: its title or full path. The active document when absent.")]

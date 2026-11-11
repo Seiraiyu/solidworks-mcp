@@ -140,14 +140,69 @@ internal sealed partial class SolidWorksDocument : ISwDocument
 
     object[] SolidBodies() => Doc is IPartDoc part && part.GetBodies2((int)swBodyType_e.swSolidBody, true) is object[] bodies ? bodies : new object[0];
 
-    public int SolidBodyCount() => SolidBodies().Length;
+    public int SolidBodyCount() => Doc is IAssemblyDoc ? ComponentBodies().Count() : SolidBodies().Length;
+
+    /// <summary>
+    /// An assembly's solid bodies: those of every resolved part component, nested ones included, each with its component
+    /// (SOLIDWORKS gives a component body's geometry in the component's own coordinates).
+    /// </summary>
+    IEnumerable<(IBody2 Body, IComponent2 Component)> ComponentBodies()
+    {
+        if (!(Doc.ConfigurationManager?.ActiveConfiguration?.GetRootComponent3(true) is IComponent2 root)) yield break;
+        var pending = new Stack<IComponent2>();
+        pending.Push(root);
+        while (pending.Count > 0)
+        {
+            var parent = pending.Pop();
+            if (!(parent.GetChildren() is object[] children)) continue;
+            foreach (var child in children.OfType<IComponent2>())
+            {
+                if (child.GetSuppression2() != (int)swComponentSuppressionState_e.swComponentResolved
+                    && child.GetSuppression2() != (int)swComponentSuppressionState_e.swComponentFullyResolved) continue;
+                if ((child.GetPathName() ?? "").EndsWith(".SLDASM", StringComparison.OrdinalIgnoreCase))
+                {
+                    pending.Push(child);
+                    continue;
+                }
+                object bodyInfo;
+                if (child.GetBodies3((int)swBodyType_e.swSolidBody, out bodyInfo) is object[] bodies)
+                {
+                    foreach (var body in bodies.OfType<IBody2>()) yield return (body, child);
+                }
+            }
+        }
+    }
 
     public ModelMassResult? Mass()
     {
+        if (Doc is IAssemblyDoc)
+        {
+            // An assembly's: every component that is not suppressed, hidden ones included, as Mass(component) counts each.
+            if (!(Doc.Extension.CreateMassProperty2() is IMassProperty2 whole)) return null;
+            whole.UseSystemUnits = true;
+            whole.IncludeHiddenBodiesOrComponents = true;
+            return MassOf(whole);
+        }
         if (!(Doc.Extension.CreateMassProperty() is IMassProperty mp)) return null;
         mp.UseSystemUnits = true;
         var com = (double[])mp.CenterOfMass;
         var moments = (double[])mp.PrincipleMomentsOfInertia;
+        return new ModelMassResult
+        {
+            VolumeMm3 = mp.Volume * 1e9,
+            AreaMm2 = mp.SurfaceArea * Mm2,
+            MassG = mp.Mass * 1000,
+            DensityKgM3 = mp.Density,
+            CenterOfMass = new Point3(com[0] * Mm, com[1] * Mm, com[2] * Mm),
+            PrincipalMomentsGMm2 = moments.Take(3).Select(m => m * 1e9).ToList(),
+        };
+    }
+
+    /// <summary>What an IMassProperty2 read in SI units says, in mm and g.</summary>
+    internal static ModelMassResult MassOf(IMassProperty2 mp)
+    {
+        var com = (double[])mp.CenterOfMass;
+        var moments = (double[])mp.PrincipalMomentsOfInertia;
         return new ModelMassResult
         {
             VolumeMm3 = mp.Volume * 1e9,
@@ -169,6 +224,7 @@ internal sealed partial class SolidWorksDocument : ISwDocument
 
     public Box3? BoundingBox(bool precise)
     {
+        if (Doc is IAssemblyDoc assembly) return AssemblyBox(assembly, precise);
         if (!precise) return Doc is IPartDoc part && part.GetPartBox(true) is double[] b ? Box(b) : null;
         double[]? box = null;
         foreach (var o in SolidBodies())
@@ -180,6 +236,34 @@ internal sealed partial class SolidWorksDocument : ISwDocument
             {
                 lo[axis] = Extreme(body, axis, -1);
                 hi[axis] = Extreme(body, axis, 1);
+            }
+            box = box == null
+                ? new[] { lo[0], lo[1], lo[2], hi[0], hi[1], hi[2] }
+                : new[] { Math.Min(box[0], lo[0]), Math.Min(box[1], lo[1]), Math.Min(box[2], lo[2]), Math.Max(box[3], hi[0]), Math.Max(box[4], hi[1]), Math.Max(box[5], hi[2]) };
+        }
+        return box == null ? null : Box(box);
+    }
+
+    /// <summary>
+    /// An assembly's box: SOLIDWORKS' quick one of its solid geometry (IAssemblyDoc.GetBox, no planes or sketches), or
+    /// the exact one from the extreme points of a copy of each component body moved by its component's placement (a
+    /// component body's own geometry is in the component's coordinates). Null with no solid body.
+    /// </summary>
+    Box3? AssemblyBox(IAssemblyDoc assembly, bool precise)
+    {
+        if (!ComponentBodies().Any()) return null;
+        if (!precise) return assembly.GetBox(0) is double[] quick && quick.Length >= 6 ? Box(quick) : null;
+        double[]? box = null;
+        foreach (var (body, component) in ComponentBodies())
+        {
+            if (!(body.Copy() is IBody2 copy)) throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS could not copy a body of {component.Name2} to measure it");
+            if (!copy.ApplyTransform(component.Transform2)) throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS could not move a copy of a body of {component.Name2} into the assembly");
+            var lo = new double[3];
+            var hi = new double[3];
+            for (int axis = 0; axis < 3; axis++)
+            {
+                lo[axis] = Extreme(copy, axis, -1);
+                hi[axis] = Extreme(copy, axis, 1);
             }
             box = box == null
                 ? new[] { lo[0], lo[1], lo[2], hi[0], hi[1], hi[2] }
@@ -214,7 +298,10 @@ internal sealed partial class SolidWorksDocument : ISwDocument
         return list;
     }
 
-    public double DistanceMm(object entity, Point3 point)
+    public double DistanceMm(object entity, Point3 point) => Distance(entity, point);
+
+    /// <summary>The shortest distance from <paramref name="point"/> (mm, in the space SOLIDWORKS gives the entity's geometry in) to a face, edge or vertex, in mm.</summary>
+    internal static double Distance(object entity, Point3 point)
     {
         double x = point.X / Mm, y = point.Y / Mm, z = point.Z / Mm;
         double[] closest = entity switch
@@ -248,6 +335,19 @@ internal sealed partial class SolidWorksDocument : ISwDocument
         IEntity e => e.Select4(append, null),
         _ => false,
     };
+
+    public object? ComponentOf(object entity)
+    {
+        if (!(Doc is IAssemblyDoc) || entity is IComponent2) return null;
+        try
+        {
+            return (entity as IEntity)?.GetComponent() as IComponent2;
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            return null;
+        }
+    }
 
     public ReferenceKind? KindOf(object entity) => entity switch
     {

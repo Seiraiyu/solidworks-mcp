@@ -4,14 +4,14 @@
   "properties": {
     "document": {
       "type": "string",
-      "description": "The part: its title or full path. The active document when absent."
+      "description": "The part or assembly: its title or full path. The active document when absent."
     },
     "items": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "description": "References exactly as results gave them, or names (front, top, right, origin, a feature's name), to select in order."
+      "description": "References exactly as results gave them, or names (front, top, right, origin, a feature's name; in an assembly, a component's name@component or a component's own name), to select in order."
     },
     "append": {
       "type": "boolean",

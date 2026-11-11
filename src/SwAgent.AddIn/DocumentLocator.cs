@@ -37,6 +37,20 @@ public static class DocumentLocator
         throw new SwAgentException(ErrorCode.InvalidArgument, $"more than one open document is called '{document}'; name it by its full path", details);
     }
 
+    /// <summary>As <see cref="Find"/>, and wrong_document_type for a drawing: the part or assembly a model, selection or configuration operation reads (plan 4.B).</summary>
+    public static ISwDocument FindModel(ISolidWorksApplication sw, string? document, string operation, string field = "document")
+    {
+        var doc = Find(sw, document, field);
+        var info = doc.Info();
+        if (info.Type == DocumentType.Drawing)
+        {
+            throw new SwAgentException(ErrorCode.WrongDocumentType,
+                $"{operation} works on parts and assemblies, and {info.Title} is a drawing",
+                new JsonObject { ["document"] = Label(info), ["type"] = WireNames.ForEnum(info.Type) });
+        }
+        return doc;
+    }
+
     /// <summary>As <see cref="Find"/>, and wrong_document_type unless it is a part.</summary>
     public static ISwDocument FindPart(ISolidWorksApplication sw, string? document, string operation, string field = "document") =>
         FindOfType(sw, document, operation, DocumentType.Part, field);
@@ -54,12 +68,29 @@ public static class DocumentLocator
         var info = doc.Info();
         if (info.Type != type)
         {
-            throw new SwAgentException(ErrorCode.WrongDocumentType,
-                $"{operation} works on {(type == DocumentType.Assembly ? "assemblies" : "parts")}, and {info.Title} is {Article(info.Type)}",
-                new JsonObject { ["document"] = Label(info), ["type"] = WireNames.ForEnum(info.Type) });
+            var details = new JsonObject { ["document"] = Label(info), ["type"] = WireNames.ForEnum(info.Type) };
+            string message = $"{operation} works on {(type == DocumentType.Assembly ? "assemblies" : "parts")}, and {info.Title} is {Article(info.Type)}";
+            if (type == DocumentType.Part && info.Type == DocumentType.Assembly)
+            {
+                // Design 455, Error handling: name what to do instead.
+                string instead = InsteadInAssembly.TryGetValue(operation, out var tool) ? tool : PartOnly;
+                details["instead"] = instead;
+                message += "; " + instead;
+            }
+            throw new SwAgentException(ErrorCode.WrongDocumentType, message, details);
         }
         return doc;
     }
+
+    /// <summary>What a part-only operation asked of an assembly should use instead (design 455, Inspection and the part tools).</summary>
+    static readonly Dictionary<string, string> InsteadInAssembly = new Dictionary<string, string>
+    {
+        ["model.tree"] = "assembly.components lists an assembly's components, and model.find its components' faces, edges and vertices",
+        ["model.dimensions"] = "open a component's part with document.open to read its dimensions",
+    };
+
+    /// <summary>The way to change a component's geometry, for every other part-only operation.</summary>
+    const string PartOnly = "to change a component's geometry, open its part with document.open, change it there, then document.rebuild the assembly";
 
     static string Article(DocumentType type) => type switch
     {

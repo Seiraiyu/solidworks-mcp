@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "Reports a document's rebuild errors and warnings by feature (SOLIDWORKS' What's Wrong list), without rebuilding it.",
+  "description": "Reports a part's or an assembly's rebuild errors and warnings by feature (SOLIDWORKS' What's Wrong list; an assembly's include its mates'), without rebuilding it.",
   "properties": {
     "document": {
       "type": "string",

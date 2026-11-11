@@ -1,10 +1,10 @@
 {
   "type": "object",
-  "description": "Mass properties of a part's solid bodies, in mm, g and the part's own material: volume, surface area, mass, density, centre of mass and principal moments of inertia.",
+  "description": "Mass properties of a part's solid bodies, in mm, g and the part's own material: volume, surface area, mass, density, centre of mass and principal moments of inertia. Of an assembly, the same for every component that is not suppressed (hidden ones included), in the assembly's coordinates, each component's own material, with each top-level component's share in components. A share counts the component in the configuration the assembly uses (component.set {configuration} changes it), so the shares add up to the assembly's mass. A component whose share cannot be counted exactly goes in skipped with the reason, and the whole still counts it: a lightweight one (component.set {suppression: resolved} loads it), or one whose configuration has a material other than its file's active configuration's.",
   "properties": {
     "document": {
       "type": "string",
-      "description": "The part: its title or full path. The active document when absent."
+      "description": "The part or assembly: its title or full path. The active document when absent."
     }
   },
   "additionalProperties": false

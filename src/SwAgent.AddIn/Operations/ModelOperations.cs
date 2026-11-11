@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using SwAgent.AddIn.Core;
 using SwAgent.Contracts;
@@ -56,7 +57,7 @@ public sealed class ModelMassOperation : Operation<ModelMassRequest, ModelMassRe
 
     protected override ModelMassResult Run(ModelMassRequest request, IOperationContext context)
     {
-        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "model.mass");
+        var doc = DocumentLocator.FindModel(_services.SolidWorks, request.Document, "model.mass");
         int bodies = doc.SolidBodyCount();
         var mass = bodies == 0 ? null : doc.Mass();
         var result = mass ?? new ModelMassResult();
@@ -66,13 +67,65 @@ public sealed class ModelMassOperation : Operation<ModelMassRequest, ModelMassRe
         result.PrincipalMomentsGMm2 = result.PrincipalMomentsGMm2.OrderBy(m => m).ToList();
         if (bodies > 0 && mass == null)
             throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS gave no mass properties for {result.Document.Title}, which has {bodies} solid bodies");
+        if (doc.Assembly() is ISwAssembly asm)
+        {
+            result.Material = null;
+            result.DensityKgM3 = result.VolumeMm3 > 0 ? result.MassG / result.VolumeMm3 * 1e6 : 0;
+            var skipped = new List<SkippedComponent>();
+            result.Components = Shares(asm, skipped);
+            result.Skipped = skipped;
+        }
         return result;
     }
 
-    /// <summary>Mass is density times volume, and the volume read again is the same.</summary>
+    /// <summary>
+    /// Each top-level component's share, but the suppressed and missing ones, which have no mass in the assembly. One
+    /// whose share cannot be counted exactly (lightweight, or a material SOLIDWORKS gives no density for) goes in
+    /// <paramref name="skipped"/> with the reason; the whole still counts it.
+    /// </summary>
+    static List<ComponentMass> Shares(ISwAssembly asm, List<SkippedComponent> skipped)
+    {
+        var shares = new List<ComponentMass>();
+        foreach (var component in asm.Components(topLevelOnly: true))
+        {
+            var who = asm.Identify(component);
+            if (who.State == ComponentState.Suppressed || who.State == ComponentState.Missing) continue;
+            var mass = asm.Mass(component, out string? refused);
+            if (mass == null && refused != null)
+            {
+                skipped.Add(new SkippedComponent { Name = who.Name, State = who.State, Reason = refused });
+                continue;
+            }
+            if (mass == null)
+            {
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS gave no mass properties for the component {who.Name}",
+                    new SwAgent.Contracts.Serialization.JsonObject { ["component"] = who.Name });
+            }
+            shares.Add(new ComponentMass { Name = who.Name, VolumeMm3 = mass.VolumeMm3, MassG = mass.MassG, CenterOfMass = mass.MassG > 0 ? mass.CenterOfMass : null });
+        }
+        return shares;
+    }
+
+    /// <summary>
+    /// A part's mass is density times volume; an assembly's components' masses and volumes add up to its own, or, when
+    /// a component was skipped, to no more than its own. Either way the volume read again is the same.
+    /// </summary>
     protected override void Verify(ModelMassRequest request, ModelMassResult result, IOperationContext context)
     {
         if (result.Bodies == 0) return;
+        if (result.Components != null)
+        {
+            double sum = result.Components.Sum(c => c.MassG), volume = result.Components.Sum(c => c.VolumeMm3);
+            bool partial = result.Skipped?.Count > 0;
+            if (partial
+                ? sum - result.MassG > 1e-6 * Math.Max(1, result.MassG) || volume - result.VolumeMm3 > 1e-6 * Math.Max(1, result.VolumeMm3)
+                : Math.Abs(sum - result.MassG) > 1e-6 * Math.Max(1, result.MassG) || Math.Abs(volume - result.VolumeMm3) > 1e-6 * Math.Max(1, result.VolumeMm3))
+            {
+                throw new SwAgentException(ErrorCode.VerificationFailed,
+                    $"the components' masses add up to {sum} g and {volume} mm³, but SOLIDWORKS reported {result.MassG} g and {result.VolumeMm3} mm³ for {result.Document.Title}",
+                    new SwAgent.Contracts.Serialization.JsonObject { ["check"] = "components_sum", ["expected"] = result.MassG, ["measured"] = sum });
+            }
+        }
         double expected = result.DensityKgM3 * result.VolumeMm3 * 1e-6;
         if (Math.Abs(result.MassG - expected) > 1e-6 * Math.Max(1, expected))
         {
@@ -96,7 +149,7 @@ public sealed class ModelBoundingBoxOperation : Operation<ModelBoundingBoxReques
 
     protected override ModelBoundingBoxResult Run(ModelBoundingBoxRequest request, IOperationContext context)
     {
-        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "model.bounding_box");
+        var doc = DocumentLocator.FindModel(_services.SolidWorks, request.Document, "model.bounding_box");
         bool precise = request.Precise == true;
         int bodies = doc.SolidBodyCount();
         var box = bodies == 0 ? null : doc.BoundingBox(precise);
@@ -112,11 +165,11 @@ public sealed class ModelBoundingBoxOperation : Operation<ModelBoundingBoxReques
         };
     }
 
-    /// <summary>A part with bodies has a box, and its corners are in order.</summary>
+    /// <summary>A part or assembly with bodies has a box, and its corners are in order.</summary>
     protected override void Verify(ModelBoundingBoxRequest request, ModelBoundingBoxResult result, IOperationContext context)
     {
         if (result.Bodies > 0 && result.Box == null)
-            throw new SwAgentException(ErrorCode.VerificationFailed, $"SOLIDWORKS gave no bounding box for a part with {result.Bodies} solid bodies");
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"SOLIDWORKS gave no bounding box for {result.Document.Title}, which has {result.Bodies} solid bodies");
         if (result.Box != null && (result.SizeX < 0 || result.SizeY < 0 || result.SizeZ < 0))
             throw new SwAgentException(ErrorCode.VerificationFailed, $"SOLIDWORKS gave a box whose corners are out of order: {result.Box.Min} to {result.Box.Max}");
     }
@@ -133,37 +186,84 @@ public sealed class ModelFindOperation : Operation<ModelFindRequest, ModelFindRe
 
     protected override ModelFindResult Run(ModelFindRequest request, IOperationContext context)
     {
-        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "model.find");
-        var query = Query(doc, request);
-        var candidates = doc.Topology(request.Kind).Select(entity =>
+        var doc = DocumentLocator.FindModel(_services.SolidWorks, request.Document, "model.find");
+        var (query, scope) = Query(doc, request);
+        var skipped = new List<SkippedComponent>();
+        var candidates = new List<(object Entity, EntityInfo Info)>();
+        if (doc.Assembly() is ISwAssembly asm)
         {
-            var info = doc.Describe(entity);
-            if (query.Near != null && (query.Feature == null || string.Equals(info.Feature, query.Feature, StringComparison.OrdinalIgnoreCase)))
-                info.DistanceMm = doc.DistanceMm(entity, query.Near);
-            return (Entity: entity, Info: info);
-        }).ToList();
+            foreach (var component in Searched(asm, scope))
+            {
+                var who = asm.Identify(component);
+                if (who.State != ComponentState.Resolved)
+                {
+                    skipped.Add(new SkippedComponent { Name = who.Name, State = who.State });
+                    continue;
+                }
+                foreach (var entity in asm.Topology(component, request.Kind))
+                {
+                    var info = asm.Describe(component, entity);
+                    if (query.Near != null && (query.Feature == null || string.Equals(info.Feature, query.Feature, StringComparison.OrdinalIgnoreCase)))
+                        info.DistanceMm = asm.DistanceMm(component, entity, query.Near);
+                    candidates.Add((entity, info));
+                }
+            }
+        }
+        else
+        {
+            candidates.AddRange(doc.Topology(request.Kind).Select(entity =>
+            {
+                var info = doc.Describe(entity);
+                if (query.Near != null && (query.Feature == null || string.Equals(info.Feature, query.Feature, StringComparison.OrdinalIgnoreCase)))
+                    info.DistanceMm = doc.DistanceMm(entity, query.Near);
+                return (entity, info);
+            }));
+        }
         var (kept, total) = EntityFilter.Apply(candidates, c => c.Info, query);
         foreach (var c in kept) c.Info.Reference = _services.References.Issue(doc, c.Entity, c.Info);
         return new ModelFindResult
         {
             Document = doc.Info(),
+            Skipped = skipped,
             Entities = kept.Select(c => c.Info).ToList(),
             Total = total,
             Truncated = total > kept.Count,
         };
     }
 
-    /// <summary>Everything returned matches the request, within its limit.</summary>
+    /// <summary>
+    /// The part components an assembly search covers, and every subassembly in it that is not loaded (so it is listed as
+    /// skipped): the whole tree, or <paramref name="scope"/> and what is inside it. A loaded subassembly has no bodies of
+    /// its own; its components are searched in its place.
+    /// </summary>
+    static IEnumerable<object> Searched(ISwAssembly asm, ComponentIdentity? scope)
+    {
+        foreach (var component in asm.Components(false))
+        {
+            var who = asm.Identify(component);
+            if (scope != null && !string.Equals(who.Name, scope.Name, StringComparison.OrdinalIgnoreCase)
+                && !who.Name.StartsWith(scope.Name + "/", StringComparison.OrdinalIgnoreCase)) continue;
+            bool subassembly = who.Path != null && who.Path.EndsWith(".SLDASM", StringComparison.OrdinalIgnoreCase);
+            if (subassembly && who.State == ComponentState.Resolved) continue;
+            yield return component;
+        }
+    }
+
+    /// <summary>Everything returned matches the request, within its limit; in an assembly, belongs to a component the search covered.</summary>
     protected override void Verify(ModelFindRequest request, ModelFindResult result, IOperationContext context)
     {
         var doc = DocumentLocator.Find(_services.SolidWorks, DocumentKeys.Of(result.Document));
-        var query = Query(doc, request);
-        var wrong = result.Entities.FirstOrDefault(e => !EntityFilter.Matches(e, query) || e.Kind != Kind(request.Kind));
+        var (query, scope) = Query(doc, request);
+        var wrong = result.Entities.FirstOrDefault(e => !EntityFilter.Matches(e, query) || e.Kind != Kind(request.Kind)
+            || doc.Assembly() != null && (e.Component == null || scope != null && !Within(e.Component, scope.Name)));
         if (wrong != null)
             throw new SwAgentException(ErrorCode.VerificationFailed, $"model.find returned the {EntityFilter.Describe(wrong)}, which does not match the request");
         if (result.Entities.Count > query.Limit)
             throw new SwAgentException(ErrorCode.VerificationFailed, $"model.find returned {result.Entities.Count} entities, more than its limit of {query.Limit}");
     }
+
+    static bool Within(string component, string scope) =>
+        string.Equals(component, scope, StringComparison.OrdinalIgnoreCase) || component.StartsWith(scope + "/", StringComparison.OrdinalIgnoreCase);
 
     static ReferenceKind Kind(TopologyKind kind) => kind switch
     {
@@ -172,13 +272,28 @@ public sealed class ModelFindOperation : Operation<ModelFindRequest, ModelFindRe
         _ => ReferenceKind.Face,
     };
 
-    EntityQuery Query(ISwDocument doc, ModelFindRequest request)
+    /// <summary>The validated query, and in an assembly the component the search is limited to (from component, or the feature's own component).</summary>
+    (EntityQuery Query, ComponentIdentity? Scope) Query(ISwDocument doc, ModelFindRequest request)
     {
         var query = new EntityQuery { Geometry = request.Geometry, Direction = request.Direction, Near = request.Near };
+        var asm = doc.Assembly();
+        ComponentIdentity? scope = null;
+        if (request.Component != null)
+        {
+            if (asm == null) throw Invalid("component", $"component names a component, which only an assembly has; {doc.Info().Title} is a part, so leave it out");
+            scope = asm.Identify(ComponentLookup.Find(_services.References, doc, asm, request.Component, "component"));
+        }
         if (request.Feature != null)
         {
             var (feature, _) = _services.References.Resolve(doc, request.Feature, "feature", ReferenceKind.Feature);
-            query.Feature = doc.Describe(feature).Name;
+            var info = _services.References.Describe(doc, feature);
+            query.Feature = info.Name;
+            if (asm != null && info.Component != null)
+            {
+                if (scope != null && !Within(info.Component, scope.Name))
+                    throw Invalid("feature", $"feature: {request.Feature} is a feature of {info.Component}, which is not in the component searched ({scope.Name})");
+                scope = asm.Identify(_services.References.ComponentOf(doc, feature) ?? asm.ComponentByName(info.Component)!);
+            }
         }
         if (request.Direction != null && request.Direction.X == 0 && request.Direction.Y == 0 && request.Direction.Z == 0)
             throw Invalid("direction", "direction must not be zero");
@@ -199,7 +314,7 @@ public sealed class ModelFindOperation : Operation<ModelFindRequest, ModelFindRe
             if (request.Limit < 1 || request.Limit > EntityQuery.MaxLimit) throw Invalid("limit", $"limit must be from 1 to {EntityQuery.MaxLimit}");
             query.Limit = request.Limit.Value;
         }
-        return query;
+        return (query, scope);
     }
 
     static SwAgentException Invalid(string field, string message) =>
@@ -219,14 +334,20 @@ public sealed class ModelMeasureOperation : Operation<ModelMeasureRequest, Model
 
     protected override ModelMeasureResult Run(ModelMeasureRequest request, IOperationContext context)
     {
-        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "model.measure");
+        var doc = DocumentLocator.FindModel(_services.SolidWorks, request.Document, "model.measure");
         return Measure(doc, request);
     }
 
+    /// <summary>An entity named in the document itself, or (with its component field) in a component's own part.</summary>
+    object Entity(ISwDocument doc, string text, string? component, string field) =>
+        component == null
+            ? _services.References.Resolve(doc, text, field, Measurable).Entity
+            : _services.References.ResolveInComponent(doc, text, component, field, field + "_component", Measurable).Entity;
+
     ModelMeasureResult Measure(ISwDocument doc, ModelMeasureRequest request)
     {
-        var (a, _) = _services.References.Resolve(doc, request.A, "a", Measurable);
-        var (b, _) = _services.References.Resolve(doc, request.B, "b", Measurable);
+        var a = Entity(doc, request.A, request.AComponent, "a");
+        var b = Entity(doc, request.B, request.BComponent, "b");
         var infoA = _services.References.Describe(doc, a);
         var infoB = _services.References.Describe(doc, b);
         double distance = doc.ClosestDistance(a, b, out var onA, out var onB);
@@ -246,7 +367,7 @@ public sealed class ModelMeasureOperation : Operation<ModelMeasureRequest, Model
         var doc = DocumentLocator.Find(_services.SolidWorks, DocumentKeys.Of(result.Document));
         var again = Measure(doc, request);
         if (Math.Abs(again.DistanceMm - result.DistanceMm) > 1e-9 * Math.Max(1, result.DistanceMm))
-            throw new SwAgentException(ErrorCode.VerificationFailed, $"the distance read {result.DistanceMm} mm and then {again.DistanceMm} mm; the part changed while it was measured, so ask again",
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"the distance read {result.DistanceMm} mm and then {again.DistanceMm} mm; {result.Document.Title} changed while it was measured, so ask again",
                 new SwAgent.Contracts.Serialization.JsonObject { ["check"] = "distance", ["first"] = result.DistanceMm, ["second"] = again.DistanceMm });
     }
 }

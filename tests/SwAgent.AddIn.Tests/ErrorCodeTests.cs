@@ -703,7 +703,8 @@ public class ErrorCodeTests : DocumentTestBase
         var request = new ModelMeasureRequest { A = "front", B = "top" };
         if (code == ErrorCode.WrongDocumentType)
         {
-            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            // Plan 4.B: model.measure takes assemblies; a drawing is still the wrong type.
+            Sw.Track(new FakeDocument("Sheet1", null, DocumentType.Drawing));
             Assert.Equal(code, Fails(() => Run(new ModelMeasureOperation(Services), request)).Code);
             return;
         }

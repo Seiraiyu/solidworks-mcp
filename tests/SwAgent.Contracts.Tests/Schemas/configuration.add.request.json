@@ -1,10 +1,10 @@
 {
   "type": "object",
-  "description": "Adds a configuration to a part, a copy of copy_of (the active configuration when absent), and makes it active, as SOLIDWORKS does. Checked: the part lists it and it is active, and the part rebuilds without a new error. Otherwise it is deleted and the configuration that was active is active again (rolled back). Busy with user_editing while the user is editing a sketch or has a command open.",
+  "description": "Adds a configuration to a part or an assembly, a copy of copy_of (the active configuration when absent), and makes it active, as SOLIDWORKS does. Checked: the document lists it and it is active, and it rebuilds without a new error. Otherwise it is deleted and the configuration that was active is active again (rolled back). Busy with user_editing while the user is editing a sketch, has a command open, or is editing a component in the assembly's context.",
   "properties": {
     "document": {
       "type": "string",
-      "description": "The part: its title or full path. The active document when absent."
+      "description": "The part or assembly: its title or full path. The active document when absent."
     },
     "name": {
       "type": "string",

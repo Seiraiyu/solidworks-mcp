@@ -38,7 +38,7 @@
         "visible"
       ],
       "additionalProperties": false,
-      "description": "The part."
+      "description": "The part or assembly."
     },
     "a": {
       "type": "object",
@@ -69,6 +69,10 @@
         "name": {
           "type": "string",
           "description": "Its name, for features, planes, axes and points."
+        },
+        "component": {
+          "type": "string",
+          "description": "In an assembly, the component it belongs to (bracket-1; sub-1/pin-1 inside a subassembly); absent for the assembly's own planes, axes and origin, and in a part. Its position, direction and box are in the assembly's coordinates."
         },
         "feature": {
           "type": "string",
@@ -282,6 +286,10 @@
         "name": {
           "type": "string",
           "description": "Its name, for features, planes, axes and points."
+        },
+        "component": {
+          "type": "string",
+          "description": "In an assembly, the component it belongs to (bracket-1; sub-1/pin-1 inside a subassembly); absent for the assembly's own planes, axes and origin, and in a part. Its position, direction and box are in the assembly's coordinates."
         },
         "feature": {
           "type": "string",

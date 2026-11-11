@@ -54,21 +54,21 @@ public sealed class FeatureNode
 }
 
 [Operation("model.mass", typeof(ModelMassResult), ReadOnly = true)]
-[Description("Mass properties of a part's solid bodies, in mm, g and the part's own material: volume, surface area, mass, density, centre of mass and principal moments of inertia.")]
+[Description("Mass properties of a part's solid bodies, in mm, g and the part's own material: volume, surface area, mass, density, centre of mass and principal moments of inertia. Of an assembly, the same for every component that is not suppressed (hidden ones included), in the assembly's coordinates, each component's own material, with each top-level component's share in components. A share counts the component in the configuration the assembly uses (component.set {configuration} changes it), so the shares add up to the assembly's mass. A component whose share cannot be counted exactly goes in skipped with the reason, and the whole still counts it: a lightweight one (component.set {suppression: resolved} loads it), or one whose configuration has a material other than its file's active configuration's.")]
 public sealed class ModelMassRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part or assembly: its title or full path. The active document when absent.")]
     public string? Document { get; set; }
 }
 
-[Description("A part's mass properties. All zero, with no centre of mass, when it has no solid body.")]
+[Description("A part's or assembly's mass properties. All zero, with no centre of mass, when it has no solid body.")]
 public sealed class ModelMassResult
 {
     [Required]
-    [Description("The part.")]
+    [Description("The part or assembly.")]
     public DocumentInfo Document { get; set; } = new DocumentInfo();
 
-    [Description("How many solid bodies it has.")]
+    [Description("How many solid bodies it has (an assembly: its resolved components' bodies).")]
     public int Bodies { get; set; }
 
     [Description("Volume, mm³.")]
@@ -80,10 +80,10 @@ public sealed class ModelMassResult
     [Description("Mass, g.")]
     public double MassG { get; set; }
 
-    [Description("Density used, kg/m³ (SOLIDWORKS' default when no material is set).")]
+    [Description("Density used, kg/m³ (SOLIDWORKS' default when no material is set); for an assembly, its mass over its volume.")]
     public double DensityKgM3 { get; set; }
 
-    [Description("The material's name; absent when none is set.")]
+    [Description("The material's name; absent when none is set, and for an assembly.")]
     public string? Material { get; set; }
 
     [Description("Centre of mass, mm.")]
@@ -92,27 +92,50 @@ public sealed class ModelMassResult
     [Required]
     [Description("Principal moments of inertia at the centre of mass, g·mm², smallest first.")]
     public List<double> PrincipalMomentsGMm2 { get; set; } = new List<double>();
+
+    [Description("For an assembly, each top-level component that is not suppressed or missing, in tree order (a subassembly as a whole), but those in skipped; absent for a part.")]
+    public List<ComponentMass>? Components { get; set; }
+
+    [Description("For an assembly, the top-level components counted in the whole whose share is not in components, each with the reason; empty when every share is there, absent for a part.")]
+    public List<SkippedComponent>? Skipped { get; set; }
+}
+
+[Description("One component's share of an assembly's mass properties, in the assembly's coordinates.")]
+public sealed class ComponentMass
+{
+    [Required]
+    [Description("The component's name, for example bracket-1.")]
+    public string Name { get; set; } = "";
+
+    [Description("Its volume, mm³.")]
+    public double VolumeMm3 { get; set; }
+
+    [Description("Its mass, g.")]
+    public double MassG { get; set; }
+
+    [Description("Its centre of mass in the assembly, mm; absent when it has no solid body.")]
+    public Point3? CenterOfMass { get; set; }
 }
 
 [Operation("model.bounding_box", typeof(ModelBoundingBoxResult), ReadOnly = true)]
-[Description("The axis-aligned box around a part's solid bodies, in mm. SOLIDWORKS' quick box by default (it may be a little larger than the bodies); precise for the exact one.")]
+[Description("The axis-aligned box around a part's solid bodies, or an assembly's resolved components' bodies in the assembly's coordinates, in mm. SOLIDWORKS' quick box by default (it may be a little larger than the bodies); precise for the exact one.")]
 public sealed class ModelBoundingBoxRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part or assembly: its title or full path. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("Compute the exact box from the bodies' extreme points. Default false.")]
     public bool? Precise { get; set; }
 }
 
-[Description("A part's bounding box. No box when it has no solid body.")]
+[Description("A part's or assembly's bounding box. No box when it has no solid body.")]
 public sealed class ModelBoundingBoxResult
 {
     [Required]
-    [Description("The part.")]
+    [Description("The part or assembly.")]
     public DocumentInfo Document { get; set; } = new DocumentInfo();
 
-    [Description("How many solid bodies it has.")]
+    [Description("How many solid bodies it has (an assembly: its resolved components' bodies).")]
     public int Bodies { get; set; }
 
     [Description("The box, mm.")]
@@ -132,16 +155,19 @@ public sealed class ModelBoundingBoxResult
 }
 
 [Operation("model.find", typeof(ModelFindResult), ReadOnly = true)]
-[Description("Finds a part's faces, edges or vertices by what they are, each with its persistent reference and shape: by the feature that made them, their geometry, a direction (a planar face's outward normal, or an edge's or cylinder's axis either way), or a point they contain or are near. Use it to get references to pass to other operations, such as the top face of Boss-Extrude1 or the circular edges of a hole. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+[Description("Finds a part's or an assembly's faces, edges or vertices by what they are, each with its persistent reference and shape: by the feature that made them, their geometry, a direction (a planar face's outward normal, or an edge's or cylinder's axis either way), or a point they contain or are near. Use it to get references to pass to other operations, such as the top face of Boss-Extrude1 or the circular edges of a hole. In an assembly it searches every resolved component, or only component (a subassembly: every component in it); directions, points and boxes are in the assembly's coordinates, each entity names its component, and its reference is the assembly's own. Components that are suppressed, lightweight or missing have no geometry and are listed in skipped. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class ModelFindRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part or assembly: its title or full path. The active document when absent.")]
     public string? Document { get; set; }
+
+    [Description("In an assembly only: search this component (bracket-1, sub-1/pin-1, or its reference); a subassembly searches every component in it. Every resolved component when absent.")]
+    public string? Component { get; set; }
 
     [Description("What to find: face, edge or vertex.")]
     public TopologyKind Kind { get; set; }
 
-    [Description("Only what this feature made (for an edge or vertex, any feature of a face it lies on): its name, or a reference exactly as a result gave it.")]
+    [Description("Only what this feature made (for an edge or vertex, any feature of a face it lies on): its name, or a reference exactly as a result gave it. In an assembly, a component's feature as name@component (Boss-Extrude1@bracket-1), which also searches only that component.")]
     public string? Feature { get; set; }
 
     [Description("Only this shape, for example plane or cylinder for faces, line or circle for edges.")]
@@ -167,8 +193,12 @@ public sealed class ModelFindRequest
 public sealed class ModelFindResult
 {
     [Required]
-    [Description("The part.")]
+    [Description("The part or assembly.")]
     public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Required]
+    [Description("In an assembly, the components in the search that were not searched because they have no geometry (suppressed, lightweight or missing); component.set {suppression: resolved} loads one. Empty in a part.")]
+    public List<SkippedComponent> Skipped { get; set; } = new List<SkippedComponent>();
 
     [Required]
     [Description("What matched, nearest first when near was given, else in SOLIDWORKS' order; at most limit.")]
@@ -179,4 +209,18 @@ public sealed class ModelFindResult
 
     [Description("True when more matched than were returned; narrow the search or raise limit.")]
     public bool Truncated { get; set; }
+}
+
+[Description("A component model.find did not search, or whose share model.mass did not give.")]
+public sealed class SkippedComponent
+{
+    [Required]
+    [Description("Its name, for example bracket-1.")]
+    public string Name { get; set; } = "";
+
+    [Description("Its state: suppressed, lightweight or missing (model.find skips only those); model.mass may skip a resolved one, saying why in reason.")]
+    public ComponentState State { get; set; }
+
+    [Description("Why it was skipped, when its state does not say it all (model.mass).")]
+    public string? Reason { get; set; }
 }

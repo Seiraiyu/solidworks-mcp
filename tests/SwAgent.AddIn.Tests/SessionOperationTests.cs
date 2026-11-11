@@ -102,6 +102,13 @@ sealed class FakeSolidWorks : ISolidWorksApplication
 
     public System.Collections.Generic.List<(string Path, DocumentType Type, bool ReadOnly)> Opened { get; } = new System.Collections.Generic.List<(string, DocumentType, bool)>();
 
+    /// <summary>What StoredReferences reads from each file, by path.</summary>
+    public System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<string>> Stored { get; } =
+        new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<string>>(System.StringComparer.OrdinalIgnoreCase);
+
+    public System.Collections.Generic.IReadOnlyList<string> StoredReferences(string path) =>
+        Stored.TryGetValue(path, out var paths) ? paths : new System.Collections.Generic.List<string>();
+
     public OpenOutcome OpenDocument(string path, DocumentType type, bool readOnly)
     {
         Opened.Add((path, type, readOnly));

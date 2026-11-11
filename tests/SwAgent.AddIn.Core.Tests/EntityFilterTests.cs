@@ -92,4 +92,15 @@ public class EntityFilterTests
         Assert.Equal("point vertex of Boss-Extrude1 at (40, 20, 10)",
             EntityFilter.Describe(new EntityInfo { Kind = ReferenceKind.Vertex, Geometry = GeometryType.Point, Feature = "Boss-Extrude1", Origin = new Point3(40, 20, 10) }));
     }
+
+    [Fact]
+    public void An_entity_of_a_component_names_the_component()
+    {
+        Assert.Equal("plane face of Boss-Extrude1 in sub-1/pin-1, 100 mm²",
+            EntityFilter.Describe(new EntityInfo { Kind = ReferenceKind.Face, Geometry = GeometryType.Plane, Feature = "Boss-Extrude1", AreaMm2 = 100, Component = "sub-1/pin-1" }));
+        Assert.Equal("plane Front Plane in bracket-1",
+            EntityFilter.Describe(new EntityInfo { Kind = ReferenceKind.Plane, Geometry = GeometryType.Plane, Name = "Front Plane", Component = "bracket-1" }));
+        Assert.Equal("component bracket-1",
+            EntityFilter.Describe(new EntityInfo { Kind = ReferenceKind.Component, Geometry = GeometryType.Other, Name = "bracket-1", Component = "bracket-1" }));
+    }
 }

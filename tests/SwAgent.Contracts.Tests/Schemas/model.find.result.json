@@ -38,7 +38,40 @@
         "visible"
       ],
       "additionalProperties": false,
-      "description": "The part."
+      "description": "The part or assembly."
+    },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A component model.find did not search, or whose share model.mass did not give.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Its name, for example bracket-1."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "lightweight",
+              "suppressed",
+              "missing"
+            ],
+            "description": "Its state: suppressed, lightweight or missing (model.find skips only those); model.mass may skip a resolved one, saying why in reason."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why it was skipped, when its state does not say it all (model.mass)."
+          }
+        },
+        "required": [
+          "name",
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "description": "In an assembly, the components in the search that were not searched because they have no geometry (suppressed, lightweight or missing); component.set {suppression: resolved} loads one. Empty in a part."
     },
     "entities": {
       "type": "array",
@@ -72,6 +105,10 @@
           "name": {
             "type": "string",
             "description": "Its name, for features, planes, axes and points."
+          },
+          "component": {
+            "type": "string",
+            "description": "In an assembly, the component it belongs to (bracket-1; sub-1/pin-1 inside a subassembly); absent for the assembly's own planes, axes and origin, and in a part. Its position, direction and box are in the assembly's coordinates."
           },
           "feature": {
             "type": "string",
@@ -268,6 +305,7 @@
   },
   "required": [
     "document",
+    "skipped",
     "entities",
     "total",
     "truncated"

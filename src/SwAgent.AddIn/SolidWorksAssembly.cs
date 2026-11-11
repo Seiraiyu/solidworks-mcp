@@ -82,14 +82,7 @@ internal sealed class SolidWorksAssembly : ISwAssembly
         var c = (IComponent2)component;
         string path = c.GetPathName();
         bool subassembly = path.EndsWith(".SLDASM", StringComparison.OrdinalIgnoreCase);
-        int suppression = c.GetSuppression2();
-        var state = suppression switch
-        {
-            (int)swComponentSuppressionState_e.swComponentSuppressed => path.Length > 0 && !File.Exists(path) ? ComponentState.Missing : ComponentState.Suppressed,
-            (int)swComponentSuppressionState_e.swComponentLightweight => ComponentState.Lightweight,
-            (int)swComponentSuppressionState_e.swComponentFullyLightweight => ComponentState.Lightweight,
-            _ => ComponentState.Resolved,
-        };
+        var state = StateOf(c, path);
         bool fixedInPlace = c.IsFixed();
         return new ComponentInfo
         {
@@ -99,7 +92,7 @@ internal sealed class SolidWorksAssembly : ISwAssembly
             State = state,
             Fixed = fixedInPlace,
             Hidden = c.IsHidden(false),
-            Transform = c.Transform2 is MathTransform xf && xf.ArrayData is double[] a ? Placement.FromArray(a) : new Transform(),
+            Transform = TransformOf(c),
             Box = state == ComponentState.Resolved && c.GetBox(false, false) is double[] box && box.Length >= 6
                 ? new Box3 { Min = new Point3(box[0] * Mm, box[1] * Mm, box[2] * Mm), Max = new Point3(box[3] * Mm, box[4] * Mm, box[5] * Mm) }
                 : null,
@@ -109,6 +102,182 @@ internal sealed class SolidWorksAssembly : ISwAssembly
             Parent = c.GetParent() is IComponent2 parent ? parent.Name2 : null,
             Mates = c.GetMates() is object[] mates ? mates.Length : 0,
         };
+    }
+
+    static ComponentState StateOf(IComponent2 c, string path) => c.GetSuppression2() switch
+    {
+        (int)swComponentSuppressionState_e.swComponentSuppressed => path.Length > 0 && !File.Exists(path) ? ComponentState.Missing : ComponentState.Suppressed,
+        (int)swComponentSuppressionState_e.swComponentLightweight => ComponentState.Lightweight,
+        (int)swComponentSuppressionState_e.swComponentFullyLightweight => ComponentState.Lightweight,
+        _ => ComponentState.Resolved,
+    };
+
+    static Transform TransformOf(IComponent2 c) => c.Transform2 is MathTransform xf && xf.ArrayData is double[] a ? Placement.FromArray(a) : new Transform();
+
+    public ComponentIdentity Identify(object component)
+    {
+        var c = (IComponent2)component;
+        string path = c.GetPathName() ?? "";
+        return new ComponentIdentity(c.Name2, path.Length == 0 ? null : path, StateOf(c, path));
+    }
+
+    public ISwDocument? ModelOf(object component)
+    {
+        var c = (IComponent2)component;
+        if (StateOf(c, c.GetPathName() ?? "") != ComponentState.Resolved) return null;
+        return c.GetModelDoc2() is IModelDoc2 model ? new SolidWorksDocument(_sw, model) : null;
+    }
+
+    public object? Corresponding(object component, object entity) => ((IComponent2)component).GetCorresponding(entity);
+
+    /// <summary>
+    /// A feature by its own document's description of the same-named feature; a face, edge or vertex as SOLIDWORKS gives
+    /// it, which is in the component's own coordinates (plan 4.B: the assemblies live suite's turned post proves it).
+    /// Either is then moved by the component's placement.
+    /// </summary>
+    public EntityInfo Describe(object component, object entity)
+    {
+        var c = (IComponent2)component;
+        EntityInfo info;
+        if (entity is IFeature feature && ModelOf(c) is SolidWorksDocument model && model.FeatureByName(feature.Name) is object own)
+            info = model.Describe(own);
+        else
+            info = new SolidWorksDocument(_sw, _doc).Describe(entity);
+        Placement.MoveToAssembly(TransformOf(c), info);
+        info.Component = c.Name2;
+        return info;
+    }
+
+    public IReadOnlyList<object> Topology(object component, TopologyKind kind)
+    {
+        var list = new List<object>();
+        var c = (IComponent2)component;
+        if (StateOf(c, c.GetPathName() ?? "") != ComponentState.Resolved) return list;
+        object bodyInfo;
+        if (!(c.GetBodies3((int)swBodyType_e.swSolidBody, out bodyInfo) is object[] bodies)) return list;
+        foreach (var body in bodies.OfType<IBody2>())
+        {
+            object? items = kind switch
+            {
+                TopologyKind.Edge => body.GetEdges(),
+                TopologyKind.Vertex => body.GetVertices(),
+                _ => body.GetFaces(),
+            };
+            if (items is object[] array) list.AddRange(array);
+        }
+        return list;
+    }
+
+    public double DistanceMm(object component, object entity, Point3 point) =>
+        SolidWorksDocument.Distance(entity, Placement.ToComponent(TransformOf((IComponent2)component), point));
+
+    /// <summary>
+    /// A component's share: the solid bodies IComponent2.GetBodies3 gives, which are the configuration the assembly
+    /// references (plan 4.B review: the file's own mass is its active configuration, so after component.set
+    /// {configuration} the shares no longer added up to the whole). Each body's IBody2.GetMassProperties at its part's
+    /// density, its centre moved into the assembly by the part component's placement; a subassembly's share is its
+    /// resolved part components', suppressed ones left out as the whole leaves them out. Not IMassProperty2.SelectedItems:
+    /// on SOLIDWORKS 2026 SP4 setting it to a component crashed SOLIDWORKS (auCmdTarget_c::objectFromDispatch; plan 4.B,
+    /// Task 14 round 1).
+    /// </summary>
+    public ComponentMass? Mass(object component, out string? refused)
+    {
+        refused = null;
+        var top = (IComponent2)component;
+        double volume = 0, mass = 0, mx = 0, my = 0, mz = 0;
+        foreach (var c in PartsOf(top))
+        {
+            var state = StateOf(c, c.GetPathName() ?? "");
+            if (state == ComponentState.Suppressed || state == ComponentState.Missing) continue;
+            string who = c == top ? Leaf(top.Name2) : $"{Leaf(c.Name2)} in {Leaf(top.Name2)}";
+            if (state == ComponentState.Lightweight)
+            {
+                refused = $"{who} is lightweight, so SOLIDWORKS has not loaded its bodies; component.set {{suppression: resolved}} loads it";
+                return null;
+            }
+            if (!(c.GetModelDoc2() is IModelDoc2 model)) return null;
+            string configuration = c.ReferencedConfiguration ?? "";
+            if (!(Density(model, configuration, who, out refused) is double density)) return null;
+            object bodyInfo;
+            if (!(c.GetBodies3((int)swBodyType_e.swSolidBody, out bodyInfo) is object[] bodies)) continue;
+            var placement = TransformOf(c);
+            foreach (var body in bodies.OfType<IBody2>())
+            {
+                string db;
+                string own = body.GetMaterialPropertyName(configuration, out db) ?? "";
+                if (own.Length > 0 && !string.Equals(own, MaterialOf(model, configuration), StringComparison.OrdinalIgnoreCase))
+                {
+                    refused = $"{who} has a body of its own material ({own}), whose density SOLIDWORKS does not give through the API";
+                    return null;
+                }
+                // Centre of mass x, y, z (m), volume (m³), area (m²), mass (kg), then the moments.
+                if (!(body.GetMassProperties(density) is double[] p) || p.Length < 6) return null;
+                double v = p[3] * 1e9, m = p[5] * 1000;
+                var centre = Placement.ToAssembly(placement, new Point3(p[0] * Mm, p[1] * Mm, p[2] * Mm));
+                volume += v;
+                mass += m;
+                mx += m * centre.X;
+                my += m * centre.Y;
+                mz += m * centre.Z;
+            }
+        }
+        return new ComponentMass
+        {
+            Name = top.Name2,
+            VolumeMm3 = volume,
+            MassG = mass,
+            CenterOfMass = mass > 0 ? new Point3(mx / mass, my / mass, mz / mass) : null,
+        };
+    }
+
+    /// <summary>The component itself when it is a part; a subassembly's part components at every level below it.</summary>
+    static IEnumerable<IComponent2> PartsOf(IComponent2 c)
+    {
+        var children = (c.GetChildren() as object[])?.OfType<IComponent2>().ToList();
+        if (children == null || children.Count == 0)
+        {
+            yield return c;
+            yield break;
+        }
+        foreach (var child in children)
+        {
+            // A suppressed subassembly's parts have no mass in the whole either.
+            if (child.GetChildren() is object[] grand && grand.Length > 0 && child.GetSuppression2() == (int)swComponentSuppressionState_e.swComponentSuppressed) continue;
+            foreach (var part in PartsOf(child)) yield return part;
+        }
+    }
+
+    static string MaterialOf(IModelDoc2 model, string configuration)
+    {
+        if (!(model is IPartDoc part)) return "";
+        string db;
+        return part.GetMaterialPropertyName2(configuration, out db) ?? "";
+    }
+
+    /// <summary>
+    /// The part's density in kg/m³ for the configuration the assembly references. SOLIDWORKS gives it only for the file's
+    /// active configuration, so a referenced configuration with another material is refused, naming both.
+    /// </summary>
+    double? Density(IModelDoc2 model, string configuration, string who, out string? refused)
+    {
+        refused = null;
+        string active = model.ConfigurationManager?.ActiveConfiguration?.Name ?? "";
+        string referenced = MaterialOf(model, configuration), current = MaterialOf(model, active);
+        if (!string.Equals(referenced, current, StringComparison.OrdinalIgnoreCase))
+        {
+            refused = $"{who} uses its configuration {configuration}, whose material ({Named(referenced)}) is not that of the file's active configuration {active} ({Named(current)}); " +
+                      "SOLIDWORKS gives the density of the active one only";
+            return null;
+        }
+        var own = new SolidWorksDocument(_sw, model).Mass();
+        if (own == null || !(own.DensityKgM3 > 0))
+        {
+            refused = $"SOLIDWORKS gave no density for {who}'s file in its active configuration {active}";
+            return null;
+        }
+        return own.DensityKgM3;
+
+        static string Named(string material) => material.Length == 0 ? "none set" : material;
     }
 
     internal static Constraint MapConstraint(int status) => status switch
