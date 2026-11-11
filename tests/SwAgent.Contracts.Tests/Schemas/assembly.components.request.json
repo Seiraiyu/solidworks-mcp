@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "description": "Lists an assembly's components in tree order, the top level only or the whole tree (each subassembly's components after it): name, reference, file, configuration, whether it is resolved, lightweight, suppressed or missing, fixed, hidden, where it sits (mm, assembly coordinates), its box, how a subassembly solves, and how far its position is defined. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "recursive": {
+      "type": "boolean",
+      "description": "List the components inside subassemblies too. Default false: the top level only."
+    }
+  },
+  "additionalProperties": false
+}

@@ -21,6 +21,52 @@ public abstract class AssemblyTestBase : DocumentTestBase
     }
 }
 
+public class AssemblyComponentsTests : AssemblyTestBase
+{
+    AssemblyComponentsResult List(bool? recursive = null) => Run(new AssemblyComponentsOperation(Services), new AssemblyComponentsRequest { Recursive = recursive });
+
+    [Fact]
+    public void Lists_the_top_level_in_order_with_references_and_positions()
+    {
+        Asm.AddComponent("base-1", PathOf("base.SLDPRT"), fix: true);
+        Asm.AddComponent("sub-1", PathOf("sub.SLDASM"), new Point3(0, 0, 50));
+        Asm.AddComponent("sub-1/pin-1", PathOf("pin.SLDPRT"), parent: "sub-1");
+        Asm.Named("base-1").Mates.Add("Coincident1");
+        var result = List();
+        Assert.Equal(new[] { "base-1", "sub-1" }, result.Components.Select(c => c.Name));
+        Assert.All(result.Components, c => Assert.StartsWith("r1.component.", c.Reference));
+        Assert.Equal(Constraint.Fixed, result.Components[0].Constraint);
+        Assert.Equal(1, result.Components[0].Mates);
+        Assert.Equal(50, result.Components[1].Transform.Origin.Z);
+        Assert.Equal(SolveAs.Rigid, result.Components[1].SolveAs);
+        Assert.Equal("stand.SLDASM", result.Document.Title);
+    }
+
+    [Fact]
+    public void Recursive_lists_what_is_inside_subassemblies_after_them()
+    {
+        Asm.AddComponent("sub-1", PathOf("sub.SLDASM"));
+        Asm.AddComponent("sub-1/pin-1", PathOf("pin.SLDPRT"), parent: "sub-1");
+        var result = List(true);
+        Assert.Equal(new[] { "sub-1", "sub-1/pin-1" }, result.Components.Select(c => c.Name));
+        Assert.Equal("sub-1", result.Components[1].Parent);
+    }
+
+    [Fact]
+    public void An_empty_assembly_lists_nothing()
+    {
+        Assert.Empty(List().Components);
+    }
+
+    [Fact]
+    public void A_part_is_the_wrong_document_type()
+    {
+        Sw.Track(FakeDocument.Part("plate.SLDPRT", PathOf("plate.SLDPRT")));
+        var e = Fails(() => Run(new AssemblyComponentsOperation(Services), new AssemblyComponentsRequest { Document = "plate.SLDPRT" }));
+        Assert.Equal(ErrorCode.WrongDocumentType, e.Code);
+    }
+}
+
 public class AssemblyInsertTests : AssemblyTestBase
 {
     AssemblyInsertResult Insert(AssemblyInsertRequest request) => Run(new AssemblyInsertOperation(Services), request);
