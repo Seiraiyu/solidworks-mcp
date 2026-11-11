@@ -196,10 +196,13 @@ public sealed class SheetMetalSuite : IClassFixture<SheetMetalSuiteRun>
             Near(0.5, b.Allowance.KFactor ?? double.NaN, $"{b.Name}'s K-factor");
         }
         double legs = ChannelLegs(flange);
-        Near(20 * 2 * (legs + 4 * Math.PI), flange.Change.VolumeAfterMm3, "the channel's volume, mm³");
+        // Within the operation's own volume tolerance (FeatureChecks.VolumeTolerance, 1e-5): SOLIDWORKS measured a
+        // channel's curved bends 5e-6 off the bend arithmetic (6.A live run), as the fillet's below.
+        Near(20 * 2 * (legs + 4 * Math.PI), flange.Change.VolumeAfterMm3, "the channel's volume, mm³", 1e-5);
         var read = await Read(path);
         Assert.Equal(flange.Sheet.Bends.Select(b => b.Name), read.Bends.Select(b => b.Name));
-        Assert.All(read.Bends, b => Near(20, b.WidthMm ?? double.NaN, $"{b.Name}'s width"));
+        // A bend's width is its faces' box along the axis, and SOLIDWORKS' face box is padded: 20.0001 mm (6.A live run).
+        Assert.All(read.Bends, b => Near(20, b.WidthMm ?? double.NaN, $"{b.Name}'s width", 1e-5));
         Assert.NotNull(read.Flat);
         Flat(legs + 2 * HalfK, read.Flat!.LengthMm, "the flat length");
         Flat(20, read.Flat.WidthMm, "the flat width");
@@ -264,7 +267,16 @@ public sealed class SheetMetalSuite : IClassFixture<SheetMetalSuiteRun>
             On = "front",
             Circles = new List<SketchCircle> { new SketchCircle { Id = "hole", Center = new Point2(50, 30), RadiusMm = 5 } },
         });
-        var cut = await Call<FeatureExtrudeRequest, FeatureResult>(new FeatureExtrudeRequest { Document = path, Sketch = circle.Sketch.Name, Mode = FeatureMode.Cut, End = ExtrudeEnd.ThroughAll });
+        // Through all both ways: the sketch lies on the tab's own face, and a one-way through-all cut from there may point
+        // away from the sheet and cut nothing (6.A live run: "made no cut extrude").
+        var cut = await Call<FeatureExtrudeRequest, FeatureResult>(new FeatureExtrudeRequest
+        {
+            Document = path,
+            Sketch = circle.Sketch.Name,
+            Mode = FeatureMode.Cut,
+            End = ExtrudeEnd.ThroughAll,
+            Direction2 = new ExtrudeDirection { End = ExtrudeEnd.ThroughAll },
+        });
         Assert.NotEqual("FlatPattern", (await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = path })).Features.Single(f => f.Name == cut.Feature.Name).Type);
         Near(12000 - Math.PI * 25 * 2, cut.Change.VolumeAfterMm3, "the tab with its hole, mm³");
         var box = await BoxOf(path);
