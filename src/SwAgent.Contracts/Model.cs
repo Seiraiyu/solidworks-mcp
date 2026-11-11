@@ -115,24 +115,24 @@ public sealed class ComponentMass
 }
 
 [Operation("model.bounding_box", typeof(ModelBoundingBoxResult), ReadOnly = true)]
-[Description("The axis-aligned box around a part's solid bodies, in mm. SOLIDWORKS' quick box by default (it may be a little larger than the bodies); precise for the exact one.")]
+[Description("The axis-aligned box around a part's solid bodies, or an assembly's resolved components' bodies in the assembly's coordinates, in mm. SOLIDWORKS' quick box by default (it may be a little larger than the bodies); precise for the exact one.")]
 public sealed class ModelBoundingBoxRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part or assembly: its title or full path. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("Compute the exact box from the bodies' extreme points. Default false.")]
     public bool? Precise { get; set; }
 }
 
-[Description("A part's bounding box. No box when it has no solid body.")]
+[Description("A part's or assembly's bounding box. No box when it has no solid body.")]
 public sealed class ModelBoundingBoxResult
 {
     [Required]
-    [Description("The part.")]
+    [Description("The part or assembly.")]
     public DocumentInfo Document { get; set; } = new DocumentInfo();
 
-    [Description("How many solid bodies it has.")]
+    [Description("How many solid bodies it has (an assembly: its resolved components' bodies).")]
     public int Bodies { get; set; }
 
     [Description("The box, mm.")]
