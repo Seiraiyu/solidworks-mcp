@@ -30,6 +30,29 @@ public sealed class AssemblyInsertRequest
     public bool? Fixed { get; set; }
 }
 
+[Operation("assembly.components", typeof(AssemblyComponentsResult), ReadOnly = true)]
+[Description("Lists an assembly's components in tree order, the top level only or the whole tree (each subassembly's components after it): name, reference, file, configuration, whether it is resolved, lightweight, suppressed or missing, fixed, hidden, where it sits (mm, assembly coordinates), its box, how a subassembly solves, and how far its position is defined. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class AssemblyComponentsRequest
+{
+    [Description("The assembly: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("List the components inside subassemblies too. Default false: the top level only.")]
+    public bool? Recursive { get; set; }
+}
+
+[Description("An assembly's components.")]
+public sealed class AssemblyComponentsResult
+{
+    [Required]
+    [Description("The assembly.")]
+    public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Required]
+    [Description("Its components in tree order.")]
+    public List<ComponentInfo> Components { get; set; } = new List<ComponentInfo>();
+}
+
 [Description("The component inserted.")]
 public sealed class AssemblyInsertResult : IAssemblyChangeResult
 {
