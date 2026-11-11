@@ -147,7 +147,7 @@ public class OperationCatalogTests
     public void Pipe_name_carries_the_process_id()
     {
         Assert.Equal("solidworks-mcp-1234", Protocol.PipeName(1234));
-        Assert.Equal(5, Protocol.Version);
+        Assert.Equal(6, Protocol.Version);
     }
 
     [Fact]

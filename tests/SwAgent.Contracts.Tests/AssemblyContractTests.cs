@@ -76,7 +76,7 @@ public class AssemblyContractTests
     [Fact]
     public void Protocol_5_speaks_assemblies()
     {
-        Assert.Equal(5, Protocol.Version);
+        Assert.True(Protocol.Version >= 5);
         Assert.Equal(ReferenceKind.Component, References.KindOf(References.Encode(new ReferenceData(ReferenceKind.Component, "a.SLDASM", new byte[] { 1 }, "bracket-1"))));
         Assert.Equal(ReferenceKind.Mate, References.KindOf(References.Encode(new ReferenceData(ReferenceKind.Mate, "a.SLDASM", new byte[] { 1 }, "Coincident1"))));
     }

@@ -115,12 +115,15 @@ public sealed class SheetMetalFeatureResult : IModelChangeResult
     [Description("The feature: its name (Base-Flange1), reference and kind.")]
     public EntityInfo Feature { get; set; } = new EntityInfo();
 
+    [Description("Every feature made, in order, when the operation made more than one (an edge flange makes one per edge); absent when it made one, which is feature.")]
+    public List<EntityInfo>? Features { get; set; }
+
     [Required]
-    [Description("The faces the feature made, each with its reference and geometry.")]
+    [Description("The faces the feature (or the features) made, each with its reference and geometry.")]
     public List<EntityInfo> Faces { get; set; } = new List<EntityInfo>();
 
     [Required]
-    [Description("The sheet's thickness and state, and the bends this feature made.")]
+    [Description("The sheet's thickness and state, and the bends the feature (or the features) made.")]
     public SheetMetalFacts Sheet { get; set; } = new SheetMetalFacts();
 
     [Required]
