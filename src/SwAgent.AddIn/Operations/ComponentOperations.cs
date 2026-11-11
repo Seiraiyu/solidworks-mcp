@@ -112,6 +112,116 @@ public sealed class ComponentPlaceOperation : AssemblyChangeOperation<ComponentP
     }
 }
 
+/// <summary>component.set (design 455, Components): one operation for a component's state, every edit recorded and put back on failure.</summary>
+public sealed class ComponentSetOperation : AssemblyChangeOperation<ComponentSetRequest, ComponentSetResult>
+{
+    public ComponentSetOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(ComponentSetRequest request) => request.Document;
+
+    protected override ComponentSetResult Change(ISwDocument doc, ISwAssembly asm, ComponentSetRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        if (request.Fixed == null && request.Suppression == null && request.Configuration == null && request.SolveAs == null && request.Hidden == null)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument, "give at least one of fixed, suppression, configuration, solve_as and hidden",
+                new JsonObject { ["field"] = "components" });
+        }
+        if (request.Components.Count == 0)
+            throw new SwAgentException(ErrorCode.InvalidArgument, "components is empty; name at least one", new JsonObject { ["field"] = "components" });
+        var targets = new System.Collections.Generic.List<(object Component, ComponentInfo Info)>();
+        for (int i = 0; i < request.Components.Count; i++)
+        {
+            var component = Component(doc, asm, request.Components[i], $"/components/{i}");
+            var info = asm.Read(component);
+            if (request.SolveAs != null && !info.Subassembly)
+            {
+                throw new SwAgentException(ErrorCode.InvalidArgument, $"{info.Name} is a part; solve_as is for subassemblies",
+                    new JsonObject { ["field"] = $"/components/{i}", ["component"] = info.Name });
+            }
+            if (!targets.Exists(t => t.Info.Name == info.Name)) targets.Add((component, info));
+        }
+        foreach (var (component, info) in targets)
+        {
+            // Resolve first, so the other properties act on a loaded component; suppress last, after them.
+            if (request.Suppression == Suppression.Resolved) SetSuppression(asm, tx, component, info, Suppression.Resolved);
+            if (request.Configuration != null && info.Configuration != request.Configuration)
+            {
+                string old = info.Configuration ?? "";
+                tx.Edited(Item(info, "configuration", old, request.Configuration), () => asm.SetConfiguration(component, old));
+                asm.SetConfiguration(component, request.Configuration);
+            }
+            if (request.SolveAs is SolveAs solve && info.SolveAs != solve)
+            {
+                var old = info.SolveAs ?? SolveAs.Rigid;
+                tx.Edited(Item(info, "solve_as", WireNames.ForEnum(old), WireNames.ForEnum(solve)), () => asm.SetSolveAs(component, old));
+                asm.SetSolveAs(component, solve);
+            }
+            if (request.Fixed is bool fix && info.Fixed != fix)
+            {
+                bool old = info.Fixed;
+                tx.Edited(Item(info, "fixed", Bool(old), Bool(fix)), () => asm.SetFixed(component, old));
+                asm.SetFixed(component, fix);
+            }
+            if (request.Hidden is bool hide && info.Hidden != hide)
+            {
+                bool old = info.Hidden;
+                tx.Edited(Item(info, "hidden", Bool(old), Bool(hide)), () => asm.SetHidden(component, old));
+                asm.SetHidden(component, hide);
+            }
+            if (request.Suppression == Suppression.Suppressed) SetSuppression(asm, tx, component, info, Suppression.Suppressed);
+        }
+        asm.Rebuild();
+        var result = new ComponentSetResult();
+        foreach (var (component, _) in targets) result.Components.Add(Describe(doc, asm, component));
+        context.Log.Info($"component.set: {string.Join(", ", targets.Select(t => t.Info.Name))}: {tx.Changed.Count} change(s)");
+        return result;
+    }
+
+    static void SetSuppression(ISwAssembly asm, ModelTransaction tx, object component, ComponentInfo info, Suppression to)
+    {
+        var from = info.State == ComponentState.Suppressed || info.State == ComponentState.Missing ? Suppression.Suppressed : Suppression.Resolved;
+        if (from == to && info.State != ComponentState.Lightweight) return;
+        if (!asm.SetSuppression(component, to))
+        {
+            throw new SwAgentException(ErrorCode.OperationFailed,
+                $"SOLIDWORKS did not make {info.Name} {WireNames.ForEnum(to)}{(info.State == ComponentState.Missing ? ": its file is missing" : "")}",
+                new JsonObject { ["component"] = info.Name });
+        }
+        tx.Edited(Item(info, "suppression", WireNames.ForEnum(info.State), WireNames.ForEnum(to)), () => asm.SetSuppression(component, from));
+    }
+
+    static ChangedItem Item(ComponentInfo info, string property, string before, string after) =>
+        new ChangedItem { Name = info.Name, Property = property, Before = before, After = after };
+
+    static string Bool(bool value) => value ? "true" : "false";
+
+    /// <summary>Every component reads back every property as asked.</summary>
+    protected override void Check(ISwDocument doc, ISwAssembly asm, ComponentSetRequest request, ComponentSetResult result)
+    {
+        foreach (var asked in result.Components)
+        {
+            var now = asm.Read(asm.ComponentByName(asked.Name)
+                ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"{asked.Name} is no longer in the assembly"));
+            if (request.Fixed is bool fix && now.Fixed != fix) throw Failed(now, "fixed", Bool(fix), Bool(now.Fixed));
+            if (request.Suppression is Suppression s && (s == Suppression.Suppressed) != (now.State == ComponentState.Suppressed))
+                throw Failed(now, "suppression", WireNames.ForEnum(s), WireNames.ForEnum(now.State));
+            if (request.Configuration != null && now.Configuration != request.Configuration)
+                throw Failed(now, "configuration", request.Configuration, now.Configuration ?? "");
+            if (request.SolveAs is SolveAs solve && now.SolveAs != solve)
+                throw Failed(now, "solve_as", WireNames.ForEnum(solve), now.SolveAs == null ? "" : WireNames.ForEnum(now.SolveAs.Value));
+            if (request.Hidden is bool hide && now.Hidden != hide) throw Failed(now, "hidden", Bool(hide), Bool(now.Hidden));
+        }
+    }
+
+    static SwAgentException Failed(ComponentInfo now, string property, string expected, string measured) =>
+        new SwAgentException(ErrorCode.VerificationFailed,
+            $"{now.Name}'s {property} is {measured}, not {expected}{(property == "configuration" ? ": its file may have no configuration of that name" : "")}",
+            new JsonObject { ["check"] = property, ["component"] = now.Name, ["expected"] = expected, ["measured"] = measured });
+}
+
 /// <summary>assembly.insert (design 455, Components).</summary>
 public sealed class AssemblyInsertOperation : AssemblyChangeOperation<AssemblyInsertRequest, AssemblyInsertResult>
 {

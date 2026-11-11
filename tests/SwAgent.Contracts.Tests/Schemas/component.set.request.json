@@ -1,0 +1,49 @@
+{
+  "type": "object",
+  "description": "Changes the state of components in the active configuration: fixed or floating, suppressed or resolved, the configuration of its file each uses, how a subassembly solves (rigid or flexible), hidden or shown. Give at least one property; each component gets every property given. Checked: every property reads back as asked; otherwise every edit is put back.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The components: each a reference (r1.component.…) or a name (bracket-1; sub-1/pin-1 inside a subassembly)."
+    },
+    "fixed": {
+      "type": "boolean",
+      "description": "Fix in place (true) or float (false)."
+    },
+    "suppression": {
+      "type": "string",
+      "enum": [
+        "resolved",
+        "suppressed"
+      ],
+      "description": "Suppress, or resolve (load in full, as references to its geometry need)."
+    },
+    "configuration": {
+      "type": "string",
+      "description": "The configuration of the component's file to use."
+    },
+    "solve_as": {
+      "type": "string",
+      "enum": [
+        "rigid",
+        "flexible"
+      ],
+      "description": "For subassemblies only: solve rigid (as one body) or flexible (its own mates move it)."
+    },
+    "hidden": {
+      "type": "boolean",
+      "description": "Hide (true) or show (false)."
+    }
+  },
+  "required": [
+    "components"
+  ],
+  "additionalProperties": false
+}

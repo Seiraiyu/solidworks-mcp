@@ -90,6 +90,45 @@ public sealed class ComponentPlaceResult : IAssemblyChangeResult
     public AssemblyChange Change { get; set; } = new AssemblyChange();
 }
 
+[Operation("component.set", typeof(ComponentSetResult))]
+[Description("Changes the state of components in the active configuration: fixed or floating, suppressed or resolved, the configuration of its file each uses, how a subassembly solves (rigid or flexible), hidden or shown. Give at least one property; each component gets every property given. Checked: every property reads back as asked; otherwise every edit is put back.")]
+public sealed class ComponentSetRequest
+{
+    [Description("The assembly: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The components: each a reference (r1.component.…) or a name (bracket-1; sub-1/pin-1 inside a subassembly).")]
+    public List<string> Components { get; set; } = new List<string>();
+
+    [Description("Fix in place (true) or float (false).")]
+    public bool? Fixed { get; set; }
+
+    [Description("Suppress, or resolve (load in full, as references to its geometry need).")]
+    public Suppression? Suppression { get; set; }
+
+    [Description("The configuration of the component's file to use.")]
+    public string? Configuration { get; set; }
+
+    [Description("For subassemblies only: solve rigid (as one body) or flexible (its own mates move it).")]
+    public SolveAs? SolveAs { get; set; }
+
+    [Description("Hide (true) or show (false).")]
+    public bool? Hidden { get; set; }
+}
+
+[Description("The components changed.")]
+public sealed class ComponentSetResult : IAssemblyChangeResult
+{
+    [Required]
+    [Description("Each component as it is now, in the order asked.")]
+    public List<ComponentInfo> Components { get; set; } = new List<ComponentInfo>();
+
+    [Required]
+    [Description("What changed in the assembly; changed lists each property that was different before.")]
+    public AssemblyChange Change { get; set; } = new AssemblyChange();
+}
+
 [Description("The component inserted.")]
 public sealed class AssemblyInsertResult : IAssemblyChangeResult
 {
