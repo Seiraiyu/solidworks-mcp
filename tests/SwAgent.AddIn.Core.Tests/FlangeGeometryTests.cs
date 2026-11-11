@@ -50,8 +50,9 @@ public class FlangeGeometryTests
         Assert.Equal(22970, volume, 0);
         Assert.Equal(20, section.RiseMm!.Value, 9);
         var k = new BendAllowance { KFactor = 0.5 };
-        Assert.Equal(136.6, 100 + 2 * section.FlatChangeMm(k), 1);
-        Assert.Equal(96.6, 60 + 2 * section.FlatChangeMm(k), 1);
+        // CADapter's 136.6 × 96.6 is rounded; the 6.B live run's cut list read 136.57.
+        Assert.Equal(136.5664, 100 + 2 * section.FlatChangeMm(k), 4);
+        Assert.Equal(96.5664, 60 + 2 * section.FlatChangeMm(k), 4);
     }
 
     [Fact]

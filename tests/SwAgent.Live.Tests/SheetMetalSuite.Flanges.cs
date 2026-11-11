@@ -103,8 +103,10 @@ public sealed partial class SheetMetalSuite
         Near(22, box.Max.Z - box.Min.Z, "the box's height", 1e-5);
         var read = await Read(path);
         Assert.Equal(4, read.Bends.Count);
-        Flat(136.6, read.Flat!.LengthMm, "the flat length");
-        Flat(96.6, read.Flat.WidthMm, "the flat width");
+        // CADapter's 136.6 × 96.6 was rounded: each flange adds 2π (the bend at K 0.5) + 17 straight − 5 taken back (6.B live run: 136.57).
+        double across = 2 * Math.PI + 12;
+        Flat(100 + 2 * across, read.Flat!.LengthMm, "the flat length");
+        Flat(60 + 2 * across, read.Flat.WidthMm, "the flat width");
         return $"{string.Join(", ", made)}; {volume:0.###} mm³; flat {read.Flat.LengthMm} × {read.Flat.WidthMm}";
     });
 
@@ -126,7 +128,8 @@ public sealed partial class SheetMetalSuite
         var missed = await Call<SketchCreateRequest, SketchCreateResult>(Line(2));
         var refused = await Refused(() => Call<SheetMetalMiterFlangeRequest, SheetMetalFeatureResult>(new SheetMetalMiterFlangeRequest { Document = path, Sketch = missed.Sketch.Name, Edges = new List<string> { edge } }));
         Assert.Equal(ErrorCode.InvalidArgument, refused.Code);
-        Near(2, (double)refused.Error.Details!["gap_mm"]!, "the gap", 1e-6);
+        // Over the pipe a whole number comes back as an integer.
+        Near(2, Convert.ToDouble(refused.Error.Details!["gap_mm"]!, System.Globalization.CultureInfo.InvariantCulture), "the gap", 1e-6);
         Near(12000, await VolumeOf(path), "the tab after the refusal");
         var profile = await Call<SketchCreateRequest, SketchCreateResult>(Line(0));
         var miter = await Call<SheetMetalMiterFlangeRequest, SheetMetalFeatureResult>(new SheetMetalMiterFlangeRequest { Document = path, Sketch = profile.Sketch.Name, Edges = new List<string> { edge } });
@@ -149,16 +152,54 @@ public sealed partial class SheetMetalSuite
             new SheetMetalHemRequest { Kind = HemKind.Teardrop, RadiusMm = 2, AngleDeg = 270 },
             new SheetMetalHemRequest { Kind = HemKind.Rolled, RadiusMm = 3, AngleDeg = 200 },
         };
-        foreach (var hem in kinds)
+        // Every kind runs and is recorded even when one fails (6.B live run round 1: the teardrop at R 2, 270° made nothing,
+        // and the case stopped before the rolled hem), so one round answers all four.
+        var failed = new List<string>();
+        async Task<string?> Try(string name, SheetMetalHemRequest hem)
         {
-            var (path, _) = await Sheet($"hem-{WireNames.ForEnum(hem.Kind)}");
+            var (path, _) = await Sheet(name);
             hem.Document = path;
             hem.Edges = new List<string> { await EdgeAt(path, 50, 60) };
-            var made = await Call<SheetMetalHemRequest, SheetMetalFeatureResult>(hem);
-            Assert.True(made.Change.VolumeAfterMm3 > 12000, $"the {WireNames.ForEnum(hem.Kind)} hem added material");
-            notes.Add($"{WireNames.ForEnum(hem.Kind)}: {made.Feature.Name}, {made.Change.VolumeAfterMm3 - 12000:0.###} mm³ added, {made.Sheet.Bends.Count} bends; {string.Join("; ", made.Checks)}");
+            try
+            {
+                var made = await Call<SheetMetalHemRequest, SheetMetalFeatureResult>(hem);
+                return made.Change.VolumeAfterMm3 > 12000
+                    ? $"{made.Feature.Name}, {made.Change.VolumeAfterMm3 - 12000:0.###} mm³ added, {made.Sheet.Bends.Count} bends; {string.Join("; ", made.Checks)}"
+                    : null;
+            }
+            catch (SwAgentException e)
+            {
+                notes.Add($"{name}: {e.Code}: {e.Message}{(e.Error.Details == null ? "" : " " + JsonCodec.Serialize(e.Error.Details))}");
+                return null;
+            }
         }
-        return string.Join(" | ", notes);
+        foreach (var hem in kinds)
+        {
+            string kind = WireNames.ForEnum(hem.Kind);
+            var line = await Try($"hem-{kind}", hem);
+            if (line != null)
+            {
+                notes.Add($"{kind}: {line}");
+                continue;
+            }
+            failed.Add(kind);
+            if (hem.Kind == HemKind.Teardrop)
+            {
+                // Diagnostics only, not the case's verdict: does the position or the radius decide it?
+                foreach (var (name, probe) in new[]
+                {
+                    ("hem-teardrop-outside", new SheetMetalHemRequest { Kind = HemKind.Teardrop, RadiusMm = 2, AngleDeg = 270, Position = BendPosition.BendOutside }),
+                    ("hem-teardrop-r5", new SheetMetalHemRequest { Kind = HemKind.Teardrop, RadiusMm = 5, AngleDeg = 270 }),
+                })
+                {
+                    var probed = await Try(name, probe);
+                    notes.Add($"{name} (diagnostic): {probed ?? "not made"}");
+                }
+            }
+        }
+        string report = string.Join(" | ", notes);
+        Assert.True(failed.Count == 0, $"no hem made for: {string.Join(", ", failed)}. {report}");
+        return report;
     });
 
     [SkippableFact, Step(12)]
