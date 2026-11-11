@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "description": "What the user is editing in the assembly's context.",
+  "properties": {
+    "editing": {
+      "type": "string",
+      "description": "The title of the document being edited in context; absent when the assembly itself is."
+    }
+  },
+  "additionalProperties": false
+}

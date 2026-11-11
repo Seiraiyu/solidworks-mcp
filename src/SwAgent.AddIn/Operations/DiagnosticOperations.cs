@@ -144,6 +144,43 @@ public sealed class DiagEditingOperation : Operation<DiagEditingRequest, DiagEdi
 /// waits (busy, user_editing) with no one at SOLIDWORKS. Opening never sets the sketch manager's drawing options (it is
 /// not the add-in's own drawing), so nothing is left changed when it is exited.
 /// </summary>
+/// <summary>diag.edit_component: the user's in-context edit, made on purpose for the fault suite (design 455, Testing).</summary>
+public sealed class DiagEditComponentOperation : Operation<DiagEditComponentRequest, DiagEditComponentResult>
+{
+    readonly AddInServices _services;
+
+    public DiagEditComponentOperation(AddInServices services)
+    {
+        _services = services;
+    }
+
+    protected override DiagEditComponentResult Run(DiagEditComponentRequest request, IOperationContext context)
+    {
+        if (!_services.Runtime.DiagnosticsEnabled)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                @"diagnostic operations are off; set HKCU\Software\solidworks-mcp\Diagnostics (DWORD) to 1 and reload the add-in to use them");
+        }
+        var (doc, asm) = DocumentLocator.FindAssembly(_services.SolidWorks, request.Document, "diag.edit_component");
+        if (request.Editing)
+        {
+            if (request.Component == null) throw new SwAgentException(ErrorCode.InvalidArgument, "component: name the component to edit", new JsonObject { ["field"] = "component" });
+            var component = ComponentLookup.Find(_services.References, doc, asm, request.Component, "component");
+            context.Log.Warn($"diag.edit_component: editing {request.Component} in context as the user would");
+            if (!asm.EditInContext(component)) throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS did not start editing {request.Component} in context");
+        }
+        else asm.EditAssembly();
+        return new DiagEditComponentResult { Editing = asm.EditingComponent() };
+    }
+
+    /// <summary>A component is being edited in context (or none is), read again.</summary>
+    protected override void Verify(DiagEditComponentRequest request, DiagEditComponentResult result, IOperationContext context)
+    {
+        if ((result.Editing != null) != request.Editing)
+            throw new SwAgentException(ErrorCode.VerificationFailed, request.Editing ? $"{request.Component} is not being edited in context" : $"{result.Editing} is still being edited in context");
+    }
+}
+
 public sealed class DiagEditSketchOperation : Operation<DiagEditSketchRequest, DiagEditingResult>
 {
     readonly AddInServices _services;

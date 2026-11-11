@@ -240,4 +240,16 @@ internal sealed class SolidWorksAssembly : ISwAssembly
     }
 
     public void Rebuild() => _doc.EditRebuild3();
+
+    public bool EditInContext(object component)
+    {
+        _doc.ClearSelection2(true);
+        if (!((IComponent2)component).Select4(false, null, false)) return false;
+        int info = 0;
+        int status = _asm.EditPart2(true, false, ref info);
+        _doc.ClearSelection2(true);
+        return status == (int)swEditPartCommandStatus_e.swEditPartSuccessful;
+    }
+
+    public void EditAssembly() => _asm.EditAssembly();
 }
