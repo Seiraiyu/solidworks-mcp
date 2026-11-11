@@ -81,6 +81,7 @@ public static class SolidWorksCodes
         (int)swSelectType_e.swSelDIMENSIONS => "dimension",
         (int)swSelectType_e.swSelBODYFEATURES => "feature",
         (int)swSelectType_e.swSelSOLIDBODIES => "solid_body",
+        (int)swSelectType_e.swSelCOMPONENTS => "component",
         _ => "other",
     };
 

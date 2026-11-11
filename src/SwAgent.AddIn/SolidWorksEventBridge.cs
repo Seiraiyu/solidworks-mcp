@@ -187,6 +187,8 @@ internal sealed class SolidWorksEventBridge : IDisposable
         readonly DAssemblyDocEvents_ModifyNotifyEventHandler? _asmModified;
         readonly DAssemblyDocEvents_RegenPostNotifyEventHandler? _asmRebuilt;
         readonly DAssemblyDocEvents_DestroyNotify2EventHandler? _asmDestroyed;
+        readonly DAssemblyDocEvents_NewSelectionNotifyEventHandler? _asmSelected;
+        readonly DAssemblyDocEvents_ClearSelectionsNotifyEventHandler? _asmCleared;
         readonly DDrawingDocEvents_FileSavePostNotifyEventHandler? _drwSaved;
         readonly DDrawingDocEvents_ModifyNotifyEventHandler? _drwModified;
         readonly DDrawingDocEvents_RegenPostNotifyEventHandler? _drwRebuilt;
@@ -208,6 +210,8 @@ internal sealed class SolidWorksEventBridge : IDisposable
             _asmModified = bridge.OnModified;
             _asmRebuilt = () => bridge.OnRebuilt(doc);
             _asmDestroyed = t => bridge.OnDestroyed(doc, t);
+            _asmSelected = () => bridge.OnSelection(doc);
+            _asmCleared = () => bridge.OnSelection(doc);
             _drwSaved = (t, f) => bridge.OnSaved(doc);
             _drwModified = bridge.OnModified;
             _drwRebuilt = () => bridge.OnRebuilt(doc);
@@ -234,6 +238,8 @@ internal sealed class SolidWorksEventBridge : IDisposable
                     asm.ModifyNotify += _asmModified;
                     asm.RegenPostNotify += _asmRebuilt;
                     asm.DestroyNotify2 += _asmDestroyed;
+                    asm.NewSelectionNotify += _asmSelected;
+                    asm.ClearSelectionsNotify += _asmCleared;
                     break;
                 case DrawingDoc drw:
                     drw.FileSavePostNotify += _drwSaved;
@@ -263,6 +269,8 @@ internal sealed class SolidWorksEventBridge : IDisposable
                         asm.ModifyNotify -= _asmModified;
                         asm.RegenPostNotify -= _asmRebuilt;
                         asm.DestroyNotify2 -= _asmDestroyed;
+                        asm.NewSelectionNotify -= _asmSelected;
+                        asm.ClearSelectionsNotify -= _asmCleared;
                         break;
                     case DrawingDoc drw:
                         drw.FileSavePostNotify -= _drwSaved;
