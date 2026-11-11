@@ -153,3 +153,92 @@ public sealed class MateAddOperation : AssemblyChangeOperation<MateAddRequest, M
         result.Mate.Alignment = facts.Alignment;
     }
 }
+
+/// <summary>mate.edit (design 455, Mates): a standard mate's value, alignment, flip or suppression, in place; old values put back on failure.</summary>
+public sealed class MateEditOperation : AssemblyChangeOperation<MateEditRequest, MateEditResult>
+{
+    public MateEditOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(MateEditRequest request) => request.Document;
+
+    protected override MateEditResult Change(ISwDocument doc, ISwAssembly asm, MateEditRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        if (request.DistanceMm == null && request.AngleDeg == null && request.Alignment == null && request.Flip == null && request.Suppressed == null)
+            throw MateRequests.Invalid("/mate", "give at least one of distance_mm, angle_deg, alignment, flip and suppressed");
+        var mate = MateLookup.Find(Services.References, doc, asm, request.Mate, "/mate");
+        var facts = asm.ReadMate(mate);
+        if (!(facts.Type is MateType type))
+            throw MateRequests.Invalid("/mate", $"{facts.Name} is a {facts.SolidWorksType} mate; mate.edit changes the standard mates, and api.call reaches the others");
+        if (request.DistanceMm != null && type != MateType.Distance) throw MateRequests.Invalid("/distance_mm", $"{facts.Name} is a {WireNames.ForEnum(type)} mate; distance_mm is for distance mates");
+        if (request.AngleDeg != null && type != MateType.Angle) throw MateRequests.Invalid("/angle_deg", $"{facts.Name} is a {WireNames.ForEnum(type)} mate; angle_deg is for angle mates");
+        MateRequests.Validate(type, request.DistanceMm ?? facts.DistanceMm, request.AngleDeg ?? facts.AngleDeg, request.Alignment, request.Flip);
+
+        if (request.Suppressed is bool suppress && suppress != facts.Suppressed)
+        {
+            bool was = facts.Suppressed;
+            if (!asm.SetMateSuppressed(mate, suppress))
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not {(suppress ? "suppress" : "unsuppress")} {facts.Name}", new JsonObject { ["mate"] = facts.Name });
+            tx.Edited(Item(facts.Name, "suppressed", Bool(was), Bool(suppress)), () => asm.SetMateSuppressed(mate, was));
+        }
+        var old = Spec(type, facts, null);
+        var now = Spec(type, facts, request);
+        var changes = new List<ChangedItem>();
+        if (request.DistanceMm is double d && d != facts.DistanceMm) changes.Add(Item(facts.Name, "distance_mm", Num(facts.DistanceMm), Num(d)));
+        if (request.AngleDeg is double g && g != facts.AngleDeg) changes.Add(Item(facts.Name, "angle_deg", Num(facts.AngleDeg), Num(g)));
+        if (request.Alignment is MateAlignment al && al != facts.Alignment) changes.Add(Item(facts.Name, "alignment", facts.Alignment == null ? "" : WireNames.ForEnum(facts.Alignment.Value), WireNames.ForEnum(al)));
+        if (request.Flip is bool f && f != facts.Flipped) changes.Add(Item(facts.Name, "flip", Bool(facts.Flipped), Bool(f)));
+        if (changes.Count > 0)
+        {
+            if (!asm.EditMate(mate, now))
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not change {facts.Name}", new JsonObject { ["mate"] = facts.Name });
+            foreach (var item in changes) tx.Edited(item, () => asm.EditMate(mate, old));
+        }
+        asm.Rebuild();
+        context.Log.Info($"mate.edit: {facts.Name}: {tx.Changed.Count} change(s)");
+        return new MateEditResult { Mate = MateChecks.Describe(Services.References, doc, asm, mate) };
+    }
+
+    static MateSpec Spec(MateType type, MateFacts f, MateEditRequest? r) => new MateSpec
+    {
+        Type = type,
+        Alignment = r?.Alignment ?? f.Alignment,
+        Flip = r?.Flip ?? f.Flipped,
+        DistanceMm = r?.DistanceMm ?? f.DistanceMm,
+        AngleDeg = r?.AngleDeg ?? f.AngleDeg,
+    };
+
+    static ChangedItem Item(string name, string property, string before, string after) =>
+        new ChangedItem { Name = name, Property = property, Before = before, After = after };
+
+    static string Bool(bool value) => value ? "true" : "false";
+
+    static string Num(double? value) => value?.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture) ?? "";
+
+    /// <summary>Every property reads back as asked; an unsuppressed mate has no error and its condition holds, measured between its sides now.</summary>
+    protected override void Check(ISwDocument doc, ISwAssembly asm, MateEditRequest request, MateEditResult result)
+    {
+        var mate = asm.MateByName(result.Mate.Name)
+            ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"{result.Mate.Name} is no longer in the assembly", new JsonObject { ["check"] = "exists" });
+        var facts = asm.ReadMate(mate);
+        if (request.Suppressed is bool s && facts.Suppressed != s) throw Failed(facts.Name, "suppressed", Bool(s), Bool(facts.Suppressed));
+        if (request.DistanceMm is double d && !(Math.Abs((facts.DistanceMm ?? double.NaN) - d) <= MateGeometry.DistanceToleranceMm))
+            throw Failed(facts.Name, "distance_mm", Num(d), Num(facts.DistanceMm));
+        if (request.AngleDeg is double g && !(Math.Abs((facts.AngleDeg ?? double.NaN) - g) <= MateGeometry.AngleToleranceDeg))
+            throw Failed(facts.Name, "angle_deg", Num(g), Num(facts.AngleDeg));
+        if (facts.Suppressed) return;
+        if (facts.Error != null)
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"{facts.Name} has the mate error {facts.Error}", new JsonObject { ["check"] = "mate_error", ["measured"] = facts.Error });
+        if (facts.Type == MateType.Lock || facts.Entities.Count != 2) return;
+        var a = facts.Entities[0].Entity;
+        var b = facts.Entities[1].Entity;
+        result.Measured = MateChecks.Measure(doc, facts.Type!.Value, (a, Services.References.Describe(doc, a)), (b, Services.References.Describe(doc, b)), facts.DistanceMm, facts.AngleDeg);
+        MateChecks.Require(result.Measured, facts.Name);
+    }
+
+    static SwAgentException Failed(string mate, string property, string expected, string measured) =>
+        new SwAgentException(ErrorCode.VerificationFailed, $"{mate}'s {property} is {measured}, not {expected}",
+            new JsonObject { ["check"] = property, ["expected"] = expected, ["measured"] = measured });
+}
