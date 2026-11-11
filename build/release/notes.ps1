@@ -1,17 +1,19 @@
 <#
 .SYNOPSIS
-  Writes a release's notes: what to download, how to install, and the live-suite report for the tagged commit, which
-  is in the body of the pull request that merged it. A release with no such pull request fails, unless
-  -AllowMissingReport (dry runs, whose commit is a pull request's merge preview).
+  Writes a release's notes: what is in it (its CHANGELOG.md section), what to download, how to install, and the
+  live-suite report for the tagged commit, which is in the body of the pull request that merged it. A release with no such
+  pull request fails, unless -AllowMissingReport (dry runs, whose commit is a pull request's merge preview).
 #>
 param(
     [Parameter(Mandatory)][string]$Version,
     [Parameter(Mandatory)][string]$Commit,
     [Parameter(Mandatory)][string]$Repository,
     [Parameter(Mandatory)][string]$Output,
+    [string]$Changelog = (Join-Path $PSScriptRoot '..\..\CHANGELOG.md'),
     [switch]$AllowMissingReport
 )
 $ErrorActionPreference = 'Stop'
+$changes = & (Join-Path $PSScriptRoot 'changelog.ps1') -Path $Changelog -Version $Version
 $json = gh api "repos/$Repository/commits/$Commit/pulls" --jq '[.[] | select(.merged_at != null) | {number, url: .html_url, title}]'
 if ($LASTEXITCODE -ne 0) {
     if (-not $AllowMissingReport) { throw "could not ask GitHub which pull request merged ${Commit}" }
@@ -27,6 +29,10 @@ $report = if ($prs.Count -gt 0) {
 }
 $notes = @"
 solidworks-mcp $Version for SOLIDWORKS 2026 on Windows (x64). The binaries are not signed.
+
+## What's in it
+
+$changes
 
 ## Install
 

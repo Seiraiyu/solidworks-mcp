@@ -291,7 +291,7 @@ A build is not self-contained, so `swmcp.exe` needs `DOTNET_ROOT`. `addin regist
 
 ### Releases
 
-`.github/workflows/release.yml` builds a release from a `v*` tag. It builds, tests, packs the zip with `build/release/pack.ps1`, and checks it with `build/release/smoke.ps1`, which installs and uninstalls it on the runner. It then publishes the zip and its SHA-256 as a GitHub Release, whose notes link the pull request that carries the commit's live-suite report. A pull request that changes the workflow or `build/`, and a run started by hand (`dry_run` is on by default), do everything but the release and upload the zip as an artifact. To build the same zip here:
+`.github/workflows/release.yml` builds a release from a `v*` tag. It builds, tests, packs the zip with `build/release/pack.ps1`, and checks it with `build/release/smoke.ps1`, which installs and uninstalls it on the runner. It then publishes the zip and its SHA-256 as a GitHub Release, whose notes carry the version's `CHANGELOG.md` section and link the pull request that carries the commit's live-suite report. A pull request that changes the workflow or `build/`, and a run started by hand (`dry_run` is on by default), do everything but the release and upload the zip as an artifact. To build the same zip here:
 
 ```powershell
 ./build/release/pack.ps1 -Version 0.1.0-local.1 -Output dist
