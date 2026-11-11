@@ -240,6 +240,73 @@ public class ComponentSetTests : AssemblyTestBase
     }
 }
 
+public class ComponentDeleteTests : AssemblyTestBase
+{
+    ComponentDeleteResult Delete(params string[] components) => Run(new ComponentDeleteOperation(Services), new ComponentDeleteRequest { Components = components.ToList() });
+
+    public ComponentDeleteTests()
+    {
+        Asm.AddComponent("base-1", PathOf("base.SLDPRT"), fix: true);
+        Asm.AddComponent("pin-1", PathOf("pin.SLDPRT"));
+        Asm.AddComponent("sub-1", PathOf("sub.SLDASM"));
+        Asm.AddComponent("sub-1/bolt-1", PathOf("pin.SLDPRT"), parent: "sub-1");
+        Asm.MateNames.AddRange(new[] { "Concentric1", "Coincident1" });
+        Asm.Named("pin-1").Mates.AddRange(new[] { "Concentric1", "Coincident1" });
+        Asm.Named("base-1").Mates.AddRange(new[] { "Concentric1", "Coincident1" });
+    }
+
+    [Fact]
+    public void Deletes_components_and_the_mates_that_used_them()
+    {
+        var result = Delete("pin-1");
+        Assert.Equal(new[] { "pin-1" }, result.Deleted);
+        Assert.Equal(new[] { "Concentric1", "Coincident1" }, result.MatesDeleted);
+        Assert.Equal(2, result.Change.MatesBefore);
+        Assert.Equal(0, result.Change.MatesAfter);
+        Assert.Equal(4, result.Change.ComponentsBefore);
+        Assert.Equal(3, result.Change.ComponentsAfter);
+        Assert.Null(Asm.ComponentByName("pin-1"));
+    }
+
+    [Fact]
+    public void A_subassembly_goes_with_what_is_inside_it()
+    {
+        Assert.Equal(new[] { "sub-1" }, Delete("sub-1").Deleted);
+        Assert.Equal(new[] { "base-1", "pin-1" }, Asm.Items.Select(i => i.Info.Name));
+    }
+
+    [Fact]
+    public void A_component_inside_a_subassembly_is_refused()
+    {
+        var e = Fails(() => Delete("sub-1/bolt-1"));
+        Assert.Equal("/components/0", e.Error.Details!["field"]);
+        Assert.Equal("sub-1", e.Error.Details["subassembly"]);
+        Assert.Empty(Asm.Calls);
+    }
+
+    [Fact]
+    public void Nothing_deleted_fails_the_check_and_says_what_is_left()
+    {
+        Asm.DeleteIgnored = true;
+        var e = Fails(() => Delete("pin-1"));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal(new object?[] { "pin-1" }, (List<object?>)e.Error.Details!["left"]!);
+    }
+
+    [Fact]
+    public void An_unknown_component_is_refused_before_anything_is_deleted()
+    {
+        Assert.Equal("/components/1", Fails(() => Delete("pin-1", "nut-1")).Error.Details!["field"]);
+        Assert.Empty(Asm.Calls);
+    }
+
+    [Fact]
+    public void An_empty_list_is_refused()
+    {
+        Assert.Equal("components", Fails(() => Delete()).Error.Details!["field"]);
+    }
+}
+
 public class AssemblyInsertTests : AssemblyTestBase
 {
     AssemblyInsertResult Insert(AssemblyInsertRequest request) => Run(new AssemblyInsertOperation(Services), request);

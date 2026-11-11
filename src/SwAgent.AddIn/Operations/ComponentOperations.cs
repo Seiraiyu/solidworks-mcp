@@ -222,6 +222,65 @@ public sealed class ComponentSetOperation : AssemblyChangeOperation<ComponentSet
             new JsonObject { ["check"] = property, ["component"] = now.Name, ["expected"] = expected, ["measured"] = measured });
 }
 
+/// <summary>
+/// component.delete (design 455, Components). Nothing is recorded to roll back: a deleted component and its mates cannot
+/// be made again as they were, so a failed check reports what is left instead.
+/// </summary>
+public sealed class ComponentDeleteOperation : AssemblyChangeOperation<ComponentDeleteRequest, ComponentDeleteResult>
+{
+    /// <summary>The assembly's mate count before the delete (one request runs at a time).</summary>
+    int _matesBefore;
+
+    public ComponentDeleteOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(ComponentDeleteRequest request) => request.Document;
+
+    protected override ComponentDeleteResult Change(ISwDocument doc, ISwAssembly asm, ComponentDeleteRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        if (request.Components.Count == 0)
+            throw new SwAgentException(ErrorCode.InvalidArgument, "components is empty; name at least one", new JsonObject { ["field"] = "components" });
+        var doomed = new System.Collections.Generic.List<(object Component, ComponentInfo Info)>();
+        for (int i = 0; i < request.Components.Count; i++)
+        {
+            var component = Component(doc, asm, request.Components[i], $"/components/{i}");
+            var info = asm.Read(component);
+            if (info.Parent != null)
+            {
+                throw new SwAgentException(ErrorCode.InvalidArgument,
+                    $"{info.Name} is inside the subassembly {info.Parent}; open {info.Parent}'s own document to delete it there, or delete {info.Parent}",
+                    new JsonObject { ["field"] = $"/components/{i}", ["component"] = info.Name, ["subassembly"] = info.Parent });
+            }
+            if (!doomed.Exists(d => d.Info.Name == info.Name)) doomed.Add((component, info));
+        }
+        var mates = doomed.SelectMany(d => asm.MatesOf(d.Component)).Distinct().ToList();
+        _matesBefore = asm.MateCount();
+        asm.Delete(doomed.Select(d => d.Component).ToList());
+        context.Log.Info($"component.delete: {string.Join(", ", doomed.Select(d => d.Info.Name))}{(mates.Count > 0 ? $" with mates {string.Join(", ", mates)}" : "")}");
+        return new ComponentDeleteResult { Deleted = doomed.Select(d => d.Info.Name).ToList(), MatesDeleted = mates };
+    }
+
+    /// <summary>None of the components is left, and the assembly has as many fewer mates as went with them.</summary>
+    protected override void Check(ISwDocument doc, ISwAssembly asm, ComponentDeleteRequest request, ComponentDeleteResult result)
+    {
+        var left = result.Deleted.Where(n => asm.ComponentByName(n) != null).ToList();
+        if (left.Count > 0)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"SOLIDWORKS did not delete {string.Join(", ", left)}",
+                new JsonObject { ["check"] = "deleted", ["left"] = left.Select(l => (object?)l).ToList() });
+        }
+        int mates = asm.MateCount();
+        if (mates != _matesBefore - result.MatesDeleted.Count)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"the assembly has {mates} mates, not {_matesBefore - result.MatesDeleted.Count}: the mates of the deleted components were not all deleted with them",
+                new JsonObject { ["check"] = "mates", ["expected"] = _matesBefore - result.MatesDeleted.Count, ["measured"] = mates });
+        }
+    }
+}
+
 /// <summary>assembly.insert (design 455, Components).</summary>
 public sealed class AssemblyInsertOperation : AssemblyChangeOperation<AssemblyInsertRequest, AssemblyInsertResult>
 {
