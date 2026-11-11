@@ -151,3 +151,99 @@ public class SheetMetalSketchedBendTests : SheetMetalBendTestBase
         Assert.NotNull(doc.FeatureByName(lines));
     }
 }
+
+public class SheetMetalFlattenTests : SheetMetalBendTestBase
+{
+    internal SheetMetalFlattenResult Flatten(bool flat) => Run(new SheetMetalFlattenOperation(Services), new SheetMetalFlattenRequest { Flat = flat });
+
+    /// <summary>The tab with a 25 mm flange on its 40 mm edge (at the allowance given), which flattens to 40 × 20 + the flange's development, 2 mm thin.</summary>
+    FakeDocument Flanged(BendAllowance? allowance = null)
+    {
+        var doc = Tabbed();
+        EdgeFlange(new SheetMetalEdgeFlangeRequest { Edges = new List<string> { Top(doc) }, LengthMm = 25, LengthFrom = FlangeLengthFrom.InnerVirtualSharp, Allowance = allowance });
+        doc.FlatBox = new Box3 { Min = new Point3(0, 0, -2), Max = new Point3(40, 63.28, 0) };
+        return doc;
+    }
+
+    [Fact]
+    public void Flattening_turns_the_flat_pattern_on_and_at_half_leaves_the_volume_then_folding_turns_it_off()
+    {
+        var doc = Flanged();
+        double folded = doc.MassProperties!.VolumeMm3;
+        var flat = Flatten(true);
+        Assert.Equal(SheetState.Flattened, flat.State);
+        Assert.False(flat.Unchanged);
+        Assert.Equal(folded, flat.Change.VolumeAfterMm3, 6);
+        var changed = Assert.Single(flat.Change.Changed);
+        Assert.Equal(("Flat-Pattern1", "suppressed", "suppressed (folded)", "unsuppressed (flattened)"), (changed.Name, changed.Property, changed.Before, changed.After));
+        Assert.Contains("the part reads flattened from its Flat-Pattern feature", flat.Checks);
+        Assert.Contains("no bend has a cylindrical face left", flat.Checks);
+        Assert.Contains("the flattened part is 2 mm across its base face, the sheet's thickness", flat.Checks);
+        Assert.Contains(flat.Checks, c => c.StartsWith("the volume changed by 0 mm³, the bend arithmetic's 0 mm³ (developing 1 bends"));
+        Assert.NotNull(flat.Flat);
+        Assert.Equal(SheetState.Flattened, SheetMetalParts.State(doc));
+        var back = Flatten(false);
+        Assert.Equal(SheetState.Folded, back.State);
+        Assert.Equal(folded, back.Change.VolumeAfterMm3, 6);
+        Assert.Contains(back.Checks, c => c.StartsWith("the volume changed by 0 mm³, the bend arithmetic's 0 mm³ (folding 1 bends"));
+        Assert.Equal(new[] { ("Flat-Pattern1", false), ("Flat-Pattern1", true) }, doc.Suppressions);
+    }
+
+    [Fact]
+    public void Away_from_half_the_volume_moves_by_exactly_the_bend_arithmetic_and_back()
+    {
+        var doc = Flanged(new BendAllowance { KFactor = 0.1 });
+        double folded = doc.MassProperties!.VolumeMm3;
+        // 40 mm of bend, 2 mm thick, developing to π/2 × 3.2 rather than its middle arc π/2 × 4.
+        double change = 40 * 2 * Math.PI / 2 * (3.2 - 4);
+        Assert.Equal(folded + change, Flatten(true).Change.VolumeAfterMm3, 6);
+        Assert.Equal(folded, Flatten(false).Change.VolumeAfterMm3, 6);
+    }
+
+    [Fact]
+    public void A_part_already_in_the_state_asked_is_left_as_it_is()
+    {
+        var doc = Flanged();
+        var same = Flatten(false);
+        Assert.True(same.Unchanged);
+        Assert.Equal(SheetState.Folded, same.State);
+        Assert.Contains("the part was already folded; nothing was changed", same.Checks);
+        Assert.Empty(same.Change.Changed);
+        Assert.Empty(doc.Suppressions);
+    }
+
+    [Theory]
+    [InlineData("volume", "volume_developed")]
+    [InlineData("faces", "bend_faces")]
+    [InlineData("thick", "flat_thickness")]
+    public void A_flat_pattern_that_is_not_the_bends_developed_is_turned_off_again(string fault, string check)
+    {
+        var doc = Flanged();
+        double folded = doc.MassProperties!.VolumeMm3;
+        if (fault == "volume") doc.FlattenVolumeError = 3;
+        if (fault == "faces") doc.FlattenKeepsBendFaces = true;
+        if (fault == "thick") doc.FlatBox = new Box3 { Min = new Point3(0, 0, -27), Max = new Point3(40, 20, 0) };
+        var e = Fails(() => Flatten(true));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal(check, e.Error.Details!["check"]);
+        Assert.Equal(SheetState.Folded, SheetMetalParts.State(doc));
+        Assert.Equal(folded, doc.MassProperties.VolumeMm3, 9);
+    }
+
+    [Fact]
+    public void A_flat_pattern_SOLIDWORKS_will_not_turn_on_fails()
+    {
+        var doc = Flanged();
+        doc.SuppressRefused = true;
+        Assert.Equal(ErrorCode.OperationFailed, Fails(() => Flatten(true)).Code);
+        Assert.Equal(SheetState.Folded, SheetMetalParts.State(doc));
+    }
+
+    [Fact]
+    public void A_part_that_is_not_sheet_metal_is_refused()
+    {
+        Part();
+        Block();
+        Assert.Equal("sheet_metal", Fails(() => Flatten(true)).Error.Details!["needs"]);
+    }
+}

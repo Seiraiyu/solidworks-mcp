@@ -31,6 +31,18 @@ public class SheetMetalBendContractTests
     }
 
     [Fact]
+    public void Flatten_takes_its_state_as_a_required_flag_and_says_when_nothing_changed()
+    {
+        IsSheetMetalChange("sheetmetal.flatten", typeof(SheetMetalFlattenRequest), typeof(SheetMetalFlattenResult));
+        Assert.Equal(new[] { "flat" }, Required(typeof(SheetMetalFlattenRequest)).ToArray());
+        var result = new SheetMetalFlattenResult { State = SheetState.Flattened, Unchanged = true, Flat = new FlatSize { LengthMm = 136.5664, WidthMm = 96.5664, Bends = 4 } };
+        string json = JsonCodec.Serialize(result);
+        Assert.Contains("\"state\":\"flattened\"", json);
+        Assert.Contains("\"unchanged\":true", json);
+        Assert.Equal(136.5664, JsonCodec.Deserialize<SheetMetalFlattenResult>(json).Flat!.LengthMm);
+    }
+
+    [Fact]
     public void Protocol_8_speaks_bends_and_flattening()
     {
         Assert.Equal(8, Protocol.Version);

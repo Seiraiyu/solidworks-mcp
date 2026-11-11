@@ -54,4 +54,37 @@ public class SheetMetalBendErrorCodeTests : SheetMetalBendTestBase
         Assert.DoesNotContain(doc.Tree, f => f.Type == "SM3dBend");
         Assert.Equal(1600, doc.MassProperties!.VolumeMm3, 9);
     }
+
+    [Theory]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    public void Sheetmetal_flatten_reaches_every_listed_code(ErrorCode code)
+    {
+        SheetMetalFlattenResult Flatten() => Run(new SheetMetalFlattenOperation(Services), new SheetMetalFlattenRequest { Flat = true });
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Part();
+            Block();
+            Assert.Equal(code, Fails(() => Flatten()).Code);
+            return;
+        }
+        var doc = Tabbed();
+        switch (code)
+        {
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch1";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.SuppressRefused = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.FlattenVolumeError = 1;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Flatten()).Code);
+        Assert.Equal(SheetState.Folded, SheetMetalParts.State(doc));
+        Assert.Equal(1600, doc.MassProperties!.VolumeMm3, 9);
+    }
 }

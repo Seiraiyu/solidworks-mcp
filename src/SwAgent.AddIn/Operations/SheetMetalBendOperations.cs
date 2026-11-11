@@ -100,3 +100,109 @@ public sealed class SheetMetalSketchedBendOperation : ModelChangeOperation<Sheet
         result.Sheet = SheetMetalParts.Facts(Services.References, doc, bends);
     }
 }
+
+public sealed class SheetMetalFlattenOperation : ModelChangeOperation<SheetMetalFlattenRequest, SheetMetalFlattenResult>
+{
+    BendVolumeChange? _flattening;
+    Vector3? _baseNormal;
+    double _thickness;
+    bool _unchanged;
+
+    public SheetMetalFlattenOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(SheetMetalFlattenRequest request) => request.Document;
+
+    /// <summary>The bends still folded (with a cylindrical face), as the development checks read them: a bend an Unfold feature already developed adds nothing.</summary>
+    static List<DevelopedBend> Folded(ISwDocument doc) =>
+        SheetMetalParts.Developed(doc, doc.SheetMetal.Bends().Where(b => SheetMetalParts.Cylinders(doc, b).Count > 0));
+
+    protected override SheetMetalFlattenResult Change(ISwDocument doc, SheetMetalFlattenRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        var defaults = SheetMetalParts.Require(doc, Name);
+        _thickness = defaults.ThicknessMm;
+        _flattening = null;
+        _baseNormal = null;
+        var flat = doc.Features().FirstOrDefault(f => f.Type == SheetMetalParts.FlatPatternType && f.Parent == null)
+            ?? throw new SwAgentException(ErrorCode.OperationFailed, $"{doc.Info().Title} has no Flat-Pattern feature to turn on or off; SOLIDWORKS makes one with every sheet-metal part",
+                new JsonObject { ["check"] = "flat_pattern" });
+        bool flattened = !flat.Suppressed;
+        _unchanged = flattened == request.Flat;
+        if (_unchanged) return new SheetMetalFlattenResult { Unchanged = true };
+        if (request.Flat)
+        {
+            _flattening = BendDevelopment.Develop(Folded(doc), _thickness, flatten: true);
+            var face = SheetMetalParts.BaseFace(doc);
+            if (face != null) _baseNormal = doc.Describe(face).Normal;
+        }
+        string State(bool suppressed) => suppressed ? "suppressed (folded)" : "unsuppressed (flattened)";
+        tx.Edited(new ChangedItem { Name = flat.Name, Property = "suppressed", Before = State(flat.Suppressed), After = State(!request.Flat) }, () =>
+        {
+            doc.Suppress(flat.Feature, flat.Suppressed);
+            doc.Rebuild(false);
+        });
+        if (!doc.Suppress(flat.Feature, !request.Flat))
+            throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not {(request.Flat ? "unsuppress" : "suppress")} {flat.Name}, so the part was not {(request.Flat ? "flattened" : "folded")}");
+        if (!doc.Rebuild(false))
+            throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS could not rebuild {doc.Info().Title} {(request.Flat ? "flattened" : "folded")}");
+        return new SheetMetalFlattenResult();
+    }
+
+    /// <summary>The state reads back; the volume moved as the bend arithmetic develops or folds the bends; flattened, no bend face is left and the sheet is as thin as it is thick.</summary>
+    protected override void Check(ISwDocument doc, SheetMetalFlattenRequest request, SheetMetalFlattenResult result)
+    {
+        var checks = result.Checks;
+        var state = SheetMetalParts.State(doc);
+        result.State = state;
+        result.Unchanged = _unchanged;
+        var sheet = doc.SheetMetal;
+        result.Flat = SheetMetalParts.Flat(sheet.CutList(), sheet.MmPerUnit(), sheet.Bends().Count);
+        string wanted = request.Flat ? "flattened" : "folded";
+        if (_unchanged)
+        {
+            checks.Add($"the part was already {wanted}; nothing was changed");
+            return;
+        }
+        if ((state == SheetState.Flattened) != request.Flat)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"the part reads {WireNames.ForEnum(state)} from its Flat-Pattern feature after it was {wanted}",
+                new JsonObject { ["check"] = "state", ["expected"] = wanted, ["measured"] = WireNames.ForEnum(state) });
+        }
+        checks.Add($"the part reads {wanted} from its Flat-Pattern feature");
+        double after = Volume(doc, doc.SolidBodyCount());
+        if (request.Flat)
+        {
+            var left = sheet.Bends().Where(b => SheetMetalParts.Cylinders(doc, b).Count > 0).Select(b => b.Name).ToList();
+            if (left.Count > 0)
+            {
+                throw new SwAgentException(ErrorCode.VerificationFailed, $"{string.Join(", ", left)} still has cylindrical faces after the part was flattened",
+                    new JsonObject { ["check"] = "bend_faces", ["bends"] = left.Select(n => (object?)n).ToList() });
+            }
+            checks.Add("no bend has a cylindrical face left");
+            Thin(doc, checks);
+            SheetMetalParts.VolumeDeveloped(_flattening, VolumeBefore, after, "flatten", checks);
+        }
+        else
+        {
+            SheetMetalParts.VolumeDeveloped(BendDevelopment.Develop(Folded(doc), _thickness, flatten: false), VolumeBefore, after, "fold", checks);
+        }
+    }
+
+    /// <summary>Flattened, the part is as thin as the sheet across the base face it had folded, where that face's normal is along x, y or z.</summary>
+    void Thin(ISwDocument doc, List<string> checks)
+    {
+        var box = doc.BoundingBox(true);
+        var n = _baseNormal;
+        if (box == null || n == null || Flanges.Reach(box, n) == null)
+        {
+            checks.Add("the flat sheet's thinness was not compared: " + (box == null ? "SOLIDWORKS gave no box" : "its base face's normal is not along x, y or z"));
+            return;
+        }
+        var flip = new Vector3(-n.X, -n.Y, -n.Z);
+        double across = Flanges.Reach(box, n)!.Value + Flanges.Reach(box, flip)!.Value;
+        FeatureChecks.Near("flat_thickness", "the flattened part's extent across its base face", _thickness, across, 1e-3, "mm");
+        checks.Add(FormattableString.Invariant($"the flattened part is {across:0.####} mm across its base face, the sheet's thickness"));
+    }
+}

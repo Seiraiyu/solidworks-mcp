@@ -33,3 +33,35 @@ public sealed class SheetMetalSketchedBendRequest
     [Description("The bends' own allowance: exactly one of k_factor, allowance_mm or deduction_mm. The part's default when absent.")]
     public BendAllowance? Allowance { get; set; }
 }
+
+[Operation("sheetmetal.flatten", typeof(SheetMetalFlattenResult))]
+[Description("Flattens a sheet-metal part (flat true) or folds it back (flat false), by turning its Flat-Pattern feature on or off; a part already in that state is left as it is. The state persists until it is changed again, and sheetmetal.read reports it; the flange, hem, bend, convert and parameter tools need the part folded. Checked: the state reads back from the Flat-Pattern feature; the volume changed by exactly the bend arithmetic's sum over the bends, each developing to its allowance (nothing at K 0.5), where every bend is whole, and by no more than that sum where one is cut across; flattened, no bend has a cylindrical face left and the sheet is its thickness thin across its base face. Otherwise the Flat-Pattern feature is put back as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open.")]
+public sealed class SheetMetalFlattenRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("True to flatten the part, false to fold it back.")]
+    public bool Flat { get; set; }
+}
+
+[Description("A sheet-metal part flattened or folded, its flat size, and the part after it.")]
+public sealed class SheetMetalFlattenResult : IModelChangeResult
+{
+    [Required]
+    [Description("The evidence: the Flat-Pattern feature's suppression before and after, and the part's rebuild status, bodies and volume before and after.")]
+    public ModelChange Change { get; set; } = new ModelChange();
+
+    [Description("folded or flattened, as the Flat-Pattern feature reads now.")]
+    public SheetState State { get; set; }
+
+    [Description("True when the part was already in the state asked, so nothing was changed.")]
+    public bool Unchanged { get; set; }
+
+    [Description("The flat pattern's size from the cut list; absent when the cut list does not give it as numbers.")]
+    public FlatSize? Flat { get; set; }
+
+    [Required]
+    [Description("The checks made, each as a sentence with what was expected and measured.")]
+    public List<string> Checks { get; set; } = new List<string>();
+}
