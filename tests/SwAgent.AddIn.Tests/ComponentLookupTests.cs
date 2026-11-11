@@ -113,7 +113,7 @@ public class ComponentLookupTests
         Assert.Equal(ErrorCode.WrongDocumentType, e.Code);
         Assert.Equal("assembly.insert works on assemblies, and plate.SLDPRT is a part", e.Message);
         e = Assert.Throws<SwAgentException>(() => DocumentLocator.FindPart(_sw, "stand", "feature.extrude"));
-        Assert.Equal("feature.extrude works on parts, and stand.SLDASM is an assembly", e.Message);
+        Assert.StartsWith("feature.extrude works on parts, and stand.SLDASM is an assembly; to change a component's geometry, open its part", e.Message);
         var (doc, asm) = DocumentLocator.FindAssembly(_sw, "stand", "assembly.insert");
         Assert.Same(_doc, doc);
         Assert.Same(_doc.Asm, asm);

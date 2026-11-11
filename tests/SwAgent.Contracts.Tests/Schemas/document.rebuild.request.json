@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "Rebuilds a document (only what changed; everything with force) and reports its rebuild errors and warnings by feature.",
+  "description": "Rebuilds a part or an assembly (only what changed; everything with force) and reports its rebuild errors and warnings by feature; an assembly's include its mates' errors, each named by the mate. After changing a component's part, rebuild the assembly that uses it.",
   "properties": {
     "document": {
       "type": "string",

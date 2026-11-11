@@ -68,12 +68,29 @@ public static class DocumentLocator
         var info = doc.Info();
         if (info.Type != type)
         {
-            throw new SwAgentException(ErrorCode.WrongDocumentType,
-                $"{operation} works on {(type == DocumentType.Assembly ? "assemblies" : "parts")}, and {info.Title} is {Article(info.Type)}",
-                new JsonObject { ["document"] = Label(info), ["type"] = WireNames.ForEnum(info.Type) });
+            var details = new JsonObject { ["document"] = Label(info), ["type"] = WireNames.ForEnum(info.Type) };
+            string message = $"{operation} works on {(type == DocumentType.Assembly ? "assemblies" : "parts")}, and {info.Title} is {Article(info.Type)}";
+            if (type == DocumentType.Part && info.Type == DocumentType.Assembly)
+            {
+                // Design 455, Error handling: name what to do instead.
+                string instead = InsteadInAssembly.TryGetValue(operation, out var tool) ? tool : PartOnly;
+                details["instead"] = instead;
+                message += "; " + instead;
+            }
+            throw new SwAgentException(ErrorCode.WrongDocumentType, message, details);
         }
         return doc;
     }
+
+    /// <summary>What a part-only operation asked of an assembly should use instead (design 455, Inspection and the part tools).</summary>
+    static readonly Dictionary<string, string> InsteadInAssembly = new Dictionary<string, string>
+    {
+        ["model.tree"] = "assembly.components lists an assembly's components, and model.find its components' faces, edges and vertices",
+        ["model.dimensions"] = "open a component's part with document.open to read its dimensions",
+    };
+
+    /// <summary>The way to change a component's geometry, for every other part-only operation.</summary>
+    const string PartOnly = "to change a component's geometry, open its part with document.open, change it there, then document.rebuild the assembly";
 
     static string Article(DocumentType type) => type switch
     {
