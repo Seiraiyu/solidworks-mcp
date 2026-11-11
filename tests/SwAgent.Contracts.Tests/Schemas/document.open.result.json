@@ -61,6 +61,29 @@
         "type": "string"
       },
       "description": "Files the document uses (an assembly's components) that SOLIDWORKS could not find; those components stay suppressed. Empty when nothing is missing."
+    },
+    "substituted": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A component file SOLIDWORKS loaded in place of the one an assembly names.",
+        "properties": {
+          "expected": {
+            "type": "string",
+            "description": "The full path the assembly stores for it."
+          },
+          "loaded": {
+            "type": "string",
+            "description": "The full path of the same-named file SOLIDWORKS loaded instead."
+          }
+        },
+        "required": [
+          "expected",
+          "loaded"
+        ],
+        "additionalProperties": false
+      },
+      "description": "An assembly's component files SOLIDWORKS loaded from another folder than the assembly says, because the file was not there: check each is the file meant before saving the assembly, which would then point at it. Empty when nothing was substituted."
     }
   },
   "required": [
@@ -68,7 +91,8 @@
     "already_open",
     "read_only",
     "warnings",
-    "missing"
+    "missing",
+    "substituted"
   ],
   "additionalProperties": false
 }

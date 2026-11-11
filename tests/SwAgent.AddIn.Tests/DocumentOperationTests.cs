@@ -508,6 +508,39 @@ public class DocumentOpenTests : DocumentTestBase
     }
 
     [Fact]
+    public void An_assembly_lists_a_component_file_SOLIDWORKS_found_in_another_folder()
+    {
+        // 4.A live run, case 7: the part was not where the assembly said, and SOLIDWORKS loaded a same-named file it had seen elsewhere.
+        string path = PathOf("stand.SLDASM");
+        File.WriteAllText(path, "asm");
+        Directory.CreateDirectory(PathOf("earlier"));
+        string stored = PathOf("pin.SLDPRT");
+        string found = PathOf(Path.Combine("earlier", "pin.SLDPRT"));
+        File.WriteAllText(found, "part");
+        Sw.Stored[path] = new System.Collections.Generic.List<string> { stored };
+        Sw.OpenWith = p =>
+        {
+            var asm = new FakeDocument("stand.SLDASM", p, DocumentType.Assembly);
+            asm.Uses.Add(found);
+            return new OpenOutcome(Sw.Track(asm), 0, 0);
+        };
+        var result = Open(new DocumentOpenRequest { Path = path });
+        var s = Assert.Single(result.Substituted);
+        Assert.Equal(stored, s.Expected);
+        Assert.Equal(found, s.Loaded);
+        Assert.Empty(result.Missing);
+    }
+
+    [Fact]
+    public void A_part_is_opened_without_reading_stored_references()
+    {
+        string path = PathOf("pin.SLDPRT");
+        File.WriteAllText(path, "part");
+        Sw.Stored[path] = new System.Collections.Generic.List<string> { PathOf("elsewhere.SLDPRT") };
+        Assert.Empty(Open(new DocumentOpenRequest { Path = path }).Substituted);
+    }
+
+    [Fact]
     public void A_component_loaded_only_for_an_assembly_gets_a_window_and_is_the_agents()
     {
         string path = PathOf("pin.SLDPRT");
@@ -886,5 +919,6 @@ abstract class DelegatingSolidWorks : ISolidWorksApplication
     public virtual ISwDocument NewDocument(string template) => Inner.NewDocument(template);
     public OpenOutcome OpenDocument(string path, DocumentType type, bool readOnly) => Inner.OpenDocument(path, type, readOnly);
     public virtual void Close(ISwDocument document) => Inner.Close(document);
+    public System.Collections.Generic.IReadOnlyList<string> StoredReferences(string path) => Inner.StoredReferences(path);
     public object ApiObject() => Inner.ApiObject();
 }
