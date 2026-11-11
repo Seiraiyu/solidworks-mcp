@@ -42,12 +42,63 @@
     },
     "discarded": {
       "type": "boolean",
-      "description": "True when it had unsaved changes, which were lost."
+      "description": "True when unsaved changes were lost: its own, or those of a document it unloaded."
+    },
+    "unloaded": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A document open in SOLIDWORKS.",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "The document's title as SOLIDWORKS shows it."
+          },
+          "path": {
+            "type": "string",
+            "description": "The full path, absent while the document has never been saved."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "part",
+              "assembly",
+              "drawing"
+            ],
+            "description": "Part, assembly or drawing."
+          },
+          "dirty": {
+            "type": "boolean",
+            "description": "True when the document has unsaved changes."
+          },
+          "visible": {
+            "type": "boolean",
+            "description": "False for a document SOLIDWORKS loaded only because an open assembly uses it: it has no window of its own."
+          }
+        },
+        "required": [
+          "title",
+          "type",
+          "dirty",
+          "visible"
+        ],
+        "additionalProperties": false
+      },
+      "description": "For an assembly: the documents it used that SOLIDWORKS unloaded with it, as they were just before. Empty otherwise."
+    },
+    "still_used_by": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The open documents (assemblies) that still use it: it lost its window but stays loaded for them, unsaved changes included. Empty when it was unloaded."
     }
   },
   "required": [
     "closed",
-    "discarded"
+    "discarded",
+    "unloaded",
+    "still_used_by"
   ],
   "additionalProperties": false
 }
