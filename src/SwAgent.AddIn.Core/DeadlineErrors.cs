@@ -59,7 +59,14 @@ public static class DeadlineErrors
     public static SwAgentError DialogOpen(LedgerEntry entry, DialogInfo dialog, bool started)
     {
         string buttons = dialog.Buttons.Count == 0 ? "none readable" : string.Join(", ", dialog.Buttons.Select(b => b.Text));
-        string message = started
+        // dialog.respond refuses a sign-in or licence window (issue #16), so the message must not send the agent there.
+        string message = dialog.NeedsPerson
+            ? (started
+                ? $"{entry.Request.Method} is waiting on the SOLIDWORKS dialog \"{dialog.Title}\", a 3DEXPERIENCE sign-in or licence window " +
+                  "that only a person can answer; ask the user to deal with it in SOLIDWORKS; the operation's outcome follows as operation.completed"
+                : $"{entry.Request.Method} was not started: SOLIDWORKS is showing the dialog \"{dialog.Title}\", a 3DEXPERIENCE sign-in or " +
+                  "licence window that only a person can answer; ask the user to deal with it in SOLIDWORKS, then retry")
+            : started
             ? $"{entry.Request.Method} is waiting on the SOLIDWORKS dialog \"{dialog.Title}\" (buttons: {buttons}); answer it with " +
               $"dialog.respond (dialog {dialog.Id}); the operation's outcome follows as operation.completed"
             : $"{entry.Request.Method} was not started: SOLIDWORKS is showing the dialog \"{dialog.Title}\" (buttons: {buttons}); " +

@@ -154,6 +154,25 @@ public class RequestLedgerTests
     }
 
     [Fact]
+    public void Dialog_open_on_a_sign_in_window_asks_for_a_person_not_dialog_respond()
+    {
+        // Issue #16: dialog.respond refuses these windows, so the message must not send the agent to it.
+        var ledger = new RequestLedger();
+        var entry = ledger.Enqueue(Requests.Echo(1, "a"), T0, new CapturingReply());
+        var dialog = new DialogInfo { Id = "d3-33268c", Title = "Login - 3DEXPERIENCE ID - Dassault Systemes", NeedsPerson = true };
+
+        foreach (bool started in new[] { true, false })
+        {
+            var error = DeadlineErrors.DialogOpen(entry, dialog, started);
+            Assert.Equal(ErrorCode.DialogOpen, error.Code);
+            Assert.DoesNotContain("dialog.respond", error.Message);
+            Assert.Contains("only a person", error.Message);
+            Assert.Contains("Login - 3DEXPERIENCE ID - Dassault Systemes", error.Message);
+            Assert.True(((JsonObject)error.Details!["dialog"]!)["needs_person"] is true);
+        }
+    }
+
+    [Fact]
     public void An_entry_holds_the_outcome_of_its_own_run()
     {
         var entry = new RequestLedger().Enqueue(Requests.Echo(1, "a"), T0, new CapturingReply());

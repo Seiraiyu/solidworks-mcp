@@ -51,3 +51,8 @@ The first release: an agent can model parts in a running SOLIDWORKS 2026 SP4 on 
 - The binaries are not signed.
 - The dialog watcher can match a 3DEXPERIENCE sign-in window that opens while it is looking for another dialog,
   and close it (#10). Sign in before you start an agent.
+
+### Fixed before release
+
+- The `dialog_open` error for a 3DEXPERIENCE sign-in or licence window no longer tells the agent to answer it with
+  `sw_dialog_respond`, which refuses those windows; it says only a person can answer it (#16).
