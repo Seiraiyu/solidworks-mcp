@@ -391,6 +391,14 @@ public sealed class DocumentCloseOperation : Operation<DocumentCloseRequest, Doc
         {
             if (still != null && still.Visible)
                 throw new SwAgentException(ErrorCode.VerificationFailed, $"{key} still has its window after closing it");
+            if (still == null)
+            {
+                // SOLIDWORKS unloaded it although an open document was read as using it (4.A live run, case 6).
+                throw new SwAgentException(ErrorCode.VerificationFailed,
+                    $"{result.Closed.Title} was unloaded although {string.Join(", ", result.StillUsedBy)} was read as using it" +
+                    (result.Closed.Dirty ? "; its unsaved changes are lost" : "; it had no unsaved changes"),
+                    new JsonObject { ["document"] = key, ["unloaded"] = true, ["dirty"] = result.Closed.Dirty });
+            }
             return;
         }
         if (still != null) throw new SwAgentException(ErrorCode.VerificationFailed, $"{key} is still open after closing it");

@@ -49,8 +49,9 @@ public interface ISwDocument
     bool ReadOnly { get; }
 
     /// <summary>
-    /// The full paths of every document this one uses, nested ones included (IModelDoc2.GetDependencies2, traversed):
-    /// an assembly's components and their own references. Empty for a part that references nothing.
+    /// The full paths of every document this one uses, nested ones included: for an assembly, the files of the components
+    /// SOLIDWORKS holds loaded in its active configuration (not a suppressed one, unless its file is missing); for a part,
+    /// its references (IModelDoc2.GetDependencies2, traversed). Empty for a part that references nothing.
     /// </summary>
     System.Collections.Generic.IReadOnlyList<string> UsedFiles();
 

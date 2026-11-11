@@ -330,6 +330,21 @@ public class AssemblyCloseTests : DocumentTestBase
         Assert.False(plate.Document.Visible);
     }
 
+    // 4.A live run, case 6: SOLIDWORKS unloaded a part the assembly was said to use. That is never a quiet success.
+    [Fact]
+    public void A_used_part_solidworks_unloads_anyway_is_a_verification_failure_naming_the_lost_changes()
+    {
+        var (asm, _, _) = Scene();
+        var plate = Sw.Track(FakeDocument.Part("plate.SLDPRT", PathOf("plate.SLDPRT")));
+        asm.Uses.Add(plate.Document.Path!);
+        plate.Document.Dirty = true;
+        Sw.CloseUnloadsUsed = true;
+        var e = Fails(() => Close("plate.SLDPRT"));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Contains("unsaved changes are lost", e.Message);
+        Assert.Equal(true, e.Error.Details!["unloaded"]);
+    }
+
     [Fact]
     public void A_component_with_no_window_cannot_be_closed_by_itself()
     {

@@ -136,7 +136,7 @@ sealed class FakeSolidWorks : ISolidWorksApplication
         var doc = (FakeDocument)document;
         ClosedTitles.Add(doc.Document.Title);
         if (ReferenceEquals(CurrentDoc, doc)) CurrentDoc = null;
-        if (doc.Document.Path != null && Docs.Any(d => !ReferenceEquals(d, doc) && d.Uses.Any(u => string.Equals(u, doc.Document.Path, System.StringComparison.OrdinalIgnoreCase))))
+        if (!CloseUnloadsUsed && doc.Document.Path != null && Docs.Any(d => !ReferenceEquals(d, doc) && d.Uses.Any(u => string.Equals(u, doc.Document.Path, System.StringComparison.OrdinalIgnoreCase))))
         {
             doc.Document.Visible = false;
             return;
@@ -146,6 +146,9 @@ sealed class FakeSolidWorks : ISolidWorksApplication
         var used = Docs.SelectMany(d => d.Uses).ToList();
         Docs.RemoveAll(d => !d.Document.Visible && !used.Any(u => string.Equals(u, d.Document.Path, System.StringComparison.OrdinalIgnoreCase)));
     }
+
+    /// <summary>When true, closing a document an open assembly lists as used unloads it anyway (4.A live run, case 6).</summary>
+    public bool CloseUnloadsUsed { get; set; }
 
     /// <summary>Adds a document the operations can see, wired so Activate makes it the active one.</summary>
     FakeApiApp? _api;
