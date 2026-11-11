@@ -1,0 +1,75 @@
+{
+  "type": "object",
+  "description": "Bends a flange up from straight edges of a sheet-metal part, one flange per edge: each rises from the edge towards the outward normal of the sheet's face the edge bounds (to bend the other way, take the edge of the opposite face), turned angle_deg from the sheet and length_mm long. The add-in draws each flange's profile itself; the agent gives only the edges (sheetmetal.read gives the base face, model.find its edges). Folded parts only: a flattened part is refused. Lengths in mm, angles in degrees. Checked for each flange: one new bend at the angle, inner radius and allowance asked; the volume grows by exactly the flange's straight part and bend less the sheet its bend takes back (within the reliefs SOLIDWORKS cuts when offset_mm leaves sheet beside it); up to 90°, the part reaches the flange's height above the face. Otherwise every flange made is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The edges, by reference: straight edges where the sheet ends, each between one of its faces and the thin face it ends in. Each gets its own flange, in order."
+    },
+    "length_mm": {
+      "type": "number",
+      "description": "How long each flange is, mm, more than 0, measured from length_from."
+    },
+    "angle_deg": {
+      "type": "number",
+      "description": "How far each flange turns from the sheet, degrees, more than 0 and less than 180. Default 90."
+    },
+    "length_from": {
+      "type": "string",
+      "enum": [
+        "outer_virtual_sharp",
+        "inner_virtual_sharp",
+        "tangent"
+      ],
+      "description": "Where length_mm is measured from: outer_virtual_sharp (the default), inner_virtual_sharp or tangent (the straight part only)."
+    },
+    "position": {
+      "type": "string",
+      "enum": [
+        "material_inside",
+        "material_outside",
+        "bend_outside"
+      ],
+      "description": "Where the bend sits relative to the edge: material_inside (the default: the flange's outside face on the edge, so the outline does not grow), material_outside or bend_outside."
+    },
+    "bend_radius_mm": {
+      "type": "number",
+      "description": "The bends' inner radius, mm, more than 0. The part's default when absent."
+    },
+    "allowance": {
+      "type": "object",
+      "properties": {
+        "k_factor": {
+          "type": "number",
+          "description": "The K-factor: where the neutral layer sits across the thickness, more than 0 and at most 1 (0.5 is the middle). The bend develops to angle × (inner radius + K × thickness)."
+        },
+        "allowance_mm": {
+          "type": "number",
+          "description": "The bend allowance itself, mm, more than 0: the length the bend develops to, whatever its angle."
+        },
+        "deduction_mm": {
+          "type": "number",
+          "description": "The bend deduction, mm, 0 or more: what the bend takes off the sum of the two flanges' outer lengths to the virtual sharp."
+        }
+      },
+      "additionalProperties": false,
+      "description": "The bends' own allowance: exactly one of k_factor, allowance_mm or deduction_mm. The part's default when absent."
+    },
+    "offset_mm": {
+      "type": "number",
+      "description": "How far each flange stops short of its edge's two ends, mm, 0 or more, less than half the edge. Default 0: the whole edge."
+    }
+  },
+  "required": [
+    "edges",
+    "length_mm"
+  ],
+  "additionalProperties": false
+}

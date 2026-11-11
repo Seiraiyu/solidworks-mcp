@@ -18,9 +18,9 @@ public sealed class EmptyResult { }
 public class OperationCatalogTests
 {
     [Fact]
-    public void Catalog_holds_the_phase_4A_and_6A_operations()
+    public void Catalog_holds_the_phase_4A_6A_and_6B_operations()
     {
-        Assert.Equal(new[] { "addin.events", "addin.state", "api.call", "assembly.components", "assembly.insert", "component.delete", "component.place", "component.set", "configuration.activate", "configuration.add", "configuration.list", "diag.arm_dialog", "diag.dialog", "diag.edit_component", "diag.edit_sketch", "diag.editing", "diag.scratch_block", "diag.scratch_part", "diag.select", "diag.sleep", "dialog.respond", "dimension.set", "document.close", "document.new", "document.open", "document.rebuild", "document.save", "document.save_as", "export.part", "feature.chamfer", "feature.circular_pattern", "feature.delete", "feature.draft", "feature.extrude", "feature.fillet", "feature.hole", "feature.linear_pattern", "feature.loft", "feature.mirror", "feature.revolve", "feature.rib", "feature.shell", "feature.suppress", "feature.sweep", "model.bounding_box", "model.dimensions", "model.find", "model.mass", "model.measure", "model.rebuild_status", "model.tree", "refgeom.axis", "refgeom.plane", "refgeom.point", "selection.get", "session.hello", "session.status", "sheetmetal.base_flange", "sheetmetal.read", "sheetmetal.set_parameters", "sketch.create", "sketch.modify", "sketch.read" },
+        Assert.Equal(new[] { "addin.events", "addin.state", "api.call", "assembly.components", "assembly.insert", "component.delete", "component.place", "component.set", "configuration.activate", "configuration.add", "configuration.list", "diag.arm_dialog", "diag.dialog", "diag.edit_component", "diag.edit_sketch", "diag.editing", "diag.scratch_block", "diag.scratch_part", "diag.select", "diag.sleep", "dialog.respond", "dimension.set", "document.close", "document.new", "document.open", "document.rebuild", "document.save", "document.save_as", "export.part", "feature.chamfer", "feature.circular_pattern", "feature.delete", "feature.draft", "feature.extrude", "feature.fillet", "feature.hole", "feature.linear_pattern", "feature.loft", "feature.mirror", "feature.revolve", "feature.rib", "feature.shell", "feature.suppress", "feature.sweep", "model.bounding_box", "model.dimensions", "model.find", "model.mass", "model.measure", "model.rebuild_status", "model.tree", "refgeom.axis", "refgeom.plane", "refgeom.point", "selection.get", "session.hello", "session.status", "sheetmetal.base_flange", "sheetmetal.edge_flange", "sheetmetal.hem", "sheetmetal.miter_flange", "sheetmetal.read", "sheetmetal.set_parameters", "sketch.create", "sketch.modify", "sketch.read" },
             OperationCatalog.All.Select(o => o.Name).ToArray());
         var status = OperationCatalog.Find("session.status")!;
         Assert.Equal("session", status.Family);
@@ -48,6 +48,10 @@ public class OperationCatalogTests
         Assert.Equal("Ui/tool", Shape("sheetmetal.base_flange"));
         Assert.True(OperationCatalog.Find("sheetmetal.read")!.ReadOnly);
         Assert.False(OperationCatalog.Find("sheetmetal.set_parameters")!.ReadOnly);
+        Assert.Equal("Ui/tool", Shape("sheetmetal.edge_flange"));
+        Assert.False(OperationCatalog.Find("sheetmetal.edge_flange")!.ReadOnly);
+        Assert.False(OperationCatalog.Find("sheetmetal.miter_flange")!.ReadOnly);
+        Assert.False(OperationCatalog.Find("sheetmetal.hem")!.ReadOnly);
         Assert.Equal("Ui/internal", Shape("diag.editing"));
         Assert.True(OperationCatalog.Find("sketch.read")!.ReadOnly);
         Assert.True(OperationCatalog.Find("model.dimensions")!.ReadOnly);
@@ -147,7 +151,7 @@ public class OperationCatalogTests
     public void Pipe_name_carries_the_process_id()
     {
         Assert.Equal("solidworks-mcp-1234", Protocol.PipeName(1234));
-        Assert.Equal(5, Protocol.Version);
+        Assert.Equal(6, Protocol.Version);
     }
 
     [Fact]

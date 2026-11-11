@@ -166,10 +166,62 @@ internal sealed partial class SolidWorksDocument : ISwSheetMetal
         feature.ModifyDefinition(d, Doc, null);
     }
 
+    /// <summary>The features whose bends take a K-factor of their own: base flanges, edge flanges, miter flanges and hems.</summary>
+    static readonly string[] FlangeTypes = { "SMBaseFlange", "EdgeFlange", "SMMiteredFlange", "Hem" };
+
+    /// <summary>
+    /// A flange's own K-factor: for a base flange its OverrideKFactor and KFactor; for the others, whether it does not
+    /// use the default allowance and the K-factor of its own CustomBendAllowance (0.5 when that is not a K-factor).
+    /// </summary>
+    static (bool Override, double K)? FlangeK(object? definition)
+    {
+        double K(CustomBendAllowance? cba) => cba != null && cba.Type == (int)swBendAllowanceTypes_e.swBendAllowanceKFactor ? cba.KFactor : 0.5;
+        return definition switch
+        {
+            IBaseFlangeFeatureData b => (b.OverrideKFactor, b.KFactor),
+            IEdgeFlangeFeatureData e => (!e.UseDefaultBendAllowance, K(e.GetCustomBendAllowance())),
+            IMiterFlangeFeatureData m => (!m.UseDefaultBendAllowance, K(m.GetCustomBendAllowance())),
+            IHemFeatureData h => (!h.UseDefaultBendAllowance, K(h.GetCustomBendAllowance())),
+            _ => null,
+        };
+    }
+
+    /// <summary>Writes a flange's own K-factor into its definition (not yet applied): see <see cref="FlangeK"/>.</summary>
+    static bool WriteFlangeK(object definition, bool overrideKFactor, double k)
+    {
+        CustomBendAllowance Kf(CustomBendAllowance cba)
+        {
+            cba.Type = (int)swBendAllowanceTypes_e.swBendAllowanceKFactor;
+            cba.KFactor = k;
+            return cba;
+        }
+        switch (definition)
+        {
+            case IBaseFlangeFeatureData b:
+                b.KFactor = k;
+                b.OverrideKFactor = overrideKFactor;
+                return true;
+            case IEdgeFlangeFeatureData e:
+                e.UseDefaultBendAllowance = !overrideKFactor;
+                e.SetCustomBendAllowance(Kf(e.GetCustomBendAllowance()));
+                return true;
+            case IMiterFlangeFeatureData m:
+                m.UseDefaultBendAllowance = !overrideKFactor;
+                m.SetCustomBendAllowance(Kf(m.GetCustomBendAllowance()));
+                return true;
+            case IHemFeatureData h:
+                h.UseDefaultBendAllowance = !overrideKFactor;
+                h.SetCustomBendAllowance(Kf(h.GetCustomBendAllowance()));
+                return true;
+            default:
+                return false;
+        }
+    }
+
     public IReadOnlyList<FlangeKFactorWrite> KFactorToBaseFlanges(double k, double? oldK)
     {
         var written = new List<FlangeKFactorWrite>();
-        foreach (var flange in TopFeatures().Where(f => f.GetTypeName2() == "SMBaseFlange").ToList())
+        foreach (var flange in TopFeatures().Where(f => FlangeTypes.Contains(f.GetTypeName2())).ToList())
         {
             var missed = new List<string>();
             for (var sub = flange.GetFirstSubFeature() as IFeature; sub != null; sub = sub.GetNextSubFeature() as IFeature)
@@ -180,12 +232,10 @@ internal sealed partial class SolidWorksDocument : ISwSheetMetal
                 bool follows = b.UseDefaultBendAllowance || (oldK != null && bendK != null && Math.Abs(bendK.Value - oldK.Value) <= 1e-6);
                 if (follows && (bendK == null || Math.Abs(bendK.Value - k) > 1e-9)) missed.Add($"{sub.Name} ({allowance})");
             }
-            if (missed.Count == 0 || !(flange.GetDefinition() is IBaseFlangeFeatureData bf)) continue;
-            bool overrideBefore = bf.OverrideKFactor;
-            double kBefore = bf.KFactor;
-            bf.OverrideKFactor = true;
-            bf.KFactor = k;
-            bool accepted = flange.ModifyDefinition(bf, Doc, null);
+            object definition = flange.GetDefinition();
+            if (missed.Count == 0 || !(FlangeK(definition) is (bool overrideBefore, double kBefore))) continue;
+            WriteFlangeK(definition, true, k);
+            bool accepted = flange.ModifyDefinition(definition, Doc, null);
             written.Add(new FlangeKFactorWrite(flange.Name, overrideBefore, kBefore, missed, accepted));
         }
         return written;
@@ -193,13 +243,12 @@ internal sealed partial class SolidWorksDocument : ISwSheetMetal
 
     public void SetBaseFlangeKFactor(string flange, bool overrideKFactor, double kFactor)
     {
-        var feature = TopFeatures().FirstOrDefault(f => f.Name == flange && f.GetTypeName2() == "SMBaseFlange")
-            ?? throw new SwAgentException(ErrorCode.ApiError, $"the part has no base flange {flange} to put back");
-        if (!(feature.GetDefinition() is IBaseFlangeFeatureData bf))
-            throw new SwAgentException(ErrorCode.ApiError, $"{flange}'s definition is not a base flange's");
-        bf.KFactor = kFactor;
-        bf.OverrideKFactor = overrideKFactor;
-        feature.ModifyDefinition(bf, Doc, null);
+        var feature = TopFeatures().FirstOrDefault(f => f.Name == flange && FlangeTypes.Contains(f.GetTypeName2()))
+            ?? throw new SwAgentException(ErrorCode.ApiError, $"the part has no flange {flange} to put back");
+        object definition = feature.GetDefinition();
+        if (!WriteFlangeK(definition, overrideKFactor, kFactor))
+            throw new SwAgentException(ErrorCode.ApiError, $"{flange}'s definition is not a flange's");
+        feature.ModifyDefinition(definition, Doc, null);
     }
 
     public IReadOnlyList<KeyValuePair<string, string>> CutList()
