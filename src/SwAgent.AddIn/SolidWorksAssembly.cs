@@ -33,20 +33,45 @@ internal sealed class SolidWorksAssembly : ISwAssembly
     {
         var list = new List<object>();
         if (!(_doc.ConfigurationManager?.ActiveConfiguration?.GetRootComponent3(true) is IComponent2 root)) return list;
-        Walk(root, topLevelOnly, list);
+        Walk(root, () => _doc.FirstFeature() as IFeature, topLevelOnly, list);
         return list;
     }
 
-    static void Walk(IComponent2 parent, bool topLevelOnly, List<object> into)
+    /// <summary>
+    /// Each level in FeatureManager tree order: GetChildren does not promise it (4.A live run, round 5), so the children
+    /// are sorted by the component features ("Reference") of the parent's own feature tree.
+    /// </summary>
+    static void Walk(IComponent2 parent, Func<IFeature?> firstFeature, bool topLevelOnly, List<object> into)
     {
         if (!(parent.GetChildren() is object[] children)) return;
-        foreach (var o in children)
+        var kids = children.OfType<IComponent2>().ToList();
+        if (kids.Count == 0) return;
+        foreach (var child in TreeOrder.Sort(kids, TreeNames(firstFeature), c => Leaf(c.Name2)))
         {
-            if (!(o is IComponent2 child)) continue;
             into.Add(child);
-            if (!topLevelOnly) Walk(child, false, into);
+            if (!topLevelOnly) Walk(child, () => child.FirstFeature() as IFeature, false, into);
         }
     }
+
+    /// <summary>The components' names (last segment) in the order the feature tree holds them; empty when it cannot be read.</summary>
+    static IReadOnlyList<string> TreeNames(Func<IFeature?> firstFeature)
+    {
+        var names = new List<string>();
+        try
+        {
+            for (var f = firstFeature(); f != null; f = f.GetNextFeature() as IFeature)
+            {
+                if (f.GetTypeName2() == "Reference" && f.GetSpecificFeature2() is IComponent2 c) names.Add(Leaf(c.Name2));
+            }
+        }
+        catch (Exception e) when (e is System.Runtime.InteropServices.COMException || e is InvalidCastException)
+        {
+            names.Clear();
+        }
+        return names;
+    }
+
+    static string Leaf(string name) => name.Substring(name.LastIndexOf('/') + 1);
 
     public object? ComponentByName(string name) =>
         (object?)_asm.GetComponentByName(name)
