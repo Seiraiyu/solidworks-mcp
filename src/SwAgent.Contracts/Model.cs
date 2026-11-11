@@ -54,7 +54,7 @@ public sealed class FeatureNode
 }
 
 [Operation("model.mass", typeof(ModelMassResult), ReadOnly = true)]
-[Description("Mass properties of a part's solid bodies, in mm, g and the part's own material: volume, surface area, mass, density, centre of mass and principal moments of inertia. Of an assembly, the same for every component that is not suppressed (hidden ones included), in the assembly's coordinates, each component's own material, with each top-level component's share in components; the components' masses add up to the assembly's.")]
+[Description("Mass properties of a part's solid bodies, in mm, g and the part's own material: volume, surface area, mass, density, centre of mass and principal moments of inertia. Of an assembly, the same for every component that is not suppressed (hidden ones included), in the assembly's coordinates, each component's own material, with each top-level component's share in components. A share counts the component in the configuration the assembly uses (component.set {configuration} changes it), so the shares add up to the assembly's mass. A component whose share cannot be counted exactly goes in skipped with the reason, and the whole still counts it: a lightweight one (component.set {suppression: resolved} loads it), or one whose configuration has a material other than its file's active configuration's.")]
 public sealed class ModelMassRequest
 {
     [Description("The part or assembly: its title or full path. The active document when absent.")]
@@ -93,8 +93,11 @@ public sealed class ModelMassResult
     [Description("Principal moments of inertia at the centre of mass, g·mm², smallest first.")]
     public List<double> PrincipalMomentsGMm2 { get; set; } = new List<double>();
 
-    [Description("For an assembly, each top-level component that is not suppressed or missing, in tree order (a subassembly as a whole); absent for a part.")]
+    [Description("For an assembly, each top-level component that is not suppressed or missing, in tree order (a subassembly as a whole), but those in skipped; absent for a part.")]
     public List<ComponentMass>? Components { get; set; }
+
+    [Description("For an assembly, the top-level components counted in the whole whose share is not in components, each with the reason; empty when every share is there, absent for a part.")]
+    public List<SkippedComponent>? Skipped { get; set; }
 }
 
 [Description("One component's share of an assembly's mass properties, in the assembly's coordinates.")]
@@ -208,13 +211,16 @@ public sealed class ModelFindResult
     public bool Truncated { get; set; }
 }
 
-[Description("A component model.find did not search.")]
+[Description("A component model.find did not search, or whose share model.mass did not give.")]
 public sealed class SkippedComponent
 {
     [Required]
     [Description("Its name, for example bracket-1.")]
     public string Name { get; set; } = "";
 
-    [Description("Why: suppressed, lightweight or missing.")]
+    [Description("Its state: suppressed, lightweight or missing (model.find skips only those); model.mass may skip a resolved one, saying why in reason.")]
     public ComponentState State { get; set; }
+
+    [Description("Why it was skipped, when its state does not say it all (model.mass).")]
+    public string? Reason { get; set; }
 }

@@ -45,10 +45,12 @@ public interface ISwAssembly
     double DistanceMm(object component, object entity, Point3 point);
 
     /// <summary>
-    /// A component's mass properties in mm and g, in the assembly's coordinates, its hidden bodies included, as the
-    /// assembly's own (ISwDocument.Mass) counts them; null when SOLIDWORKS gives none. Document, Bodies and Material are left unset.
+    /// A component's share of the assembly's mass in mm and g, in the assembly's coordinates: its solid bodies in the
+    /// configuration the assembly references, hidden ones included, as the assembly's own (ISwDocument.Mass) counts them.
+    /// Null with <paramref name="refused"/> saying why when it cannot be counted exactly (a lightweight component, a
+    /// material SOLIDWORKS gives no density for); null with no reason when SOLIDWORKS gives nothing.
     /// </summary>
-    ModelMassResult? Mass(object component);
+    ComponentMass? Mass(object component, out string? refused);
 
     /// <summary>The title of the document the user is editing in the assembly's context, or null when they edit the assembly itself.</summary>
     string? EditingComponent();

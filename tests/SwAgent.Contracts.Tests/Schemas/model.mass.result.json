@@ -145,7 +145,40 @@
         ],
         "additionalProperties": false
       },
-      "description": "For an assembly, each top-level component that is not suppressed or missing, in tree order (a subassembly as a whole); absent for a part."
+      "description": "For an assembly, each top-level component that is not suppressed or missing, in tree order (a subassembly as a whole), but those in skipped; absent for a part."
+    },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A component model.find did not search, or whose share model.mass did not give.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Its name, for example bracket-1."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "lightweight",
+              "suppressed",
+              "missing"
+            ],
+            "description": "Its state: suppressed, lightweight or missing (model.find skips only those); model.mass may skip a resolved one, saying why in reason."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why it was skipped, when its state does not say it all (model.mass)."
+          }
+        },
+        "required": [
+          "name",
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "description": "For an assembly, the top-level components counted in the whole whose share is not in components, each with the reason; empty when every share is there, absent for a part."
     }
   },
   "required": [

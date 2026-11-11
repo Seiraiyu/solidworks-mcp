@@ -145,11 +145,31 @@ sealed class FakeAssembly : ISwAssembly
 
     public double DistanceMm(object component, object entity, Point3 point) => _doc.DistanceMm(entity, point);
 
-    /// <summary>What Mass reports for each component, by name; a component not listed has none (SOLIDWORKS giving nothing).</summary>
-    public Dictionary<string, ModelMassResult> Masses { get; } = new Dictionary<string, ModelMassResult>();
+    /// <summary>
+    /// What Mass reports for each component, by name and then by the configuration the assembly references, as the
+    /// real one counts the bodies of that configuration; a component not listed has none (SOLIDWORKS giving nothing).
+    /// </summary>
+    public Dictionary<string, Dictionary<string, ComponentMass>> Masses { get; } = new Dictionary<string, Dictionary<string, ComponentMass>>();
 
-    public ModelMassResult? Mass(object component) =>
-        Masses.TryGetValue(Of(component).Info.Name, out var m) ? JsonCodec.Deserialize<ModelMassResult>(JsonCodec.Serialize(m)) : null;
+    /// <summary>Sets what Mass reports for a component in a configuration (Default when absent).</summary>
+    public void SetMass(string name, double volumeMm3, double massG, Point3? centre, string configuration = "Default")
+    {
+        if (!Masses.TryGetValue(name, out var byConfiguration)) Masses[name] = byConfiguration = new Dictionary<string, ComponentMass>();
+        byConfiguration[configuration] = new ComponentMass { Name = name, VolumeMm3 = volumeMm3, MassG = massG, CenterOfMass = centre };
+    }
+
+    /// <summary>Components whose share Mass refuses, by name, with the reason (a material with no density).</summary>
+    public Dictionary<string, string> MassRefusals { get; } = new Dictionary<string, string>();
+
+    public ComponentMass? Mass(object component, out string? refused)
+    {
+        var c = Of(component);
+        refused = c.Info.State == ComponentState.Lightweight ? $"{c.Info.Name} is lightweight" : MassRefusals.TryGetValue(c.Info.Name, out var why) ? why : null;
+        if (refused != null) return null;
+        return Masses.TryGetValue(c.Info.Name, out var byConfiguration) && byConfiguration.TryGetValue(c.Info.Configuration ?? "Default", out var m)
+            ? JsonCodec.Deserialize<ComponentMass>(JsonCodec.Serialize(m))
+            : null;
+    }
 
     public FakeComponent Named(string name) => Items.Single(c => c.Info.Name == name);
 

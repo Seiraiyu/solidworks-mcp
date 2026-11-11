@@ -172,17 +172,112 @@ internal sealed class SolidWorksAssembly : ISwAssembly
         SolidWorksDocument.Distance(entity, Placement.ToComponent(TransformOf((IComponent2)component), point));
 
     /// <summary>
-    /// A component's share: its own document's mass, its centre moved into the assembly. Not IMassProperty2.SelectedItems:
+    /// A component's share: the solid bodies IComponent2.GetBodies3 gives, which are the configuration the assembly
+    /// references (plan 4.B review: the file's own mass is its active configuration, so after component.set
+    /// {configuration} the shares no longer added up to the whole). Each body's IBody2.GetMassProperties at its part's
+    /// density, its centre moved into the assembly by the part component's placement; a subassembly's share is its
+    /// resolved part components', suppressed ones left out as the whole leaves them out. Not IMassProperty2.SelectedItems:
     /// on SOLIDWORKS 2026 SP4 setting it to a component crashed SOLIDWORKS (auCmdTarget_c::objectFromDispatch; plan 4.B,
-    /// Task 14 round 1). The share is therefore the file's active configuration, not necessarily the one the assembly uses.
+    /// Task 14 round 1).
     /// </summary>
-    public ModelMassResult? Mass(object component)
+    public ComponentMass? Mass(object component, out string? refused)
     {
-        var c = (IComponent2)component;
-        if (!(c.GetModelDoc2() is IModelDoc2 model)) return null;
-        var mass = new SolidWorksDocument(_sw, model).Mass();
-        if (mass?.CenterOfMass != null) mass.CenterOfMass = Placement.ToAssembly(TransformOf(c), mass.CenterOfMass);
-        return mass;
+        refused = null;
+        var top = (IComponent2)component;
+        double volume = 0, mass = 0, mx = 0, my = 0, mz = 0;
+        foreach (var c in PartsOf(top))
+        {
+            var state = StateOf(c, c.GetPathName() ?? "");
+            if (state == ComponentState.Suppressed || state == ComponentState.Missing) continue;
+            string who = c == top ? Leaf(top.Name2) : $"{Leaf(c.Name2)} in {Leaf(top.Name2)}";
+            if (state == ComponentState.Lightweight)
+            {
+                refused = $"{who} is lightweight, so SOLIDWORKS has not loaded its bodies; component.set {{suppression: resolved}} loads it";
+                return null;
+            }
+            if (!(c.GetModelDoc2() is IModelDoc2 model)) return null;
+            string configuration = c.ReferencedConfiguration ?? "";
+            if (!(Density(model, configuration, who, out refused) is double density)) return null;
+            object bodyInfo;
+            if (!(c.GetBodies3((int)swBodyType_e.swSolidBody, out bodyInfo) is object[] bodies)) continue;
+            var placement = TransformOf(c);
+            foreach (var body in bodies.OfType<IBody2>())
+            {
+                string db;
+                string own = body.GetMaterialPropertyName(configuration, out db) ?? "";
+                if (own.Length > 0 && !string.Equals(own, MaterialOf(model, configuration), StringComparison.OrdinalIgnoreCase))
+                {
+                    refused = $"{who} has a body of its own material ({own}), whose density SOLIDWORKS does not give through the API";
+                    return null;
+                }
+                // Centre of mass x, y, z (m), volume (m³), area (m²), mass (kg), then the moments.
+                if (!(body.GetMassProperties(density) is double[] p) || p.Length < 6) return null;
+                double v = p[3] * 1e9, m = p[5] * 1000;
+                var centre = Placement.ToAssembly(placement, new Point3(p[0] * Mm, p[1] * Mm, p[2] * Mm));
+                volume += v;
+                mass += m;
+                mx += m * centre.X;
+                my += m * centre.Y;
+                mz += m * centre.Z;
+            }
+        }
+        return new ComponentMass
+        {
+            Name = top.Name2,
+            VolumeMm3 = volume,
+            MassG = mass,
+            CenterOfMass = mass > 0 ? new Point3(mx / mass, my / mass, mz / mass) : null,
+        };
+    }
+
+    /// <summary>The component itself when it is a part; a subassembly's part components at every level below it.</summary>
+    static IEnumerable<IComponent2> PartsOf(IComponent2 c)
+    {
+        var children = (c.GetChildren() as object[])?.OfType<IComponent2>().ToList();
+        if (children == null || children.Count == 0)
+        {
+            yield return c;
+            yield break;
+        }
+        foreach (var child in children)
+        {
+            // A suppressed subassembly's parts have no mass in the whole either.
+            if (child.GetChildren() is object[] grand && grand.Length > 0 && child.GetSuppression2() == (int)swComponentSuppressionState_e.swComponentSuppressed) continue;
+            foreach (var part in PartsOf(child)) yield return part;
+        }
+    }
+
+    static string MaterialOf(IModelDoc2 model, string configuration)
+    {
+        if (!(model is IPartDoc part)) return "";
+        string db;
+        return part.GetMaterialPropertyName2(configuration, out db) ?? "";
+    }
+
+    /// <summary>
+    /// The part's density in kg/m³ for the configuration the assembly references. SOLIDWORKS gives it only for the file's
+    /// active configuration, so a referenced configuration with another material is refused, naming both.
+    /// </summary>
+    double? Density(IModelDoc2 model, string configuration, string who, out string? refused)
+    {
+        refused = null;
+        string active = model.ConfigurationManager?.ActiveConfiguration?.Name ?? "";
+        string referenced = MaterialOf(model, configuration), current = MaterialOf(model, active);
+        if (!string.Equals(referenced, current, StringComparison.OrdinalIgnoreCase))
+        {
+            refused = $"{who} uses its configuration {configuration}, whose material ({Named(referenced)}) is not that of the file's active configuration {active} ({Named(current)}); " +
+                      "SOLIDWORKS gives the density of the active one only";
+            return null;
+        }
+        var own = new SolidWorksDocument(_sw, model).Mass();
+        if (own == null || !(own.DensityKgM3 > 0))
+        {
+            refused = $"SOLIDWORKS gave no density for {who}'s file in its active configuration {active}";
+            return null;
+        }
+        return own.DensityKgM3;
+
+        static string Named(string material) => material.Length == 0 ? "none set" : material;
     }
 
     internal static Constraint MapConstraint(int status) => status switch

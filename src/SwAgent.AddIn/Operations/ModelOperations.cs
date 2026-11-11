@@ -71,30 +71,44 @@ public sealed class ModelMassOperation : Operation<ModelMassRequest, ModelMassRe
         {
             result.Material = null;
             result.DensityKgM3 = result.VolumeMm3 > 0 ? result.MassG / result.VolumeMm3 * 1e6 : 0;
-            result.Components = Shares(asm);
+            var skipped = new List<SkippedComponent>();
+            result.Components = Shares(asm, skipped);
+            result.Skipped = skipped;
         }
         return result;
     }
 
-    /// <summary>Each top-level component's mass properties, but the suppressed and missing ones, which have no mass in the assembly.</summary>
-    static List<ComponentMass> Shares(ISwAssembly asm)
+    /// <summary>
+    /// Each top-level component's share, but the suppressed and missing ones, which have no mass in the assembly. One
+    /// whose share cannot be counted exactly (lightweight, or a material SOLIDWORKS gives no density for) goes in
+    /// <paramref name="skipped"/> with the reason; the whole still counts it.
+    /// </summary>
+    static List<ComponentMass> Shares(ISwAssembly asm, List<SkippedComponent> skipped)
     {
         var shares = new List<ComponentMass>();
         foreach (var component in asm.Components(topLevelOnly: true))
         {
             var who = asm.Identify(component);
             if (who.State == ComponentState.Suppressed || who.State == ComponentState.Missing) continue;
-            var mass = asm.Mass(component)
-                ?? throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS gave no mass properties for the component {who.Name}",
+            var mass = asm.Mass(component, out string? refused);
+            if (mass == null && refused != null)
+            {
+                skipped.Add(new SkippedComponent { Name = who.Name, State = who.State, Reason = refused });
+                continue;
+            }
+            if (mass == null)
+            {
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS gave no mass properties for the component {who.Name}",
                     new SwAgent.Contracts.Serialization.JsonObject { ["component"] = who.Name });
+            }
             shares.Add(new ComponentMass { Name = who.Name, VolumeMm3 = mass.VolumeMm3, MassG = mass.MassG, CenterOfMass = mass.MassG > 0 ? mass.CenterOfMass : null });
         }
         return shares;
     }
 
     /// <summary>
-    /// A part's mass is density times volume; an assembly's components' masses and volumes add up to its own. Either way
-    /// the volume read again is the same.
+    /// A part's mass is density times volume; an assembly's components' masses and volumes add up to its own, or, when
+    /// a component was skipped, to no more than its own. Either way the volume read again is the same.
     /// </summary>
     protected override void Verify(ModelMassRequest request, ModelMassResult result, IOperationContext context)
     {
@@ -102,7 +116,10 @@ public sealed class ModelMassOperation : Operation<ModelMassRequest, ModelMassRe
         if (result.Components != null)
         {
             double sum = result.Components.Sum(c => c.MassG), volume = result.Components.Sum(c => c.VolumeMm3);
-            if (Math.Abs(sum - result.MassG) > 1e-6 * Math.Max(1, result.MassG) || Math.Abs(volume - result.VolumeMm3) > 1e-6 * Math.Max(1, result.VolumeMm3))
+            bool partial = result.Skipped?.Count > 0;
+            if (partial
+                ? sum - result.MassG > 1e-6 * Math.Max(1, result.MassG) || volume - result.VolumeMm3 > 1e-6 * Math.Max(1, result.VolumeMm3)
+                : Math.Abs(sum - result.MassG) > 1e-6 * Math.Max(1, result.MassG) || Math.Abs(volume - result.VolumeMm3) > 1e-6 * Math.Max(1, result.VolumeMm3))
             {
                 throw new SwAgentException(ErrorCode.VerificationFailed,
                     $"the components' masses add up to {sum} g and {volume} mm³, but SOLIDWORKS reported {result.MassG} g and {result.VolumeMm3} mm³ for {result.Document.Title}",

@@ -44,7 +44,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "description": "A component model.find did not search.",
+        "description": "A component model.find did not search, or whose share model.mass did not give.",
         "properties": {
           "name": {
             "type": "string",
@@ -58,7 +58,11 @@
               "suppressed",
               "missing"
             ],
-            "description": "Why: suppressed, lightweight or missing."
+            "description": "Its state: suppressed, lightweight or missing (model.find skips only those); model.mass may skip a resolved one, saying why in reason."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why it was skipped, when its state does not say it all (model.mass)."
           }
         },
         "required": [
