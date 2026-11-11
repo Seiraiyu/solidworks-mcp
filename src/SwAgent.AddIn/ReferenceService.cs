@@ -96,6 +96,26 @@ public sealed class ReferenceService
     }
 
     /// <summary>
+    /// The pair form <c>{component, entity}</c> (design 455, Assembly references): <paramref name="text"/> is a reference
+    /// issued in <paramref name="component"/>'s own document, or a name there (front, top, right and origin are its own),
+    /// mapped into the assembly with IComponent2.GetCorresponding. invalid_argument naming
+    /// <paramref name="componentField"/> when <paramref name="doc"/> is not an assembly, or the component is not loaded
+    /// in full; reference_unresolved (other_document) when the reference belongs to another file.
+    /// </summary>
+    public (object Entity, ReferenceKind Kind) ResolveInComponent(ISwDocument doc, string text, string component, string field, string componentField, params ReferenceKind[] accepted)
+    {
+        if (!(doc.Assembly() is ISwAssembly asm))
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{componentField} names a component, which only an assembly has; {doc.Info().Title} is not one. Leave it out and name the entity in the part itself",
+                new JsonObject { ["field"] = componentField });
+        }
+        var owner = ComponentLookup.Find(this, doc, asm, component, componentField);
+        var (entity, kind) = Resolve(Loaded(asm, owner, componentField), text, field, accepted);
+        return (InAssembly(asm, owner, entity, kind, field), kind);
+    }
+
+    /// <summary>
     /// For api.call only: as <see cref="Resolve"/>, except that a feature SOLIDWORKS reports suppressed resolves, to the
     /// entity SOLIDWORKS returns for that very reference (never another), so the escape hatch can act on it (unsuppress
     /// it, read it). Anything else that does not resolve, a deleted feature or a suppressed face included, is still
@@ -178,6 +198,8 @@ public sealed class ReferenceService
 
     (object, ReferenceKind) ResolveName(ISwDocument doc, string name, string field)
     {
+        int at = name.IndexOf('@');
+        if (at >= 0) return ResolveComponentName(doc, name.Substring(0, at), name.Substring(at + 1), field);
         object? entity = null;
         int plane = Array.FindIndex(StandardPlaneNames, n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
         if (plane >= 0) entity = doc.StandardPlane(plane);
@@ -186,11 +208,64 @@ public sealed class ReferenceService
         var kind = entity == null ? null : doc.KindOf(entity);
         if (entity == null || kind == null)
         {
+            string hint = doc.Assembly() != null
+                ? "front, top, right and origin name the assembly's own; a component's is name@component, such as front@bracket-1"
+                : "front, top, right and origin name the template's own";
             throw new SwAgentException(ErrorCode.InvalidArgument,
-                $"{field}: no feature, plane, axis or point is named '{name}' in {doc.Info().Title} (front, top, right and origin name the template's own)",
+                $"{field}: no feature, plane, axis or point is named '{name}' in {doc.Info().Title} ({hint})",
                 new JsonObject { ["field"] = field, ["name"] = name });
         }
         return (entity, kind.Value);
+    }
+
+    /// <summary>
+    /// <c>name@component</c> (design 455): the component's own feature, plane, axis or point (front, top, right and origin
+    /// by position, as in a part), in the assembly. Only an assembly has components.
+    /// </summary>
+    (object, ReferenceKind) ResolveComponentName(ISwDocument doc, string own, string component, string field)
+    {
+        if (!(doc.Assembly() is ISwAssembly asm))
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{field}: '{own}@{component}' names an entity of a component (name@component), which only an assembly has; in {doc.Info().Title} name it without @",
+                new JsonObject { ["field"] = field, ["name"] = own + "@" + component });
+        }
+        if (own.Length == 0 || component.Length == 0)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{field}: '{own}@{component}' needs a name before the @ and a component after it, such as front@bracket-1 or Axis1@sub-1/pin-1",
+                new JsonObject { ["field"] = field, ["name"] = own + "@" + component });
+        }
+        var owner = ComponentLookup.Find(this, doc, asm, component, field);
+        var (entity, kind) = ResolveName(Loaded(asm, owner, field), own, field);
+        return (InAssembly(asm, owner, entity, kind, field), kind);
+    }
+
+    /// <summary>The document of a component loaded in full; invalid_argument naming the component when it is suppressed, lightweight or missing (design 455).</summary>
+    static ISwDocument Loaded(ISwAssembly asm, object component, string field)
+    {
+        var who = asm.Identify(component);
+        var model = who.State == ComponentState.Resolved ? asm.ModelOf(component) : null;
+        if (model != null) return model;
+        string state = who.State == ComponentState.Resolved ? "not loaded" : WireNames.ForEnum(who.State);
+        throw new SwAgentException(ErrorCode.InvalidArgument,
+            $"{field}: the component {who.Name} is {state}, so it has no geometry to name; {Remedy(who)}",
+            new JsonObject { ["field"] = field, ["component"] = who.Name, ["state"] = state });
+    }
+
+    /// <summary>An entity of a component's own document, in the assembly; remembered as that component's.</summary>
+    object InAssembly(ISwAssembly asm, object component, object entity, ReferenceKind kind, string field)
+    {
+        var mapped = asm.Corresponding(component, entity);
+        if (mapped == null)
+        {
+            string name = asm.Identify(component).Name;
+            throw new SwAgentException(ErrorCode.OperationFailed,
+                $"{field}: SOLIDWORKS gave no counterpart in the assembly for the {Wire(kind)} of {name}",
+                new JsonObject { ["field"] = field, ["component"] = name });
+        }
+        Remember(mapped, component);
+        return mapped;
     }
 
     static SwAgentException Unresolved(string text, string field, ReferenceData data, string reason, string why) =>
