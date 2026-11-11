@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "A part's configurations after a change.",
+  "description": "A part's or assembly's configurations after a change.",
   "properties": {
     "change": {
       "type": "object",
@@ -253,7 +253,7 @@
         "volume_after_mm3"
       ],
       "additionalProperties": false,
-      "description": "The evidence: the active configuration before and after, and the part rebuilt."
+      "description": "The evidence: the active configuration before and after, and the part or assembly rebuilt."
     },
     "active": {
       "type": "string",

@@ -1,10 +1,10 @@
 {
   "type": "object",
-  "description": "A part's configurations, by name, and which one is active. feature.suppress and dimension.set act in the active configuration.",
+  "description": "A part's or an assembly's configurations, by name, and which one is active. feature.suppress and dimension.set act in a part's active configuration; component.set and the component's state in an assembly's.",
   "properties": {
     "document": {
       "type": "string",
-      "description": "The part: its title or full path. The active document when absent."
+      "description": "The part or assembly: its title or full path. The active document when absent."
     }
   },
   "additionalProperties": false
