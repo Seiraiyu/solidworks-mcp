@@ -23,11 +23,20 @@ public sealed class InstallLayout
 
     public string VersionDirectory(string version) => Path.Combine(Root, version);
 
-    /// <summary>Every folder under the root, in name order (current.txt is a file, so it is not one).</summary>
+    /// <summary>
+    /// Every folder under the root named as a version, in name order. Others are left alone: a build published
+    /// straight into app\, as the README before plan 3.F said, has addin\ and runtimes\ there.
+    /// </summary>
     public IReadOnlyList<string> InstalledVersionDirectories() =>
         Directory.Exists(Root)
-            ? Directory.GetDirectories(Root).OrderBy(d => d, StringComparer.OrdinalIgnoreCase).ToList()
+            ? Directory.GetDirectories(Root)
+                .Where(d => VersionName.IsMatch(Path.GetFileName(d)))
+                .OrderBy(d => d, StringComparer.OrdinalIgnoreCase)
+                .ToList()
             : new List<string>();
+
+    static readonly System.Text.RegularExpressions.Regex VersionName =
+        new System.Text.RegularExpressions.Regex(@"^\d+\.\d+\.\d+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     /// <summary>The install folder for a build's informational version: the version without its +commit.</summary>
     public static string FolderName(string informationalVersion)

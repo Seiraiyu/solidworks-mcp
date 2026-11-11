@@ -44,6 +44,19 @@ public class InstallLayoutTests
     }
 
     [Fact]
+    public void Folders_that_are_not_versions_are_not_installs()
+    {
+        // A build published straight into app\, as the README before 3.F said, leaves addin\ and runtimes\ there:
+        // uninstall must not take them for version folders and delete them.
+        using var scratch = new ScratchDirectory();
+        var layout = new InstallLayout(scratch.Path);
+        Directory.CreateDirectory(Path.Combine(layout.Root, "addin"));
+        Directory.CreateDirectory(Path.Combine(layout.Root, "runtimes"));
+        Directory.CreateDirectory(layout.VersionDirectory("0.1.0-dryrun.7"));
+        Assert.Equal(new[] { layout.VersionDirectory("0.1.0-dryrun.7") }, layout.InstalledVersionDirectories());
+    }
+
+    [Fact]
     public void Directories_compare_without_case_or_trailing_separators()
     {
         Assert.True(InstallLayout.SameDirectory(@"C:\A\app\0.1.0\", @"c:\a\APP\0.1.0"));
