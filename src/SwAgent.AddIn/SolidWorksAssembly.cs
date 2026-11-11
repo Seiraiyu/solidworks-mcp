@@ -82,14 +82,7 @@ internal sealed class SolidWorksAssembly : ISwAssembly
         var c = (IComponent2)component;
         string path = c.GetPathName();
         bool subassembly = path.EndsWith(".SLDASM", StringComparison.OrdinalIgnoreCase);
-        int suppression = c.GetSuppression2();
-        var state = suppression switch
-        {
-            (int)swComponentSuppressionState_e.swComponentSuppressed => path.Length > 0 && !File.Exists(path) ? ComponentState.Missing : ComponentState.Suppressed,
-            (int)swComponentSuppressionState_e.swComponentLightweight => ComponentState.Lightweight,
-            (int)swComponentSuppressionState_e.swComponentFullyLightweight => ComponentState.Lightweight,
-            _ => ComponentState.Resolved,
-        };
+        var state = StateOf(c, path);
         bool fixedInPlace = c.IsFixed();
         return new ComponentInfo
         {
@@ -99,7 +92,7 @@ internal sealed class SolidWorksAssembly : ISwAssembly
             State = state,
             Fixed = fixedInPlace,
             Hidden = c.IsHidden(false),
-            Transform = c.Transform2 is MathTransform xf && xf.ArrayData is double[] a ? Placement.FromArray(a) : new Transform(),
+            Transform = TransformOf(c),
             Box = state == ComponentState.Resolved && c.GetBox(false, false) is double[] box && box.Length >= 6
                 ? new Box3 { Min = new Point3(box[0] * Mm, box[1] * Mm, box[2] * Mm), Max = new Point3(box[3] * Mm, box[4] * Mm, box[5] * Mm) }
                 : null,
@@ -110,6 +103,73 @@ internal sealed class SolidWorksAssembly : ISwAssembly
             Mates = c.GetMates() is object[] mates ? mates.Length : 0,
         };
     }
+
+    static ComponentState StateOf(IComponent2 c, string path) => c.GetSuppression2() switch
+    {
+        (int)swComponentSuppressionState_e.swComponentSuppressed => path.Length > 0 && !File.Exists(path) ? ComponentState.Missing : ComponentState.Suppressed,
+        (int)swComponentSuppressionState_e.swComponentLightweight => ComponentState.Lightweight,
+        (int)swComponentSuppressionState_e.swComponentFullyLightweight => ComponentState.Lightweight,
+        _ => ComponentState.Resolved,
+    };
+
+    static Transform TransformOf(IComponent2 c) => c.Transform2 is MathTransform xf && xf.ArrayData is double[] a ? Placement.FromArray(a) : new Transform();
+
+    public ComponentIdentity Identify(object component)
+    {
+        var c = (IComponent2)component;
+        string path = c.GetPathName() ?? "";
+        return new ComponentIdentity(c.Name2, path.Length == 0 ? null : path, StateOf(c, path));
+    }
+
+    public ISwDocument? ModelOf(object component)
+    {
+        var c = (IComponent2)component;
+        if (StateOf(c, c.GetPathName() ?? "") != ComponentState.Resolved) return null;
+        return c.GetModelDoc2() is IModelDoc2 model ? new SolidWorksDocument(_sw, model) : null;
+    }
+
+    public object? Corresponding(object component, object entity) => ((IComponent2)component).GetCorresponding(entity);
+
+    /// <summary>
+    /// A feature by its own document's description of the same-named feature; a face, edge or vertex as SOLIDWORKS gives
+    /// it, which is in the component's own coordinates (plan 4.B: the assemblies live suite's turned post proves it).
+    /// Either is then moved by the component's placement.
+    /// </summary>
+    public EntityInfo Describe(object component, object entity)
+    {
+        var c = (IComponent2)component;
+        EntityInfo info;
+        if (entity is IFeature feature && ModelOf(c) is SolidWorksDocument model && model.FeatureByName(feature.Name) is object own)
+            info = model.Describe(own);
+        else
+            info = new SolidWorksDocument(_sw, _doc).Describe(entity);
+        Placement.MoveToAssembly(TransformOf(c), info);
+        info.Component = c.Name2;
+        return info;
+    }
+
+    public IReadOnlyList<object> Topology(object component, TopologyKind kind)
+    {
+        var list = new List<object>();
+        var c = (IComponent2)component;
+        if (StateOf(c, c.GetPathName() ?? "") != ComponentState.Resolved) return list;
+        object bodyInfo;
+        if (!(c.GetBodies3((int)swBodyType_e.swSolidBody, out bodyInfo) is object[] bodies)) return list;
+        foreach (var body in bodies.OfType<IBody2>())
+        {
+            object? items = kind switch
+            {
+                TopologyKind.Edge => body.GetEdges(),
+                TopologyKind.Vertex => body.GetVertices(),
+                _ => body.GetFaces(),
+            };
+            if (items is object[] array) list.AddRange(array);
+        }
+        return list;
+    }
+
+    public double DistanceMm(object component, object entity, Point3 point) =>
+        SolidWorksDocument.Distance(entity, Placement.ToComponent(TransformOf((IComponent2)component), point));
 
     internal static Constraint MapConstraint(int status) => status switch
     {

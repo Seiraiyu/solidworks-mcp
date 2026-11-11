@@ -214,7 +214,10 @@ internal sealed partial class SolidWorksDocument : ISwDocument
         return list;
     }
 
-    public double DistanceMm(object entity, Point3 point)
+    public double DistanceMm(object entity, Point3 point) => Distance(entity, point);
+
+    /// <summary>The shortest distance from <paramref name="point"/> (mm, in the space SOLIDWORKS gives the entity's geometry in) to a face, edge or vertex, in mm.</summary>
+    internal static double Distance(object entity, Point3 point)
     {
         double x = point.X / Mm, y = point.Y / Mm, z = point.Z / Mm;
         double[] closest = entity switch
@@ -248,6 +251,19 @@ internal sealed partial class SolidWorksDocument : ISwDocument
         IEntity e => e.Select4(append, null),
         _ => false,
     };
+
+    public object? ComponentOf(object entity)
+    {
+        if (!(Doc is IAssemblyDoc) || entity is IComponent2) return null;
+        try
+        {
+            return (entity as IEntity)?.GetComponent() as IComponent2;
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            return null;
+        }
+    }
 
     public ReferenceKind? KindOf(object entity) => entity switch
     {

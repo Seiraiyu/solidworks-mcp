@@ -24,6 +24,12 @@ sealed class FakeComponent
 
     /// <summary>The names of the mates that use it.</summary>
     public List<string> Mates { get; } = new List<string>();
+
+    /// <summary>The document it is an instance of, when a test gives it one (plan 4.B): ModelOf returns it while the component is resolved.</summary>
+    public FakeDocument? Model { get; set; }
+
+    /// <summary>Each entity of <see cref="Model"/> Corresponding has mapped, and what it is in the assembly.</summary>
+    public Dictionary<FakeEntity, FakeEntity> Counterparts { get; } = new Dictionary<FakeEntity, FakeEntity>();
 }
 
 sealed partial class FakeDocument
@@ -82,6 +88,62 @@ sealed class FakeAssembly : ISwAssembly
     }
 
     public FakeComponent Of(object component) => Items.Single(c => ReferenceEquals(c.Entity, component));
+
+    /// <summary>A face, edge or vertex of a component, already in the assembly's coordinates.</summary>
+    public FakeEntity AddEntity(string component, ReferenceKind kind, EntityInfo info)
+    {
+        var e = _doc.Add(kind, info);
+        e.Component = Named(component);
+        return e;
+    }
+
+    public ComponentIdentity Identify(object component)
+    {
+        var c = Of(component);
+        return new ComponentIdentity(c.Info.Name, c.Info.Path, c.Info.State);
+    }
+
+    public ISwDocument? ModelOf(object component)
+    {
+        var c = Of(component);
+        return c.Info.State == ComponentState.Resolved ? c.Model : null;
+    }
+
+    /// <summary>When true, Corresponding gives nothing (SOLIDWORKS finding no counterpart).</summary>
+    public bool CorrespondingFails { get; set; }
+
+    /// <summary>The entity's counterpart in the assembly: made once per entity, a copy of its description, belonging to the component.</summary>
+    public object? Corresponding(object component, object entity)
+    {
+        var c = Of(component);
+        if (CorrespondingFails) return null;
+        var own = (FakeEntity)entity;
+        if (!c.Counterparts.TryGetValue(own, out var mapped))
+        {
+            mapped = _doc.Add(own.Kind, JsonCodec.Deserialize<EntityInfo>(JsonCodec.Serialize(own.Info)));
+            mapped.Component = c;
+            c.Counterparts[own] = mapped;
+        }
+        return mapped;
+    }
+
+    /// <summary>The entity as the document describes it (fakes hold assembly coordinates already), naming the component.</summary>
+    public EntityInfo Describe(object component, object entity)
+    {
+        var info = _doc.Describe(entity);
+        info.Component = Of(component).Info.Name;
+        return info;
+    }
+
+    public IReadOnlyList<object> Topology(object component, TopologyKind kind)
+    {
+        var c = Of(component);
+        var want = kind == TopologyKind.Edge ? ReferenceKind.Edge : kind == TopologyKind.Vertex ? ReferenceKind.Vertex : ReferenceKind.Face;
+        if (c.Info.State != ComponentState.Resolved) return new List<object>();
+        return _doc.Entities.Where(e => e.Component == c && e.Kind == want).Cast<object>().ToList();
+    }
+
+    public double DistanceMm(object component, object entity, Point3 point) => _doc.DistanceMm(entity, point);
 
     public FakeComponent Named(string name) => Items.Single(c => c.Info.Name == name);
 

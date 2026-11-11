@@ -27,6 +27,9 @@ sealed class FakeEntity
 
     /// <summary>When set, the id now finds this entity instead (SOLIDWORKS resolving to something else).</summary>
     public FakeEntity? ResolvesTo { get; set; }
+
+    /// <summary>In an assembly, the component it belongs to (plan 4.B); null for the document's own entities.</summary>
+    public FakeComponent? Component { get; set; }
 }
 
 /// <summary>A document for operation tests: a title, path and type, and entities the reference code can name.</summary>
@@ -86,6 +89,12 @@ sealed partial class FakeDocument : ISwDocument
             return null;
         }
         state = e.State;
+        // An entity of a component that is not loaded: SOLIDWORKS has nothing to hand back (plan 4.B).
+        if (e.Component != null && e.State == PersistState.Ok && e.Component.Info.State != ComponentState.Resolved)
+        {
+            state = e.Component.Info.State == ComponentState.Lightweight ? PersistState.Invalid : PersistState.Suppressed;
+            return null;
+        }
         // A suppressed feature is still an object SOLIDWORKS can hand back; the live run (3.E, round 3) checks that.
         if (e.State == PersistState.Suppressed && e.Kind == ReferenceKind.Feature && !SuppressedResolvesToNothing) return e;
         if (e.State == PersistState.Suppressed && e.Kind == ReferenceKind.Component && SuppressedComponentResolves) return e;
@@ -93,6 +102,10 @@ sealed partial class FakeDocument : ISwDocument
     }
 
     public ReferenceKind? KindOf(object entity) => (entity as FakeEntity)?.Kind;
+
+    /// <summary>As SOLIDWORKS' IEntity.GetComponent: a face's, edge's or vertex's component; never a feature's (plan 4.B does not rely on it).</summary>
+    public object? ComponentOf(object entity) =>
+        entity is FakeEntity e && (e.Kind == ReferenceKind.Face || e.Kind == ReferenceKind.Edge || e.Kind == ReferenceKind.Vertex) ? e.Component?.Entity : null;
 
     public EntityInfo Describe(object entity)
     {

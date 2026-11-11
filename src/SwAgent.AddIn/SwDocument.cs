@@ -30,6 +30,12 @@ public interface ISwDocument
     /// <summary>What kind of entity this is, or null when it is none the add-in names.</summary>
     ReferenceKind? KindOf(object entity);
 
+    /// <summary>
+    /// In an assembly, the component a face, edge or vertex belongs to (IEntity.GetComponent); null for the assembly's
+    /// own entities, a component itself, anything SOLIDWORKS names no component for, and every entity of a part.
+    /// </summary>
+    object? ComponentOf(object entity);
+
     /// <summary>Its kind, name or owning feature, shape and measurements; no reference (the reference service adds it).</summary>
     EntityInfo Describe(object entity);
 
