@@ -219,14 +219,20 @@ public sealed class ModelMeasureOperation : Operation<ModelMeasureRequest, Model
 
     protected override ModelMeasureResult Run(ModelMeasureRequest request, IOperationContext context)
     {
-        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "model.measure");
+        var doc = DocumentLocator.FindModel(_services.SolidWorks, request.Document, "model.measure");
         return Measure(doc, request);
     }
 
+    /// <summary>An entity named in the document itself, or (with its component field) in a component's own part.</summary>
+    object Entity(ISwDocument doc, string text, string? component, string field) =>
+        component == null
+            ? _services.References.Resolve(doc, text, field, Measurable).Entity
+            : _services.References.ResolveInComponent(doc, text, component, field, field + "_component", Measurable).Entity;
+
     ModelMeasureResult Measure(ISwDocument doc, ModelMeasureRequest request)
     {
-        var (a, _) = _services.References.Resolve(doc, request.A, "a", Measurable);
-        var (b, _) = _services.References.Resolve(doc, request.B, "b", Measurable);
+        var a = Entity(doc, request.A, request.AComponent, "a");
+        var b = Entity(doc, request.B, request.BComponent, "b");
         var infoA = _services.References.Describe(doc, a);
         var infoB = _services.References.Describe(doc, b);
         double distance = doc.ClosestDistance(a, b, out var onA, out var onB);
@@ -246,7 +252,7 @@ public sealed class ModelMeasureOperation : Operation<ModelMeasureRequest, Model
         var doc = DocumentLocator.Find(_services.SolidWorks, DocumentKeys.Of(result.Document));
         var again = Measure(doc, request);
         if (Math.Abs(again.DistanceMm - result.DistanceMm) > 1e-9 * Math.Max(1, result.DistanceMm))
-            throw new SwAgentException(ErrorCode.VerificationFailed, $"the distance read {result.DistanceMm} mm and then {again.DistanceMm} mm; the part changed while it was measured, so ask again",
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"the distance read {result.DistanceMm} mm and then {again.DistanceMm} mm; {result.Document.Title} changed while it was measured, so ask again",
                 new SwAgent.Contracts.Serialization.JsonObject { ["check"] = "distance", ["first"] = result.DistanceMm, ["second"] = again.DistanceMm });
     }
 }

@@ -37,6 +37,20 @@ public static class DocumentLocator
         throw new SwAgentException(ErrorCode.InvalidArgument, $"more than one open document is called '{document}'; name it by its full path", details);
     }
 
+    /// <summary>As <see cref="Find"/>, and wrong_document_type for a drawing: the part or assembly a model, selection or configuration operation reads (plan 4.B).</summary>
+    public static ISwDocument FindModel(ISolidWorksApplication sw, string? document, string operation, string field = "document")
+    {
+        var doc = Find(sw, document, field);
+        var info = doc.Info();
+        if (info.Type == DocumentType.Drawing)
+        {
+            throw new SwAgentException(ErrorCode.WrongDocumentType,
+                $"{operation} works on parts and assemblies, and {info.Title} is a drawing",
+                new JsonObject { ["document"] = Label(info), ["type"] = WireNames.ForEnum(info.Type) });
+        }
+        return doc;
+    }
+
     /// <summary>As <see cref="Find"/>, and wrong_document_type unless it is a part.</summary>
     public static ISwDocument FindPart(ISolidWorksApplication sw, string? document, string operation, string field = "document") =>
         FindOfType(sw, document, operation, DocumentType.Part, field);
