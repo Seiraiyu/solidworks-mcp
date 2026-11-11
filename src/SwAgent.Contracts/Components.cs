@@ -129,6 +129,34 @@ public sealed class ComponentSetResult : IAssemblyChangeResult
     public AssemblyChange Change { get; set; } = new AssemblyChange();
 }
 
+[Operation("component.delete", typeof(ComponentDeleteResult))]
+[Description("Deletes top-level components from an assembly, and with them the mates that use them (listed in mates_deleted). A component inside a subassembly is deleted in that subassembly's own document. Checked: the components and their mates are gone. A deletion is not rolled back: what SOLIDWORKS deleted stays deleted, and a failed check says what is left.")]
+public sealed class ComponentDeleteRequest
+{
+    [Description("The assembly: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The components: each a reference (r1.component.…) or a name (bracket-1).")]
+    public List<string> Components { get; set; } = new List<string>();
+}
+
+[Description("The components deleted.")]
+public sealed class ComponentDeleteResult : IAssemblyChangeResult
+{
+    [Required]
+    [Description("The names of the components deleted.")]
+    public List<string> Deleted { get; set; } = new List<string>();
+
+    [Required]
+    [Description("The names of the mates deleted with them.")]
+    public List<string> MatesDeleted { get; set; } = new List<string>();
+
+    [Required]
+    [Description("What changed in the assembly.")]
+    public AssemblyChange Change { get; set; } = new AssemblyChange();
+}
+
 [Description("The component inserted.")]
 public sealed class AssemblyInsertResult : IAssemblyChangeResult
 {
