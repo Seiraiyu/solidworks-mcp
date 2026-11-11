@@ -58,7 +58,7 @@ public sealed class BendInfo
     public double InnerRadiusMm { get; set; }
 
     [Required]
-    [Description("How it develops when flattened.")]
+    [Description("How it develops when flattened; empty when SOLIDWORKS takes it from a bend or gauge table, which is not read.")]
     public BendAllowance Allowance { get; set; } = new BendAllowance();
 
     [Description("True when its radius is the part's default.")]
@@ -69,6 +69,63 @@ public sealed class BendInfo
 
     [Description("How long it is along its axis, mm; absent when its axis is not along x, y or z.")]
     public double? WidthMm { get; set; }
+}
+
+[Operation("sheetmetal.base_flange", typeof(SheetMetalFeatureResult))]
+[Description("Starts a sheet-metal part from a sketch: a closed profile becomes a flat tab thickness_mm thick; an open chain is extruded depth_mm and each of its sharp corners becomes a bend of bend_radius_mm (inner radius). The allowance becomes the part's default (K-factor 0.5 when absent), and the relief its automatic relief. One sheet-metal body per part: a part that already has one is refused, because thickness belongs to the part and a second body would change the first. Lengths in mm, angles in degrees. Checked: the part is sheet metal with one sheet body, Sheet-Metal and Flat-Pattern exist, the thickness reads back and measures between the sheet's two faces, the radius and allowance read back; a closed profile adds exactly its area times the thickness, and an open chain of lines its straight legs plus each bend's material, with a bend at each corner. Otherwise everything it made is deleted and the part is as it was (rolled back); the sketch stays. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class SheetMetalBaseFlangeRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The sketch: its name (Sketch1) or reference. A closed profile, or one open chain whose lines are one face of the sheet.")]
+    public string Sketch { get; set; } = "";
+
+    [Description("The sheet's thickness, mm, more than 0.")]
+    public double ThicknessMm { get; set; }
+
+    [Description("The default inner bend radius, mm, more than 0: the bends at an open chain's corners, and later bends that do not give their own.")]
+    public double BendRadiusMm { get; set; }
+
+    [Description("The part's default bend allowance: exactly one of k_factor, allowance_mm or deduction_mm. Default k_factor 0.5.")]
+    public BendAllowance? Allowance { get; set; }
+
+    [Description("Thicken to the other side of the sketch. Default false.")]
+    public bool? Reverse { get; set; }
+
+    [Description("For an open chain only: how far it is extruded, mm, more than 0, along the sketch's normal.")]
+    public double? DepthMm { get; set; }
+
+    [Description("The automatic relief where a bend meets material that does not bend: rectangular (the default), obround or tear.")]
+    public ReliefType? Relief { get; set; }
+
+    [Description("The relief's size as a ratio of the thickness, at least 0.05 and at most 2. Default 0.5.")]
+    public double? ReliefRatio { get; set; }
+}
+
+[Description("A sheet-metal feature made, with references to it and the faces it made, the sheet-metal facts read back, and the part after it.")]
+public sealed class SheetMetalFeatureResult : IModelChangeResult
+{
+    [Required]
+    [Description("The evidence: what was made, and the part's rebuild status, bodies and volume before and after.")]
+    public ModelChange Change { get; set; } = new ModelChange();
+
+    [Required]
+    [Description("The feature: its name (Base-Flange1), reference and kind.")]
+    public EntityInfo Feature { get; set; } = new EntityInfo();
+
+    [Required]
+    [Description("The faces the feature made, each with its reference and geometry.")]
+    public List<EntityInfo> Faces { get; set; } = new List<EntityInfo>();
+
+    [Required]
+    [Description("The sheet's thickness and state, and the bends this feature made.")]
+    public SheetMetalFacts Sheet { get; set; } = new SheetMetalFacts();
+
+    [Required]
+    [Description("The exact checks made beyond the common ones, each as a sentence with what was expected and measured.")]
+    public List<string> Checks { get; set; } = new List<string>();
 }
 
 [Description("The sheet-metal facts a sheet-metal operation reads back after it.")]

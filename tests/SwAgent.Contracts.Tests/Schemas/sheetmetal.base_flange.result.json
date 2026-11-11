@@ -1,0 +1,788 @@
+{
+  "type": "object",
+  "description": "A sheet-metal feature made, with references to it and the faces it made, the sheet-metal facts read back, and the part after it.",
+  "properties": {
+    "change": {
+      "type": "object",
+      "properties": {
+        "document": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "The document's title as SOLIDWORKS shows it."
+            },
+            "path": {
+              "type": "string",
+              "description": "The full path, absent while the document has never been saved."
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "part",
+                "assembly",
+                "drawing"
+              ],
+              "description": "Part, assembly or drawing."
+            },
+            "dirty": {
+              "type": "boolean",
+              "description": "True when the document has unsaved changes."
+            }
+          },
+          "required": [
+            "title",
+            "type",
+            "dirty"
+          ],
+          "additionalProperties": false,
+          "description": "The part it acted on."
+        },
+        "created": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "Something a model-changing operation made.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Its name, for example Sketch3 or Line2."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "face",
+                  "edge",
+                  "vertex",
+                  "feature",
+                  "sketch",
+                  "sketch_entity",
+                  "sketch_point",
+                  "plane",
+                  "axis",
+                  "point",
+                  "dimension"
+                ],
+                "description": "What it is: feature, sketch, sketch_entity, sketch_point, dimension, plane, axis or point."
+              },
+              "reference": {
+                "type": "string",
+                "description": "Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one."
+              }
+            },
+            "required": [
+              "name",
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          "description": "What it made (features, sketches, sketch entities), in the order it made them."
+        },
+        "changed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A value a model-changing operation edited.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "What was edited, for example D1@Sketch1."
+              },
+              "property": {
+                "type": "string",
+                "description": "Which of its properties: value, or suppressed."
+              },
+              "before": {
+                "type": "string",
+                "description": "Its value before, with its unit, for example 40 mm."
+              },
+              "after": {
+                "type": "string",
+                "description": "Its value after, with its unit."
+              }
+            },
+            "required": [
+              "name",
+              "property",
+              "before",
+              "after"
+            ],
+            "additionalProperties": false
+          },
+          "description": "What it edited, each with its value before and after."
+        },
+        "rebuild": {
+          "type": "object",
+          "properties": {
+            "errors": {
+              "type": "integer",
+              "description": "How many features have a rebuild error."
+            },
+            "warnings": {
+              "type": "integer",
+              "description": "How many features have a rebuild warning."
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "description": "A feature with a rebuild error or warning.",
+                "properties": {
+                  "feature": {
+                    "type": "string",
+                    "description": "The feature's name."
+                  },
+                  "code": {
+                    "type": "string",
+                    "description": "SOLIDWORKS' error code name (swFeatureError_e), for example swFeatureErrorFilletNoEdge."
+                  },
+                  "warning": {
+                    "type": "boolean",
+                    "description": "True for a warning, false for an error."
+                  }
+                },
+                "required": [
+                  "feature",
+                  "code",
+                  "warning"
+                ],
+                "additionalProperties": false
+              },
+              "description": "Each feature with an error or warning."
+            }
+          },
+          "required": [
+            "errors",
+            "warnings",
+            "items"
+          ],
+          "additionalProperties": false,
+          "description": "The part's rebuild errors and warnings after the change, by feature."
+        },
+        "bodies_before": {
+          "type": "integer",
+          "description": "Solid bodies before the change."
+        },
+        "bodies_after": {
+          "type": "integer",
+          "description": "Solid bodies after the change."
+        },
+        "volume_before_mm3": {
+          "type": "number",
+          "description": "Volume of the solid bodies before the change, mm³."
+        },
+        "volume_after_mm3": {
+          "type": "number",
+          "description": "Volume of the solid bodies after the change, mm³."
+        },
+        "box": {
+          "type": "object",
+          "properties": {
+            "min": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "description": "X, mm."
+                },
+                "y": {
+                  "type": "number",
+                  "description": "Y, mm."
+                },
+                "z": {
+                  "type": "number",
+                  "description": "Z, mm."
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "additionalProperties": false,
+              "description": "The corner with the smallest coordinates."
+            },
+            "max": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "description": "X, mm."
+                },
+                "y": {
+                  "type": "number",
+                  "description": "Y, mm."
+                },
+                "z": {
+                  "type": "number",
+                  "description": "Z, mm."
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "additionalProperties": false,
+              "description": "The corner with the largest coordinates."
+            }
+          },
+          "required": [
+            "min",
+            "max"
+          ],
+          "additionalProperties": false,
+          "description": "The box around the solid bodies after the change (SOLIDWORKS' quick box), mm; absent when the part has no solid body."
+        }
+      },
+      "required": [
+        "document",
+        "created",
+        "changed",
+        "rebuild",
+        "bodies_before",
+        "bodies_after",
+        "volume_before_mm3",
+        "volume_after_mm3"
+      ],
+      "additionalProperties": false,
+      "description": "The evidence: what was made, and the part's rebuild status, bodies and volume before and after."
+    },
+    "feature": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "face",
+            "edge",
+            "vertex",
+            "feature",
+            "sketch",
+            "sketch_entity",
+            "sketch_point",
+            "plane",
+            "axis",
+            "point",
+            "dimension"
+          ],
+          "description": "What it is."
+        },
+        "reference": {
+          "type": "string",
+          "description": "Its persistent reference (r1.<kind>.…), to pass to other operations; absent when SOLIDWORKS cannot give one. References are opaque: pass one back exactly as it was given, and never build or change one."
+        },
+        "name": {
+          "type": "string",
+          "description": "Its name, for features, planes, axes and points."
+        },
+        "feature": {
+          "type": "string",
+          "description": "The feature that made it, for faces, edges and vertices. An edge or vertex where several features meet names the first; see features."
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "For edges and vertices, every feature that made a face it lies on: the circular edge of a hole cut in a boss belongs to both."
+        },
+        "geometry": {
+          "type": "string",
+          "enum": [
+            "plane",
+            "cylinder",
+            "cone",
+            "sphere",
+            "torus",
+            "line",
+            "circle",
+            "ellipse",
+            "spline",
+            "point",
+            "other"
+          ],
+          "description": "Its shape: plane, cylinder, cone, sphere, torus, line, circle, ellipse, spline, point or other."
+        },
+        "area_mm2": {
+          "type": "number",
+          "description": "Area of a face, mm²."
+        },
+        "length_mm": {
+          "type": "number",
+          "description": "Length of an edge, mm."
+        },
+        "normal": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number",
+              "description": "X component."
+            },
+            "y": {
+              "type": "number",
+              "description": "Y component."
+            },
+            "z": {
+              "type": "number",
+              "description": "Z component."
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "additionalProperties": false,
+          "description": "Outward normal of a planar face, or the normal of a plane."
+        },
+        "axis": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number",
+              "description": "X component."
+            },
+            "y": {
+              "type": "number",
+              "description": "Y component."
+            },
+            "z": {
+              "type": "number",
+              "description": "Z component."
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "additionalProperties": false,
+          "description": "Axis of a cylinder, cone, circle or axis; direction of a line."
+        },
+        "origin": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number",
+              "description": "X, mm."
+            },
+            "y": {
+              "type": "number",
+              "description": "Y, mm."
+            },
+            "z": {
+              "type": "number",
+              "description": "Z, mm."
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "additionalProperties": false,
+          "description": "A point on it: a planar face's or edge's centre, a circle's or cylinder's centre on its axis, a vertex or point itself."
+        },
+        "radius_mm": {
+          "type": "number",
+          "description": "Radius of a cylinder, cone base, sphere, torus or circle, mm."
+        },
+        "box": {
+          "type": "object",
+          "properties": {
+            "min": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "description": "X, mm."
+                },
+                "y": {
+                  "type": "number",
+                  "description": "Y, mm."
+                },
+                "z": {
+                  "type": "number",
+                  "description": "Z, mm."
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "additionalProperties": false,
+              "description": "The corner with the smallest coordinates."
+            },
+            "max": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "description": "X, mm."
+                },
+                "y": {
+                  "type": "number",
+                  "description": "Y, mm."
+                },
+                "z": {
+                  "type": "number",
+                  "description": "Z, mm."
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "additionalProperties": false,
+              "description": "The corner with the largest coordinates."
+            }
+          },
+          "required": [
+            "min",
+            "max"
+          ],
+          "additionalProperties": false,
+          "description": "Its axis-aligned bounding box, for faces only."
+        },
+        "distance_mm": {
+          "type": "number",
+          "description": "Distance from the point model.find was asked to be near, mm."
+        }
+      },
+      "required": [
+        "kind",
+        "geometry"
+      ],
+      "additionalProperties": false,
+      "description": "The feature: its name (Base-Flange1), reference and kind."
+    },
+    "faces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A face, edge, vertex, feature, plane, axis or point, with its reference and a short geometric description. Lengths in mm, areas in mm².",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "face",
+              "edge",
+              "vertex",
+              "feature",
+              "sketch",
+              "sketch_entity",
+              "sketch_point",
+              "plane",
+              "axis",
+              "point",
+              "dimension"
+            ],
+            "description": "What it is."
+          },
+          "reference": {
+            "type": "string",
+            "description": "Its persistent reference (r1.<kind>.…), to pass to other operations; absent when SOLIDWORKS cannot give one. References are opaque: pass one back exactly as it was given, and never build or change one."
+          },
+          "name": {
+            "type": "string",
+            "description": "Its name, for features, planes, axes and points."
+          },
+          "feature": {
+            "type": "string",
+            "description": "The feature that made it, for faces, edges and vertices. An edge or vertex where several features meet names the first; see features."
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "For edges and vertices, every feature that made a face it lies on: the circular edge of a hole cut in a boss belongs to both."
+          },
+          "geometry": {
+            "type": "string",
+            "enum": [
+              "plane",
+              "cylinder",
+              "cone",
+              "sphere",
+              "torus",
+              "line",
+              "circle",
+              "ellipse",
+              "spline",
+              "point",
+              "other"
+            ],
+            "description": "Its shape: plane, cylinder, cone, sphere, torus, line, circle, ellipse, spline, point or other."
+          },
+          "area_mm2": {
+            "type": "number",
+            "description": "Area of a face, mm²."
+          },
+          "length_mm": {
+            "type": "number",
+            "description": "Length of an edge, mm."
+          },
+          "normal": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X component."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y component."
+              },
+              "z": {
+                "type": "number",
+                "description": "Z component."
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "z"
+            ],
+            "additionalProperties": false,
+            "description": "Outward normal of a planar face, or the normal of a plane."
+          },
+          "axis": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X component."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y component."
+              },
+              "z": {
+                "type": "number",
+                "description": "Z component."
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "z"
+            ],
+            "additionalProperties": false,
+            "description": "Axis of a cylinder, cone, circle or axis; direction of a line."
+          },
+          "origin": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y, mm."
+              },
+              "z": {
+                "type": "number",
+                "description": "Z, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "z"
+            ],
+            "additionalProperties": false,
+            "description": "A point on it: a planar face's or edge's centre, a circle's or cylinder's centre on its axis, a vertex or point itself."
+          },
+          "radius_mm": {
+            "type": "number",
+            "description": "Radius of a cylinder, cone base, sphere, torus or circle, mm."
+          },
+          "box": {
+            "type": "object",
+            "properties": {
+              "min": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "X, mm."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Y, mm."
+                  },
+                  "z": {
+                    "type": "number",
+                    "description": "Z, mm."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "additionalProperties": false,
+                "description": "The corner with the smallest coordinates."
+              },
+              "max": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "X, mm."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Y, mm."
+                  },
+                  "z": {
+                    "type": "number",
+                    "description": "Z, mm."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "additionalProperties": false,
+                "description": "The corner with the largest coordinates."
+              }
+            },
+            "required": [
+              "min",
+              "max"
+            ],
+            "additionalProperties": false,
+            "description": "Its axis-aligned bounding box, for faces only."
+          },
+          "distance_mm": {
+            "type": "number",
+            "description": "Distance from the point model.find was asked to be near, mm."
+          }
+        },
+        "required": [
+          "kind",
+          "geometry"
+        ],
+        "additionalProperties": false
+      },
+      "description": "The faces the feature made, each with its reference and geometry."
+    },
+    "sheet": {
+      "type": "object",
+      "properties": {
+        "thickness_mm": {
+          "type": "number",
+          "description": "The sheet's thickness, mm."
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "folded",
+            "flattened"
+          ],
+          "description": "folded or flattened."
+        },
+        "bends": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A bend of a sheet-metal part, as SOLIDWORKS reads it back.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Its name, for example EdgeBend1 or BaseBend1."
+              },
+              "reference": {
+                "type": "string",
+                "description": "Its persistent reference (a feature reference). References are opaque: pass one back exactly as it was given, and never build or change one."
+              },
+              "feature": {
+                "type": "string",
+                "description": "The feature it belongs to, for example Base-Flange1."
+              },
+              "angle_deg": {
+                "type": "number",
+                "description": "How far it bends, degrees: 90 for a right angle."
+              },
+              "inner_radius_mm": {
+                "type": "number",
+                "description": "Its inner radius, mm."
+              },
+              "allowance": {
+                "type": "object",
+                "properties": {
+                  "k_factor": {
+                    "type": "number",
+                    "description": "The K-factor: where the neutral layer sits across the thickness, more than 0 and at most 1 (0.5 is the middle). The bend develops to angle × (inner radius + K × thickness)."
+                  },
+                  "allowance_mm": {
+                    "type": "number",
+                    "description": "The bend allowance itself, mm, more than 0: the length the bend develops to, whatever its angle."
+                  },
+                  "deduction_mm": {
+                    "type": "number",
+                    "description": "The bend deduction, mm, 0 or more: what the bend takes off the sum of the two flanges' outer lengths to the virtual sharp."
+                  }
+                },
+                "additionalProperties": false,
+                "description": "How it develops when flattened; empty when SOLIDWORKS takes it from a bend or gauge table, which is not read."
+              },
+              "default_radius": {
+                "type": "boolean",
+                "description": "True when its radius is the part's default."
+              },
+              "default_allowance": {
+                "type": "boolean",
+                "description": "True when its allowance is the part's default."
+              },
+              "width_mm": {
+                "type": "number",
+                "description": "How long it is along its axis, mm; absent when its axis is not along x, y or z."
+              }
+            },
+            "required": [
+              "name",
+              "feature",
+              "angle_deg",
+              "inner_radius_mm",
+              "allowance",
+              "default_radius",
+              "default_allowance"
+            ],
+            "additionalProperties": false
+          },
+          "description": "The bends this operation made (for sheetmetal.set_parameters, every bend of the part), as SOLIDWORKS reads them back."
+        }
+      },
+      "required": [
+        "thickness_mm",
+        "state",
+        "bends"
+      ],
+      "additionalProperties": false,
+      "description": "The sheet's thickness and state, and the bends this feature made."
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The exact checks made beyond the common ones, each as a sentence with what was expected and measured."
+    }
+  },
+  "required": [
+    "change",
+    "feature",
+    "faces",
+    "sheet",
+    "checks"
+  ],
+  "additionalProperties": false
+}
