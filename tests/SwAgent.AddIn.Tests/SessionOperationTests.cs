@@ -246,7 +246,7 @@ public class SessionOperationTests
         var result = op.Run(request, new TestContext());
         op.Verify(request, result, new TestContext());
         Assert.True(guard.Applied);
-        Assert.All(AutomationPreferences.All, p => Assert.False(store.Values[p.Id]));
+        Assert.All(AutomationPreferences.All, p => Assert.Equal(p.AutomationValue, store.Values.TryGetValue(p.Id, out var v) ? v : true));
         guard.Restore("test");
     }
 
@@ -266,7 +266,7 @@ public class SessionOperationTests
         var request = new SessionHelloRequest { ProtocolVersion = Protocol.Version };
         var result = op.Run(request, new TestContext());
         op.Verify(request, result, new TestContext());
-        Assert.Equal(AutomationPreferences.All.Count, guard.NotTaken.Count);
+        Assert.Equal(System.Linq.Enumerable.Count(AutomationPreferences.All, p => !p.AutomationValue), guard.NotTaken.Count);
         guard.Restore("test");
     }
 }
