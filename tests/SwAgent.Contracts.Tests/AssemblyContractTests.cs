@@ -26,6 +26,53 @@ public class AssemblyContractTests
         Assert.Contains("\"x_axis\"", JsonCodec.Serialize(t));
     }
 
+    [Theory]
+    [InlineData(Constraint.FullyDefined, "fully_defined")]
+    [InlineData(Constraint.UnderDefined, "under_defined")]
+    [InlineData(Constraint.OverDefined, "over_defined")]
+    public void Constraints_have_snake_case_wire_names(Constraint constraint, string wire)
+    {
+        Assert.Equal(wire, WireNames.ForEnum(constraint));
+    }
+
+    [Fact]
+    public void A_component_round_trips_with_its_transform_box_and_constraint()
+    {
+        var component = new ComponentInfo
+        {
+            Name = "sub-1/pin-1",
+            Path = @"C:\w\pin.SLDPRT",
+            Configuration = "Default",
+            State = ComponentState.Resolved,
+            Transform = new Transform { Origin = new Point3(5, 0, 0) },
+            Box = new Box3 { Min = new Point3(0, 0, 0), Max = new Point3(10, 10, 30) },
+            Subassembly = false,
+            Constraint = Constraint.UnderDefined,
+            Parent = "sub-1",
+            Mates = 2,
+        };
+        string json = JsonCodec.Serialize(component);
+        Assert.Contains("\"constraint\":\"under_defined\"", json);
+        Assert.DoesNotContain("solve_as", json);
+        var back = JsonCodec.Deserialize<ComponentInfo>(json);
+        Assert.Equal(json, JsonCodec.Serialize(back));
+    }
+
+    [Fact]
+    public void The_assembly_evidence_block_round_trips()
+    {
+        var change = new AssemblyChange
+        {
+            Document = new DocumentInfo { Title = "stand.SLDASM", Type = DocumentType.Assembly },
+            ComponentsBefore = 1,
+            ComponentsAfter = 2,
+            Moved = { new MovedComponent { Name = "pin-1", Before = new Point3(0, 0, 0), After = new Point3(0, 0, 12), Rotated = true } },
+            Constraints = { new ComponentConstraint { Name = "pin-1", Constraint = Constraint.UnderDefined } },
+        };
+        string json = JsonCodec.Serialize(change);
+        Assert.Equal(json, JsonCodec.Serialize(JsonCodec.Deserialize<AssemblyChange>(json)));
+    }
+
     [Fact]
     public void Protocol_5_speaks_assemblies()
     {
