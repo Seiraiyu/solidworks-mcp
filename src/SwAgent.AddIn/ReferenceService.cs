@@ -75,7 +75,9 @@ public sealed class ReferenceService
             throw Unresolved(text, field, data, "other_document", $"it belongs to {now}, not {docKey}");
         var entity = doc.Resolve(data.PersistId, out var state);
         bool suppressedFeature = allowSuppressedFeature && state == PersistState.Suppressed && data.Kind == ReferenceKind.Feature && entity != null;
-        if ((state != PersistState.Ok && !suppressedFeature) || entity == null)
+        // A suppressed component is still in the assembly, and component.set must be able to resolve it again (4.A live run).
+        bool suppressedComponent = state == PersistState.Suppressed && data.Kind == ReferenceKind.Component && entity != null;
+        if ((state != PersistState.Ok && !suppressedFeature && !suppressedComponent) || entity == null)
         {
             string reason = state switch
             {

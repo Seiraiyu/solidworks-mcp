@@ -14,7 +14,24 @@ public static class ComponentLookup
     {
         if (string.IsNullOrWhiteSpace(text))
             throw new SwAgentException(ErrorCode.InvalidArgument, $"{field} is empty; name a component by its reference or its name", new JsonObject { ["field"] = field });
-        if (References.IsReference(text)) return references.Resolve(doc, text, field, ReferenceKind.Component).Entity;
+        if (References.IsReference(text))
+        {
+            try
+            {
+                return references.Resolve(doc, text, field, ReferenceKind.Component).Entity;
+            }
+            catch (SwAgentException e) when (e.Code == ErrorCode.ReferenceUnresolved && e.Error.Details is JsonObject d && d.Keys.Contains("reason") && d["reason"] as string == "suppressed")
+            {
+                // SOLIDWORKS answers a suppressed component's reference with "suppressed" and may hand back no object
+                // (4.A live run). The component is still in the tree: find the one whose own persistent id is this
+                // reference's, byte for byte, which can only be the very component it was issued for.
+                var id = References.Decode(text, field).PersistId;
+                var same = asm.Components(false).FirstOrDefault(c => doc.PersistId(c) is byte[] mine && mine.SequenceEqual(id));
+                if (same != null && doc.KindOf(same) == ReferenceKind.Component) return same;
+                e.Error.Details!["searched"] = asm.Components(false).Count;
+                throw;
+            }
+        }
         var component = asm.ComponentByName(text);
         if (component != null) return component;
         var names = asm.Components(false).Select(c => asm.Read(c).Name).Take(50).Select(n => (object?)n).ToList();

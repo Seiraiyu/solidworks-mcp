@@ -48,6 +48,38 @@ public class ComponentLookupTests
         Assert.Contains("component bracket-1", (string)e.Error.Details["last_was"]!);
     }
 
+    // 4.A live run: SOLIDWORKS answers a suppressed component's persistent reference with "suppressed", and the
+    // reference must still find it, or component.set could never resolve it again by the reference it was given.
+    [Fact]
+    public void A_suppressed_components_reference_finds_it_when_solidworks_returns_no_object()
+    {
+        var bracket = _doc.Asm!.Named("bracket-1");
+        string reference = _refs.Issue(_doc, bracket.Entity, _doc.Describe(bracket.Entity))!;
+        Assert.True(_doc.Asm.SetSuppression(bracket.Entity, Suppression.Suppressed));
+        Assert.Same(bracket.Entity, Find(reference));
+    }
+
+    [Fact]
+    public void A_suppressed_components_reference_finds_the_object_solidworks_returns()
+    {
+        _doc.SuppressedComponentResolves = true;
+        var pin = _doc.Asm!.Named("sub-1/pin-1");
+        string reference = _refs.Issue(_doc, pin.Entity, _doc.Describe(pin.Entity))!;
+        Assert.True(_doc.Asm.SetSuppression(pin.Entity, Suppression.Suppressed));
+        Assert.Same(pin.Entity, Find(reference));
+    }
+
+    [Fact]
+    public void A_suppressed_feature_is_still_not_a_component()
+    {
+        var feature = _doc.Add(ReferenceKind.Feature, new EntityInfo { Name = "Cut-Extrude1" });
+        string reference = _refs.Issue(_doc, feature, _doc.Describe(feature))!;
+        feature.State = PersistState.Suppressed;
+        var e = Assert.Throws<SwAgentException>(() => Find(reference));
+        Assert.Equal(ErrorCode.ReferenceUnresolved, e.Code);
+        Assert.Equal("suppressed", e.Error.Details!["reason"]);
+    }
+
     [Fact]
     public void A_reference_to_something_else_is_refused()
     {

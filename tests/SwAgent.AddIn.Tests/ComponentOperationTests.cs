@@ -194,6 +194,16 @@ public class ComponentSetTests : AssemblyTestBase
         Assert.Equal(ComponentState.Resolved, Set(new ComponentSetRequest { Components = { "pin-1" }, Suppression = Suppression.Resolved }).Components[0].State);
     }
 
+    // The assemblies live suite's case 4: the reference issued before the suppression resolves the component again.
+    [Fact]
+    public void A_suppressed_component_is_resolved_again_by_its_reference()
+    {
+        string reference = Set(new ComponentSetRequest { Components = { "pin-1" }, Suppression = Suppression.Suppressed }).Components[0].Reference!;
+        var resolved = Set(new ComponentSetRequest { Components = { reference }, Suppression = Suppression.Resolved, Hidden = false });
+        Assert.Equal("pin-1", resolved.Components[0].Name);
+        Assert.Equal(ComponentState.Resolved, resolved.Components[0].State);
+    }
+
     [Fact]
     public void A_refused_suppression_is_operation_failed_and_earlier_edits_go_back()
     {
