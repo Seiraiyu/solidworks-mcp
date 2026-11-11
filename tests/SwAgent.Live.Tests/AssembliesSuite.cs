@@ -412,6 +412,8 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
         string top = Assert.Single((await FindFaces(asm, "column-1", new Vector3(0, 0, 1))).Entities).Reference!;
         await Call<DocumentRebuildRequest, RebuildResult>(new DocumentRebuildRequest { Document = asm, Force = true });
         Near(30, (await Measure(asm, top, "top")).PointA!.Z, "after a rebuild");
+        // A forced rebuild leaves the assembly and its parts dirty; save, so the close below unloads them without losing anything.
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
         await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = asm });
         await Call<DocumentOpenRequest, DocumentOpenResult>(new DocumentOpenRequest { Path = asm });
         var reopened = await Measure(asm, top, "top");
