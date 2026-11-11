@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "A part's mass properties. All zero, with no centre of mass, when it has no solid body.",
+  "description": "A part's or assembly's mass properties. All zero, with no centre of mass, when it has no solid body.",
   "properties": {
     "document": {
       "type": "object",
@@ -38,11 +38,11 @@
         "visible"
       ],
       "additionalProperties": false,
-      "description": "The part."
+      "description": "The part or assembly."
     },
     "bodies": {
       "type": "integer",
-      "description": "How many solid bodies it has."
+      "description": "How many solid bodies it has (an assembly: its resolved components' bodies)."
     },
     "volume_mm3": {
       "type": "number",
@@ -58,11 +58,11 @@
     },
     "density_kg_m3": {
       "type": "number",
-      "description": "Density used, kg/m³ (SOLIDWORKS' default when no material is set)."
+      "description": "Density used, kg/m³ (SOLIDWORKS' default when no material is set); for an assembly, its mass over its volume."
     },
     "material": {
       "type": "string",
-      "description": "The material's name; absent when none is set."
+      "description": "The material's name; absent when none is set, and for an assembly."
     },
     "center_of_mass": {
       "type": "object",
@@ -94,6 +94,58 @@
         "type": "number"
       },
       "description": "Principal moments of inertia at the centre of mass, g·mm², smallest first."
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "One component's share of an assembly's mass properties, in the assembly's coordinates.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The component's name, for example bracket-1."
+          },
+          "volume_mm3": {
+            "type": "number",
+            "description": "Its volume, mm³."
+          },
+          "mass_g": {
+            "type": "number",
+            "description": "Its mass, g."
+          },
+          "center_of_mass": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "X, mm."
+              },
+              "y": {
+                "type": "number",
+                "description": "Y, mm."
+              },
+              "z": {
+                "type": "number",
+                "description": "Z, mm."
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "z"
+            ],
+            "additionalProperties": false,
+            "description": "Its centre of mass in the assembly, mm; absent when it has no solid body."
+          }
+        },
+        "required": [
+          "name",
+          "volume_mm3",
+          "mass_g"
+        ],
+        "additionalProperties": false
+      },
+      "description": "For an assembly, each top-level component that is not suppressed or missing, in tree order (a subassembly as a whole); absent for a part."
     }
   },
   "required": [

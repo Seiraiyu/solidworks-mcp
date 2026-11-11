@@ -171,6 +171,15 @@ internal sealed class SolidWorksAssembly : ISwAssembly
     public double DistanceMm(object component, object entity, Point3 point) =>
         SolidWorksDocument.Distance(entity, Placement.ToComponent(TransformOf((IComponent2)component), point));
 
+    public ModelMassResult? Mass(object component)
+    {
+        if (!(_doc.Extension.CreateMassProperty2() is IMassProperty2 mp)) return null;
+        mp.UseSystemUnits = true;
+        mp.IncludeHiddenBodiesOrComponents = true;
+        mp.SelectedItems = new object[] { component };
+        return SolidWorksDocument.MassOf(mp);
+    }
+
     internal static Constraint MapConstraint(int status) => status switch
     {
         (int)swConstrainedStatus_e.swFullyConstrained => Constraint.FullyDefined,

@@ -54,21 +54,21 @@ public sealed class FeatureNode
 }
 
 [Operation("model.mass", typeof(ModelMassResult), ReadOnly = true)]
-[Description("Mass properties of a part's solid bodies, in mm, g and the part's own material: volume, surface area, mass, density, centre of mass and principal moments of inertia.")]
+[Description("Mass properties of a part's solid bodies, in mm, g and the part's own material: volume, surface area, mass, density, centre of mass and principal moments of inertia. Of an assembly, the same for every component that is not suppressed (hidden ones included), in the assembly's coordinates, each component's own material, with each top-level component's share in components; the components' masses add up to the assembly's.")]
 public sealed class ModelMassRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part or assembly: its title or full path. The active document when absent.")]
     public string? Document { get; set; }
 }
 
-[Description("A part's mass properties. All zero, with no centre of mass, when it has no solid body.")]
+[Description("A part's or assembly's mass properties. All zero, with no centre of mass, when it has no solid body.")]
 public sealed class ModelMassResult
 {
     [Required]
-    [Description("The part.")]
+    [Description("The part or assembly.")]
     public DocumentInfo Document { get; set; } = new DocumentInfo();
 
-    [Description("How many solid bodies it has.")]
+    [Description("How many solid bodies it has (an assembly: its resolved components' bodies).")]
     public int Bodies { get; set; }
 
     [Description("Volume, mm³.")]
@@ -80,10 +80,10 @@ public sealed class ModelMassResult
     [Description("Mass, g.")]
     public double MassG { get; set; }
 
-    [Description("Density used, kg/m³ (SOLIDWORKS' default when no material is set).")]
+    [Description("Density used, kg/m³ (SOLIDWORKS' default when no material is set); for an assembly, its mass over its volume.")]
     public double DensityKgM3 { get; set; }
 
-    [Description("The material's name; absent when none is set.")]
+    [Description("The material's name; absent when none is set, and for an assembly.")]
     public string? Material { get; set; }
 
     [Description("Centre of mass, mm.")]
@@ -92,6 +92,26 @@ public sealed class ModelMassResult
     [Required]
     [Description("Principal moments of inertia at the centre of mass, g·mm², smallest first.")]
     public List<double> PrincipalMomentsGMm2 { get; set; } = new List<double>();
+
+    [Description("For an assembly, each top-level component that is not suppressed or missing, in tree order (a subassembly as a whole); absent for a part.")]
+    public List<ComponentMass>? Components { get; set; }
+}
+
+[Description("One component's share of an assembly's mass properties, in the assembly's coordinates.")]
+public sealed class ComponentMass
+{
+    [Required]
+    [Description("The component's name, for example bracket-1.")]
+    public string Name { get; set; } = "";
+
+    [Description("Its volume, mm³.")]
+    public double VolumeMm3 { get; set; }
+
+    [Description("Its mass, g.")]
+    public double MassG { get; set; }
+
+    [Description("Its centre of mass in the assembly, mm; absent when it has no solid body.")]
+    public Point3? CenterOfMass { get; set; }
 }
 
 [Operation("model.bounding_box", typeof(ModelBoundingBoxResult), ReadOnly = true)]

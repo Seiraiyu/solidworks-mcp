@@ -44,6 +44,12 @@ public interface ISwAssembly
     /// <summary>The shortest distance from <paramref name="point"/> (mm, assembly coordinates) to a face, edge or vertex of the component, in mm.</summary>
     double DistanceMm(object component, object entity, Point3 point);
 
+    /// <summary>
+    /// A component's mass properties in mm and g, in the assembly's coordinates, its hidden bodies included, as the
+    /// assembly's own (ISwDocument.Mass) counts them; null when SOLIDWORKS gives none. Document, Bodies and Material are left unset.
+    /// </summary>
+    ModelMassResult? Mass(object component);
+
     /// <summary>The title of the document the user is editing in the assembly's context, or null when they edit the assembly itself.</summary>
     string? EditingComponent();
 
