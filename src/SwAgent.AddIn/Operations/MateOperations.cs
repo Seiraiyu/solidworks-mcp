@@ -322,3 +322,51 @@ public sealed class MateListOperation : Operation<MateListRequest, MateListResul
             throw new SwAgentException(ErrorCode.VerificationFailed, "the mates changed while they were read; ask again");
     }
 }
+
+/// <summary>assembly.dof (design 455, Degrees of freedom): read-only; never moves anything to find out.</summary>
+public sealed class AssemblyDofOperation : Operation<AssemblyDofRequest, AssemblyDofResult>
+{
+    readonly AddInServices _services;
+
+    public AssemblyDofOperation(AddInServices services)
+    {
+        _services = services;
+    }
+
+    protected override AssemblyDofResult Run(AssemblyDofRequest request, IOperationContext context)
+    {
+        var (doc, asm) = DocumentLocator.FindAssembly(_services.SolidWorks, request.Document, Name);
+        var targets = new List<object>();
+        if (request.Components == null || request.Components.Count == 0) targets.AddRange(asm.Components(true));
+        else
+        {
+            for (int i = 0; i < request.Components.Count; i++)
+            {
+                var c = ComponentLookup.Find(_services.References, doc, asm, request.Components[i], $"/components/{i}");
+                if (!targets.Contains(c)) targets.Add(c);
+            }
+        }
+        var result = new AssemblyDofResult { Document = doc.Info() };
+        foreach (var c in targets)
+        {
+            var info = asm.Read(c);
+            var dofs = info.Constraint == Constraint.UnderDefined && info.Mates > 0 ? asm.RemainingDofs(c) : null;
+            var freedom = Freedom.Of(info.Name, info.Constraint, info.Mates, info.Transform, dofs);
+            freedom.Reference = _services.References.Issue(doc, c, doc.Describe(c));
+            result.Components.Add(freedom);
+        }
+        return result;
+    }
+
+    /// <summary>Read again, every component is as far defined as it was: nothing changed while it was read.</summary>
+    protected override void Verify(AssemblyDofRequest request, AssemblyDofResult result, IOperationContext context)
+    {
+        var (_, asm) = DocumentLocator.FindAssembly(_services.SolidWorks, DocumentKeys.Of(result.Document), Name);
+        foreach (var c in result.Components)
+        {
+            var now = asm.ComponentByName(c.Name) is object component ? asm.Read(component).Constraint : (Constraint?)null;
+            if (now != c.Constraint)
+                throw new SwAgentException(ErrorCode.VerificationFailed, $"{c.Name} changed while it was read ({WireNames.ForEnum(c.Constraint)}, now {(now == null ? "gone" : WireNames.ForEnum(now.Value))}); ask again");
+        }
+    }
+}
