@@ -40,7 +40,9 @@
                   "plane",
                   "axis",
                   "point",
-                  "dimension"
+                  "dimension",
+                  "component",
+                  "mate"
                 ],
                 "description": "What it is."
               },

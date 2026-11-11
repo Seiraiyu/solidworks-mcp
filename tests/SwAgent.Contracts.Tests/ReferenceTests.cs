@@ -29,6 +29,8 @@ public class ReferenceTests
     [InlineData(ReferenceKind.SketchPoint, "r1.sketch_point.")]
     [InlineData(ReferenceKind.Dimension, "r1.dimension.")]
     [InlineData(ReferenceKind.Plane, "r1.plane.")]
+    [InlineData(ReferenceKind.Component, "r1.component.")]
+    [InlineData(ReferenceKind.Mate, "r1.mate.")]
     public void Every_kind_has_a_snake_case_name(ReferenceKind kind, string prefix)
     {
         string text = References.Encode(Sample(kind));

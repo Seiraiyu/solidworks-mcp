@@ -54,6 +54,28 @@ public sealed class Vector3
     public override string ToString() => System.FormattableString.Invariant($"({X:0.###}, {Y:0.###}, {Z:0.###})");
 }
 
+[Description("Where a component sits in its assembly: its origin in assembly coordinates, mm, and its own axes as unit vectors in assembly coordinates.")]
+public sealed class Transform
+{
+    [Required]
+    [Description("The component's origin in the assembly, mm.")]
+    public Point3 Origin { get; set; } = new Point3();
+
+    [Required]
+    [Description("The component's x axis in the assembly, a unit vector.")]
+    public Vector3 XAxis { get; set; } = new Vector3(1, 0, 0);
+
+    [Required]
+    [Description("The component's y axis in the assembly, a unit vector.")]
+    public Vector3 YAxis { get; set; } = new Vector3(0, 1, 0);
+
+    [Required]
+    [Description("The component's z axis in the assembly, a unit vector.")]
+    public Vector3 ZAxis { get; set; } = new Vector3(0, 0, 1);
+
+    public override string ToString() => $"origin {Origin}, x {XAxis}, z {ZAxis}";
+}
+
 [Description("An axis-aligned box in model space, in millimetres.")]
 public sealed class Box3
 {
