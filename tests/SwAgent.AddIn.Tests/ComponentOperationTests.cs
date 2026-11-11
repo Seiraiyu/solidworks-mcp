@@ -150,6 +150,96 @@ public class ComponentPlaceTests : AssemblyTestBase
     }
 }
 
+public class ComponentSetTests : AssemblyTestBase
+{
+    ComponentSetResult Set(ComponentSetRequest request) => Run(new ComponentSetOperation(Services), request);
+
+    public ComponentSetTests()
+    {
+        Asm.AddComponent("base-1", PathOf("base.SLDPRT"), fix: true);
+        Asm.AddComponent("pin-1", PathOf("pin.SLDPRT"));
+        Asm.AddComponent("sub-1", PathOf("sub.SLDASM"));
+    }
+
+    [Fact]
+    public void Sets_each_property_asked_on_each_component_and_records_what_was_different()
+    {
+        var result = Set(new ComponentSetRequest { Components = { "pin-1", "base-1" }, Fixed = true, Hidden = true });
+        Assert.All(result.Components, c => Assert.True(c.Fixed && c.Hidden));
+        Assert.Equal(new[] { "pin-1 fixed", "pin-1 hidden", "base-1 hidden" }, result.Change.Changed.Select(c => $"{c.Name} {c.Property}"));
+        Assert.Equal(new[] { "fix pin-1", "hide pin-1", "hide base-1" }, Asm.Calls);
+    }
+
+    [Fact]
+    public void A_subassembly_solves_flexible()
+    {
+        var result = Set(new ComponentSetRequest { Components = { "sub-1" }, SolveAs = SolveAs.Flexible });
+        Assert.Equal(SolveAs.Flexible, result.Components.Single().SolveAs);
+        var changed = result.Change.Changed.Single();
+        Assert.Equal(("solve_as", "rigid", "flexible"), (changed.Property, changed.Before, changed.After));
+    }
+
+    [Fact]
+    public void Solve_as_on_a_part_is_refused_before_anything_changes()
+    {
+        var e = Fails(() => Set(new ComponentSetRequest { Components = { "sub-1", "pin-1" }, SolveAs = SolveAs.Flexible }));
+        Assert.Equal("/components/1", e.Error.Details!["field"]);
+        Assert.Empty(Asm.Calls);
+    }
+
+    [Fact]
+    public void Suppress_and_resolve_round_trip()
+    {
+        Assert.Equal(ComponentState.Suppressed, Set(new ComponentSetRequest { Components = { "pin-1" }, Suppression = Suppression.Suppressed }).Components[0].State);
+        Assert.Equal(ComponentState.Resolved, Set(new ComponentSetRequest { Components = { "pin-1" }, Suppression = Suppression.Resolved }).Components[0].State);
+    }
+
+    [Fact]
+    public void A_refused_suppression_is_operation_failed_and_earlier_edits_go_back()
+    {
+        Asm.SuppressionRefused = true;
+        var e = Fails(() => Set(new ComponentSetRequest { Components = { "pin-1" }, Hidden = true, Suppression = Suppression.Suppressed }));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.False(Asm.Named("pin-1").Info.Hidden);
+        Assert.Equal(new object?[] { "pin-1" }, (List<object?>)e.Error.Details!["rolled_back"]!);
+    }
+
+    [Fact]
+    public void A_configuration_the_file_lacks_fails_the_check_and_other_edits_go_back()
+    {
+        Asm.Named("pin-1").Configurations.Add("Long");
+        Assert.Equal("Long", Set(new ComponentSetRequest { Components = { "pin-1" }, Configuration = "Long" }).Components[0].Configuration);
+        var e = Fails(() => Set(new ComponentSetRequest { Components = { "pin-1" }, Configuration = "Short", Fixed = true }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("configuration", e.Error.Details!["check"]);
+        Assert.False(Asm.Named("pin-1").Info.Fixed);
+        Assert.Equal("Long", Asm.Named("pin-1").Info.Configuration);
+    }
+
+    [Fact]
+    public void Nothing_to_set_and_no_components_are_refused()
+    {
+        Assert.Equal("components", Fails(() => Set(new ComponentSetRequest { Components = { "pin-1" } })).Error.Details!["field"]);
+        Assert.Equal("components", Fails(() => Set(new ComponentSetRequest { Fixed = true })).Error.Details!["field"]);
+    }
+
+    [Fact]
+    public void A_component_named_twice_is_set_once()
+    {
+        var result = Set(new ComponentSetRequest { Components = { "pin-1", "PIN-1" }, Hidden = true });
+        Assert.Single(result.Components);
+        Assert.Single(Asm.Calls);
+    }
+
+    [Fact]
+    public void A_property_already_as_asked_changes_nothing()
+    {
+        var result = Set(new ComponentSetRequest { Components = { "base-1" }, Fixed = true });
+        Assert.Empty(result.Change.Changed);
+        Assert.Empty(Asm.Calls);
+    }
+}
+
 public class AssemblyInsertTests : AssemblyTestBase
 {
     AssemblyInsertResult Insert(AssemblyInsertRequest request) => Run(new AssemblyInsertOperation(Services), request);
