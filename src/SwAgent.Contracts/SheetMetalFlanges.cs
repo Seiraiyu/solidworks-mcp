@@ -108,3 +108,36 @@ public sealed class SheetMetalMiterFlangeRequest
     [Description("The bends' own allowance: exactly one of k_factor, allowance_mm or deduction_mm. The part's default when absent.")]
     public BendAllowance? Allowance { get; set; }
 }
+
+[Operation("sheetmetal.hem", typeof(SheetMetalFeatureResult))]
+[Description("Folds straight edges of a sheet-metal part back on themselves, as one hem feature. kind closed takes length_mm; open takes length_mm and gap_mm; teardrop and rolled take radius_mm and angle_deg; a dimension the kind does not take is refused. position material_inside (the default) folds the hem back within the edge, bend_outside puts it outside. Folded parts only: a flattened part is refused. Lengths in mm, angles in degrees. Checked: the feature is a hem, the edges named are gone (folded into it), and the volume grew by the hem's material (its fold and, for closed and open, its return, less the sheet it takes back) within one fold's outside radius of sheet across its width. Otherwise it is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class SheetMetalHemRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The edges, by reference: straight edges where the sheet ends, each between one of its faces and the thin face it ends in.")]
+    public List<string> Edges { get; set; } = new List<string>();
+
+    [Description("closed, open, teardrop or rolled.")]
+    public HemKind Kind { get; set; }
+
+    [Description("For closed and open: how long the hem's return is, mm, more than 0.")]
+    public double? LengthMm { get; set; }
+
+    [Description("For open: the gap between the return and the sheet, mm, more than 0.")]
+    public double? GapMm { get; set; }
+
+    [Description("For teardrop and rolled: the inner radius it rolls at, mm, more than 0.")]
+    public double? RadiusMm { get; set; }
+
+    [Description("For teardrop (more than 180 and less than 360) and rolled (more than 0 and less than 360): how far it rolls, degrees.")]
+    public double? AngleDeg { get; set; }
+
+    [Description("material_inside (the default: the hem within the edge) or bend_outside (outside it); material_outside is not a hem position.")]
+    public BendPosition? Position { get; set; }
+
+    [Description("Fold to the other side of the sheet. Default false.")]
+    public bool? Reverse { get; set; }
+}

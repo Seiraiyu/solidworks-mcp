@@ -334,3 +334,77 @@ public class SheetMetalMiterFlangeTests : SheetMetalFlangeTestBase
     }
 }
 
+
+public class SheetMetalHemTests : SheetMetalFlangeTestBase
+{
+    internal SheetMetalFeatureResult Hem(SheetMetalHemRequest request) => Run(new SheetMetalHemOperation(Services), request);
+
+    [Fact]
+    public void A_closed_hem_folds_its_edge_away_and_adds_its_fold_and_return()
+    {
+        var doc = Sheet();
+        string top = Top(doc);
+        var made = Hem(new SheetMetalHemRequest { Edges = new List<string> { top }, Kind = HemKind.Closed, LengthMm = 10 });
+        Assert.Equal("Hem1", made.Feature.Name);
+        Assert.Equal(1600 + 40 * (2 * (8 - 2) + Math.PI / 2 * 4), made.Change.VolumeAfterMm3, 6);
+        Assert.Contains(made.Checks, c => c.Contains("the 1 edges named are gone"));
+        Assert.Contains(made.Checks, c => c.Contains("a closed hem along 40 mm of edge, material_inside"));
+        var (_, spec) = doc.Hems.Single();
+        Assert.True(spec.Inside);
+        Assert.Equal(10, spec.LengthMm);
+        Assert.Equal(0, spec.GapMm);
+    }
+
+    [Theory]
+    [InlineData(HemKind.Open, 10.0, 1.0, null, null)]
+    [InlineData(HemKind.Teardrop, null, null, 2.0, 270.0)]
+    [InlineData(HemKind.Rolled, null, null, 3.0, 200.0)]
+    public void Every_kind_takes_its_own_dimensions(HemKind kind, double? length, double? gap, double? radius, double? angle)
+    {
+        var doc = Sheet();
+        var made = Hem(new SheetMetalHemRequest { Edges = new List<string> { Top(doc), Right(doc) }, Kind = kind, LengthMm = length, GapMm = gap, RadiusMm = radius, AngleDeg = angle, Position = BendPosition.BendOutside });
+        Assert.True(made.Change.VolumeAfterMm3 > 1600);
+        var (edges, spec) = doc.Hems.Single();
+        Assert.Equal(2, edges.Count);
+        Assert.False(spec.Inside);
+        Assert.Equal(kind, spec.Kind);
+        Assert.Equal(radius ?? 0, spec.RadiusMm);
+    }
+
+    [Fact]
+    public void Requests_that_cannot_make_a_hem_name_their_field()
+    {
+        var doc = Sheet();
+        string top = Top(doc);
+        var edges = new List<string> { top };
+        string Field(SheetMetalHemRequest r) => (string)Fails(() => Hem(r)).Error.Details!["field"]!;
+        Assert.Equal("edges", Field(new SheetMetalHemRequest { Kind = HemKind.Closed, LengthMm = 10 }));
+        Assert.Equal("length_mm", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Closed }));
+        Assert.Equal("gap_mm", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Closed, LengthMm = 10, GapMm = 1 }));
+        Assert.Equal("gap_mm", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Open, LengthMm = 10 }));
+        Assert.Equal("length_mm", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Rolled, LengthMm = 10, RadiusMm = 2, AngleDeg = 180 }));
+        Assert.Equal("angle_deg", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Rolled, RadiusMm = 2 }));
+        Assert.Equal("angle_deg", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Teardrop, RadiusMm = 2, AngleDeg = 90 }));
+        Assert.Equal("radius_mm", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Teardrop, AngleDeg = 270 }));
+        Assert.Equal("position", Field(new SheetMetalHemRequest { Edges = edges, Kind = HemKind.Closed, LengthMm = 10, Position = BendPosition.MaterialOutside }));
+        Assert.Empty(doc.Hems);
+    }
+
+    [Fact]
+    public void A_hem_that_leaves_its_edge_or_adds_the_wrong_material_is_rolled_back()
+    {
+        var doc = Sheet();
+        string top = Top(doc);
+        doc.EdgesSurvive = true;
+        var e = Fails(() => Hem(new SheetMetalHemRequest { Edges = new List<string> { top }, Kind = HemKind.Closed, LengthMm = 10 }));
+        Assert.Equal("edges_gone", e.Error.Details!["check"]);
+        Assert.Equal(1600, doc.MassProperties!.VolumeMm3, 9);
+        doc.EdgesSurvive = false;
+        doc.HemVolumeError = 200;
+        e = Fails(() => Hem(new SheetMetalHemRequest { Edges = new List<string> { top }, Kind = HemKind.Closed, LengthMm = 10 }));
+        Assert.Equal("volume", e.Error.Details!["check"]);
+        Assert.Equal(1600, doc.MassProperties!.VolumeMm3, 9);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "Hem");
+        Assert.Equal(PersistState.Ok, ((FakeEntity)Services.References.Resolve(doc, top, "edges", ReferenceKind.Edge).Entity).State);
+    }
+}

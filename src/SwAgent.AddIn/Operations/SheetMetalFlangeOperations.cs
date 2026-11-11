@@ -383,3 +383,93 @@ public sealed class SheetMetalMiterFlangeOperation : ModelChangeOperation<SheetM
         checks.Add(FormattableString.Invariant($"the part is {extent:0.####} mm across along the {length:0.####} mm profile"));
     }
 }
+
+public sealed class SheetMetalHemOperation : ModelChangeOperation<SheetMetalHemRequest, SheetMetalFeatureResult>
+{
+    const string What = "hem";
+
+    HemMaterial? _material;
+    string _why = "";
+
+    public SheetMetalHemOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(SheetMetalHemRequest request) => request.Document;
+
+    /// <summary>Each kind's own dimensions given, and no other.</summary>
+    static HemSpec Spec(SheetMetalHemRequest r)
+    {
+        string kind = WireNames.ForEnum(r.Kind);
+        void Foreign(double? value, string field)
+        {
+            if (value != null) throw FeatureFacts.Invalid(field, $"a {kind} hem does not take {field}");
+        }
+        var spec = new HemSpec { Kind = r.Kind, Reverse = r.Reverse == true };
+        switch (r.Kind)
+        {
+            case HemKind.Closed:
+                Foreign(r.GapMm, "gap_mm");
+                Foreign(r.RadiusMm, "radius_mm");
+                Foreign(r.AngleDeg, "angle_deg");
+                spec.LengthMm = FeatureFacts.Length(r.LengthMm, "length_mm", "a closed hem");
+                break;
+            case HemKind.Open:
+                Foreign(r.RadiusMm, "radius_mm");
+                Foreign(r.AngleDeg, "angle_deg");
+                spec.LengthMm = FeatureFacts.Length(r.LengthMm, "length_mm", "an open hem");
+                spec.GapMm = FeatureFacts.Length(r.GapMm, "gap_mm", "an open hem");
+                break;
+            default:
+                Foreign(r.LengthMm, "length_mm");
+                Foreign(r.GapMm, "gap_mm");
+                spec.RadiusMm = FeatureFacts.Length(r.RadiusMm, "radius_mm", $"a {kind} hem");
+                if (r.AngleDeg == null) throw FeatureFacts.Invalid("angle_deg", $"a {kind} hem needs angle_deg");
+                spec.AngleDeg = Flanges.Angle(r.AngleDeg, 0, "angle_deg", 360);
+                if (r.Kind == HemKind.Teardrop && spec.AngleDeg <= 180)
+                    throw FeatureFacts.Invalid("angle_deg", FormattableString.Invariant($"a teardrop hem rolls more than 180 degrees, not {spec.AngleDeg}"));
+                break;
+        }
+        var position = r.Position ?? BendPosition.MaterialInside;
+        if (position == BendPosition.MaterialOutside) throw FeatureFacts.Invalid("position", "a hem's position is material_inside or bend_outside");
+        spec.Inside = position == BendPosition.MaterialInside;
+        return spec;
+    }
+
+    protected override SheetMetalFeatureResult Change(ISwDocument doc, SheetMetalHemRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        var defaults = SheetMetalParts.Require(doc, Name);
+        SheetMetalParts.RequireFolded(doc, Name);
+        if (request.Edges.Count == 0) throw FeatureFacts.Invalid("edges", "name at least one edge for a hem (sheetmetal.read gives the base face, model.find its edges)");
+        var spec = Spec(request);
+        var references = Services.References;
+        var edges = FeatureFacts.Entities(references, doc, request.Edges, "edges", ReferenceKind.Edge);
+        double width = edges.Select((e, i) => SheetMetalParts.Edge(doc, e, $"/edges/{i}", defaults.ThicknessMm).LengthMm).Sum();
+        var position = spec.Inside ? BendPosition.MaterialInside : BendPosition.BendOutside;
+        _material = FlangeGeometry.Hem(spec.Kind, defaults.ThicknessMm, width, spec.LengthMm, spec.GapMm, spec.RadiusMm, spec.AngleDeg, position);
+        _why = FormattableString.Invariant($"a {WireNames.ForEnum(spec.Kind)} hem along {width:0.###} mm of edge, {WireNames.ForEnum(position)}, {defaults.ThicknessMm:0.####} mm thick");
+        var hem = doc.SheetMetal.Hem(edges, spec)
+            ?? throw FeatureFacts.NotMade(doc, What, $"on {request.Edges.Count} edges", "check that they are free edges of the sheet with nothing on them yet, and that the hem clears the rest of the part");
+        return Flanges.Result(new[] { FeatureFacts.Made(references, doc, hem, tx) });
+    }
+
+    /// <summary>A hem, its edges gone, and the volume grown by its material within the band.</summary>
+    protected override void Check(ISwDocument doc, SheetMetalHemRequest request, SheetMetalFeatureResult result)
+    {
+        var material = _material!;
+        var checks = result.Checks;
+        var probe = new FeatureResult { Feature = result.Feature, Faces = result.Faces, Checks = checks };
+        FeatureFacts.ExpectType(doc, probe, "Hem", What);
+        FeatureFacts.EdgesGone(Services.References, doc, request.Edges, probe, What);
+        double added = Volume(doc, doc.SolidBodyCount()) - VolumeBefore;
+        if (Math.Abs(added - material.ExpectedMm3) > material.ToleranceMm3)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                FormattableString.Invariant($"the hem changed the volume by {added:0.###} mm³, not the {material.ExpectedMm3:0.###} ± {material.ToleranceMm3:0.###} mm³ of {_why}"),
+                new JsonObject { ["check"] = "volume", ["expected"] = material.ExpectedMm3, ["tolerance"] = material.ToleranceMm3, ["measured"] = added, ["why"] = _why });
+        }
+        checks.Add(FormattableString.Invariant($"the volume grew by {added:0.###} mm³, within {material.ToleranceMm3:0.###} mm³ of the {material.ExpectedMm3:0.###} mm³ of {_why}"));
+        result.Sheet = SheetMetalParts.Facts(Services.References, doc, Flanges.BendsOf(doc, new[] { result.Feature.Name! }));
+    }
+}

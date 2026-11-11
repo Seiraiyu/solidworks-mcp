@@ -108,3 +108,52 @@ public class SheetMetalMiterFlangeErrorCodeTests : SheetMetalFlangeTestBase
         Assert.Equal(1600, doc.MassProperties!.VolumeMm3, 9);
     }
 }
+
+public class SheetMetalHemErrorCodeTests : SheetMetalFlangeTestBase
+{
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.ReferenceUnresolved)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.OperationFailed)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    [InlineData(ErrorCode.ApiError)]
+    public void Sheetmetal_hem_reaches_every_listed_code(ErrorCode code)
+    {
+        SheetMetalFeatureResult Hem(SheetMetalHemRequest r) => Run(new SheetMetalHemOperation(Services), r);
+        if (code == ErrorCode.WrongDocumentType)
+        {
+            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            Assert.Equal(code, Fails(() => Hem(new SheetMetalHemRequest { Edges = new List<string> { "r1.edge.x" }, Kind = HemKind.Closed, LengthMm = 10 })).Code);
+            return;
+        }
+        var doc = Sheet();
+        var edge = doc.SheetEdge(new Point3(0, 20, 0), new Point3(40, 20, 0), new Vector3(0, 1, 0));
+        var request = new SheetMetalHemRequest { Edges = new List<string> { Ref(doc, edge) }, Kind = HemKind.Closed, LengthMm = 10 };
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.GapMm = 1;
+                break;
+            case ErrorCode.ReferenceUnresolved:
+                edge.State = PersistState.Deleted;
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch1";
+                break;
+            case ErrorCode.OperationFailed:
+                doc.FeatureRefuses = true;
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.HemVolumeError = 500;
+                break;
+            case ErrorCode.ApiError:
+                doc.FeatureSelectFails = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Hem(request)).Code);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "Hem");
+        Assert.Equal(1600, doc.MassProperties!.VolumeMm3, 9);
+    }
+}

@@ -58,6 +58,19 @@ public class McpServerTests
     }
 
     [Fact]
+    public async Task The_flange_and_hem_tools_are_listed_with_their_contracts()
+    {
+        await using var server = await InProcessServer.StartAsync(NoSolidWorks());
+        var tools = (await server.Client.ListToolsAsync()).ToDictionary(t => t.Name);
+        Assert.Equal(Json.Write(SwTool.WithDeadline(JsonSchema.For(typeof(SheetMetalEdgeFlangeRequest)))), Json.Write(Json.Parse(tools["sw_sheetmetal_edge_flange"].JsonSchema.GetRawText())));
+        Assert.Equal(Json.Write(SwTool.WithDeadline(JsonSchema.For(typeof(SheetMetalMiterFlangeRequest)))), Json.Write(Json.Parse(tools["sw_sheetmetal_miter_flange"].JsonSchema.GetRawText())));
+        Assert.Equal(Json.Write(SwTool.WithDeadline(JsonSchema.For(typeof(SheetMetalHemRequest)))), Json.Write(Json.Parse(tools["sw_sheetmetal_hem"].JsonSchema.GetRawText())));
+        foreach (var name in new[] { "sw_sheetmetal_edge_flange", "sw_sheetmetal_miter_flange", "sw_sheetmetal_hem" })
+            Assert.False(tools[name].ProtocolTool.Annotations!.ReadOnlyHint);
+        Assert.StartsWith("Bends a flange up from straight edges", tools["sw_sheetmetal_edge_flange"].Description);
+        Assert.Equal(TimeSpan.FromSeconds(60), OperationFamilies.DefaultFor("sheetmetal.hem", TimeSpan.Zero));
+    }
+    [Fact]
     public async Task Sw_status_composes_the_state_the_addin_state_and_the_session()
     {
         using var addin = new FakeAddin();
