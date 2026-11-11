@@ -145,6 +145,12 @@ sealed class FakeAssembly : ISwAssembly
 
     public double DistanceMm(object component, object entity, Point3 point) => _doc.DistanceMm(entity, point);
 
+    /// <summary>What Mass reports for each component, by name; a component not listed has none (SOLIDWORKS giving nothing).</summary>
+    public Dictionary<string, ModelMassResult> Masses { get; } = new Dictionary<string, ModelMassResult>();
+
+    public ModelMassResult? Mass(object component) =>
+        Masses.TryGetValue(Of(component).Info.Name, out var m) ? JsonCodec.Deserialize<ModelMassResult>(JsonCodec.Serialize(m)) : null;
+
     public FakeComponent Named(string name) => Items.Single(c => c.Info.Name == name);
 
     public IReadOnlyList<object> Components(bool topLevelOnly) =>

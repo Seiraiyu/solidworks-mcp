@@ -57,7 +57,7 @@ public sealed class ModelMassOperation : Operation<ModelMassRequest, ModelMassRe
 
     protected override ModelMassResult Run(ModelMassRequest request, IOperationContext context)
     {
-        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "model.mass");
+        var doc = DocumentLocator.FindModel(_services.SolidWorks, request.Document, "model.mass");
         int bodies = doc.SolidBodyCount();
         var mass = bodies == 0 ? null : doc.Mass();
         var result = mass ?? new ModelMassResult();
@@ -67,13 +67,48 @@ public sealed class ModelMassOperation : Operation<ModelMassRequest, ModelMassRe
         result.PrincipalMomentsGMm2 = result.PrincipalMomentsGMm2.OrderBy(m => m).ToList();
         if (bodies > 0 && mass == null)
             throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS gave no mass properties for {result.Document.Title}, which has {bodies} solid bodies");
+        if (doc.Assembly() is ISwAssembly asm)
+        {
+            result.Material = null;
+            result.DensityKgM3 = result.VolumeMm3 > 0 ? result.MassG / result.VolumeMm3 * 1e6 : 0;
+            result.Components = Shares(asm);
+        }
         return result;
     }
 
-    /// <summary>Mass is density times volume, and the volume read again is the same.</summary>
+    /// <summary>Each top-level component's mass properties, but the suppressed and missing ones, which have no mass in the assembly.</summary>
+    static List<ComponentMass> Shares(ISwAssembly asm)
+    {
+        var shares = new List<ComponentMass>();
+        foreach (var component in asm.Components(topLevelOnly: true))
+        {
+            var who = asm.Identify(component);
+            if (who.State == ComponentState.Suppressed || who.State == ComponentState.Missing) continue;
+            var mass = asm.Mass(component)
+                ?? throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS gave no mass properties for the component {who.Name}",
+                    new SwAgent.Contracts.Serialization.JsonObject { ["component"] = who.Name });
+            shares.Add(new ComponentMass { Name = who.Name, VolumeMm3 = mass.VolumeMm3, MassG = mass.MassG, CenterOfMass = mass.MassG > 0 ? mass.CenterOfMass : null });
+        }
+        return shares;
+    }
+
+    /// <summary>
+    /// A part's mass is density times volume; an assembly's components' masses and volumes add up to its own. Either way
+    /// the volume read again is the same.
+    /// </summary>
     protected override void Verify(ModelMassRequest request, ModelMassResult result, IOperationContext context)
     {
         if (result.Bodies == 0) return;
+        if (result.Components != null)
+        {
+            double sum = result.Components.Sum(c => c.MassG), volume = result.Components.Sum(c => c.VolumeMm3);
+            if (Math.Abs(sum - result.MassG) > 1e-6 * Math.Max(1, result.MassG) || Math.Abs(volume - result.VolumeMm3) > 1e-6 * Math.Max(1, result.VolumeMm3))
+            {
+                throw new SwAgentException(ErrorCode.VerificationFailed,
+                    $"the components' masses add up to {sum} g and {volume} mm³, but SOLIDWORKS reported {result.MassG} g and {result.VolumeMm3} mm³ for {result.Document.Title}",
+                    new SwAgent.Contracts.Serialization.JsonObject { ["check"] = "components_sum", ["expected"] = result.MassG, ["measured"] = sum });
+            }
+        }
         double expected = result.DensityKgM3 * result.VolumeMm3 * 1e-6;
         if (Math.Abs(result.MassG - expected) > 1e-6 * Math.Max(1, expected))
         {

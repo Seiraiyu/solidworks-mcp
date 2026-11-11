@@ -31,12 +31,13 @@ public class ModelTreeTests : DocumentTestBase
     }
 
     [Fact]
-    public void Inspection_is_for_parts()
+    public void The_tree_is_for_parts_and_mass_is_not_for_drawings()
     {
         Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
         Assert.Equal(ErrorCode.WrongDocumentType, Fails(() => Run(new ModelTreeOperation(Services), new ModelTreeRequest())).Code);
-        Assert.Equal(ErrorCode.WrongDocumentType, Fails(() => Run(new ModelMassOperation(Services), new ModelMassRequest())).Code);
-        Assert.Equal(ErrorCode.WrongDocumentType, Fails(() => Run(new ModelBoundingBoxOperation(Services), new ModelBoundingBoxRequest())).Code);
+        Sw.Track(new FakeDocument("Sheet1", null, DocumentType.Drawing));
+        Assert.Equal(ErrorCode.WrongDocumentType, Fails(() => Run(new ModelMassOperation(Services), new ModelMassRequest { Document = "Sheet1" })).Code);
+        Assert.Equal(ErrorCode.WrongDocumentType, Fails(() => Run(new ModelBoundingBoxOperation(Services), new ModelBoundingBoxRequest { Document = "Assem1" })).Code);
     }
 }
 
