@@ -83,6 +83,37 @@ public sealed class Installer
         };
     }
 
+    /// <summary>
+    /// Removes the add-in's registration and every version folder except the one <paramref name="runningFrom"/> names
+    /// (swmcp.exe cannot delete itself). A folder that cannot be deleted, because SOLIDWORKS holds the add-in in it, is
+    /// kept and reported, never a failure: the registration is gone either way.
+    /// </summary>
+    public UninstallResult Uninstall(string runningFrom)
+    {
+        var keys = _registrar.Unregister();
+        var removed = new List<string>();
+        var kept = new List<KeptDirectory>();
+        foreach (var directory in _layout.InstalledVersionDirectories())
+        {
+            if (InstallLayout.SameDirectory(directory, runningFrom))
+            {
+                kept.Add(new KeptDirectory(directory, "swmcp uninstall is running from it; delete it once this has exited"));
+                continue;
+            }
+            try
+            {
+                System.IO.Directory.Delete(directory, recursive: true);
+                removed.Add(directory);
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                kept.Add(new KeptDirectory(directory, $"{e.Message} SOLIDWORKS may still hold its add-in: close SOLIDWORKS and run swmcp uninstall again."));
+            }
+        }
+        if (File.Exists(_layout.CurrentFile)) File.Delete(_layout.CurrentFile);
+        return new UninstallResult { RemovedKeys = keys, Removed = removed, Kept = kept };
+    }
+
     static int Copy(string from, string to)
     {
         int count = 0;

@@ -125,4 +125,77 @@ public class InstallerTests
         Assert.Contains("close SOLIDWORKS", e.Message);
         Assert.Equal(held, e.Error.Details!["file"]);
     }
+
+    [Fact]
+    public void Uninstall_unregisters_and_removes_every_version_but_the_one_it_runs_from()
+    {
+        using var release = new FakeRelease();
+        using var home = new ScratchDirectory();
+        using var registry = new ScratchRegistry();
+        var layout = new InstallLayout(home.Path);
+        var installer = new Installer(layout, new AddinRegistrar(registry.Root));
+        installer.Install(release.Path, "0.1.0");
+        installer.Install(release.Path, "0.2.0");
+
+        var result = installer.Uninstall(layout.VersionDirectory("0.2.0"));
+
+        Assert.Equal(4, result.RemovedKeys.Count);
+        Assert.Equal(new[] { layout.VersionDirectory("0.1.0") }, result.Removed);
+        var kept = Assert.Single(result.Kept);
+        Assert.Equal(layout.VersionDirectory("0.2.0"), kept.Directory);
+        Assert.Contains("running from it", kept.Reason);
+        Assert.False(Directory.Exists(layout.VersionDirectory("0.1.0")));
+        Assert.True(Directory.Exists(layout.VersionDirectory("0.2.0")));
+        Assert.False(File.Exists(layout.CurrentFile));
+        Assert.False(new AddinRegistrar(registry.Root).Status().ClsidKey);
+    }
+
+    [Fact]
+    public void Uninstall_run_from_the_download_removes_every_version()
+    {
+        using var release = new FakeRelease();
+        using var home = new ScratchDirectory();
+        using var registry = new ScratchRegistry();
+        var layout = new InstallLayout(home.Path);
+        var installer = new Installer(layout, new AddinRegistrar(registry.Root));
+        installer.Install(release.Path, Version);
+
+        var result = installer.Uninstall(release.Path);
+
+        Assert.Equal(new[] { layout.VersionDirectory(Version) }, result.Removed);
+        Assert.Empty(result.Kept);
+        Assert.Empty(layout.InstalledVersionDirectories());
+    }
+
+    [Fact]
+    public void A_version_folder_in_use_is_kept_with_the_reason()
+    {
+        using var release = new FakeRelease();
+        using var home = new ScratchDirectory();
+        using var registry = new ScratchRegistry();
+        var layout = new InstallLayout(home.Path);
+        var installer = new Installer(layout, new AddinRegistrar(registry.Root));
+        installer.Install(release.Path, Version);
+
+        UninstallResult result;
+        using (File.Open(AddinIn(layout.VersionDirectory(Version)), FileMode.Open, FileAccess.Read, FileShare.Read))
+            result = installer.Uninstall(release.Path);
+
+        Assert.Empty(result.Removed);
+        var kept = Assert.Single(result.Kept);
+        Assert.Equal(layout.VersionDirectory(Version), kept.Directory);
+        Assert.Contains("close SOLIDWORKS", kept.Reason);
+        Assert.Equal(4, result.RemovedKeys.Count);
+    }
+
+    [Fact]
+    public void Uninstall_with_nothing_installed_does_nothing_and_says_so()
+    {
+        using var home = new ScratchDirectory();
+        using var registry = new ScratchRegistry();
+        var result = new Installer(new InstallLayout(home.Path), new AddinRegistrar(registry.Root)).Uninstall(home.Path);
+        Assert.Empty(result.RemovedKeys);
+        Assert.Empty(result.Removed);
+        Assert.Empty(result.Kept);
+    }
 }
