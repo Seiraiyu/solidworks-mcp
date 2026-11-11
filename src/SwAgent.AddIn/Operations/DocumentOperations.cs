@@ -337,34 +337,68 @@ public sealed class DocumentCloseOperation : Operation<DocumentCloseRequest, Doc
 
     protected override DocumentCloseResult Run(DocumentCloseRequest request, IOperationContext context)
     {
-        var doc = DocumentLocator.Find(_services.SolidWorks, request.Document);
+        var sw = _services.SolidWorks;
+        var doc = DocumentLocator.Find(sw, request.Document);
         var info = doc.Info();
         string key = DocumentKeys.Of(info);
-        bool owned = _services.Runtime.Owned.Contains(key);
+        var usedBy = DocumentUse.UsedBy(sw, doc).Select(d => DocumentLocator.Label(d.Info())).ToList();
+        if (!info.Visible)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{info.Title} has no window: it is loaded only because {(usedBy.Count == 0 ? "an open assembly" : string.Join(", ", usedBy))} uses it. Close the assembly instead",
+                new JsonObject { ["field"] = "document", ["document"] = key, ["used_by"] = usedBy.Select(u => (object?)u).ToList() });
+        }
+        // Design 455: a document an assembly the agent owns uses is the agent's too.
+        bool owned = DocumentUse.OwnedByAgent(sw, doc, _services.Runtime.Owned);
         if (!owned && request.UsersDocument != true)
         {
             throw new SwAgentException(ErrorCode.InvalidArgument,
                 $"{info.Title} was not opened or created by the agent, so it is the user's and was not closed; pass users_document: true only if the user asked for it to be closed",
                 new JsonObject { ["field"] = "users_document", ["document"] = key });
         }
-        if (info.Dirty && request.Discard != true)
+        // A document still used stays loaded with its changes; otherwise it and everything only it used go.
+        var unloaded = usedBy.Count == 0 ? DocumentUse.WouldUnload(sw, doc).Select(d => d.Info()).ToList() : new System.Collections.Generic.List<DocumentInfo>();
+        var lost = (usedBy.Count == 0 && info.Dirty ? new[] { info } : new DocumentInfo[0]).Concat(unloaded.Where(u => u.Dirty)).ToList();
+        if (lost.Count > 0 && request.Discard != true)
         {
+            string what = lost.Count == 1 && ReferenceEquals(lost[0], info)
+                ? $"{info.Title} has unsaved changes"
+                : $"closing {info.Title} would lose the unsaved changes of {string.Join(", ", lost.Select(l => l.Title))}";
             throw new SwAgentException(ErrorCode.InvalidArgument,
-                $"{info.Title} has unsaved changes and was not closed; save it first, or pass discard: true to lose them",
-                new JsonObject { ["field"] = "discard", ["document"] = key });
+                $"{what} and it was not closed; save {(info.Type == DocumentType.Assembly ? "the assembly (document.save saves its components too)" : "it")} first, or pass discard: true to lose them",
+                new JsonObject { ["field"] = "discard", ["document"] = key, ["unsaved"] = lost.Select(l => (object?)DocumentLocator.Label(l)).ToList() });
         }
-        _services.SolidWorks.Close(doc);
+        sw.Close(doc);
         _services.Runtime.Owned.Remove(key);
-        context.Log.Info($"document.close: {key}{(info.Dirty ? ", unsaved changes discarded" : "")}{(owned ? "" : ", the user's document, as asked")}");
-        return new DocumentCloseResult { Closed = info, Discarded = info.Dirty };
+        foreach (var gone in unloaded) _services.Runtime.Owned.Remove(DocumentKeys.Of(gone));
+        context.Log.Info($"document.close: {key}{(lost.Count > 0 ? $", unsaved changes discarded ({string.Join(", ", lost.Select(l => l.Title))})" : "")}"
+            + $"{(unloaded.Count > 0 ? $", unloaded {string.Join(", ", unloaded.Select(u => u.Title))}" : "")}{(usedBy.Count > 0 ? $", still used by {string.Join(", ", usedBy)}" : "")}{(owned ? "" : ", the user's document, as asked")}");
+        return new DocumentCloseResult { Closed = info, Discarded = lost.Count > 0, Unloaded = unloaded, StillUsedBy = usedBy };
     }
 
-    /// <summary>No open document is the one closed.</summary>
+    /// <summary>
+    /// The closed document is no longer open, nor anything it unloaded; or, when an assembly still uses it, it is still
+    /// loaded but has no window.
+    /// </summary>
     protected override void Verify(DocumentCloseRequest request, DocumentCloseResult result, IOperationContext context)
     {
+        var open = _services.SolidWorks.Documents().Select(d => d.Info()).ToList();
         string key = DocumentKeys.Of(result.Closed);
-        if (_services.SolidWorks.Documents().Any(d => DocumentKeys.Same(DocumentKeys.Of(d.Info()), key)))
-            throw new SwAgentException(ErrorCode.VerificationFailed, $"{key} is still open after closing it");
+        var still = open.FirstOrDefault(d => DocumentKeys.Same(DocumentKeys.Of(d), key));
+        if (result.StillUsedBy.Count > 0)
+        {
+            if (still != null && still.Visible)
+                throw new SwAgentException(ErrorCode.VerificationFailed, $"{key} still has its window after closing it");
+            return;
+        }
+        if (still != null) throw new SwAgentException(ErrorCode.VerificationFailed, $"{key} is still open after closing it");
+        var left = result.Unloaded.Where(u => open.Any(d => DocumentKeys.Same(DocumentKeys.Of(d), DocumentKeys.Of(u)))).Select(u => u.Title).ToList();
+        if (left.Count > 0)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"{result.Closed.Title} closed, but SOLIDWORKS kept {string.Join(", ", left)} loaded, which nothing open uses",
+                new JsonObject { ["loaded"] = left.Select(l => (object?)l).ToList() });
+        }
     }
 }
 

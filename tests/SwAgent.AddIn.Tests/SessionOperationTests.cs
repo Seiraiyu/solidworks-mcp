@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using SolidWorks.Interop.swconst;
 using SwAgent.AddIn.Core;
 using SwAgent.AddIn.Operations;
@@ -116,12 +117,27 @@ sealed class FakeSolidWorks : ISolidWorksApplication
 
     public System.Collections.Generic.List<string> ClosedTitles { get; } = new System.Collections.Generic.List<string>();
 
+    /// <summary>When true, closing an assembly leaves the hidden documents it used loaded (a SOLIDWORKS that did not unload them).</summary>
+    public bool CloseKeepsComponents { get; set; }
+
+    /// <summary>
+    /// As SOLIDWORKS closes: a document another open document uses only loses its window; otherwise it goes, with every
+    /// hidden document nothing still open uses.
+    /// </summary>
     public void Close(ISwDocument document)
     {
         var doc = (FakeDocument)document;
         ClosedTitles.Add(doc.Document.Title);
-        Docs.Remove(doc);
         if (ReferenceEquals(CurrentDoc, doc)) CurrentDoc = null;
+        if (doc.Document.Path != null && Docs.Any(d => !ReferenceEquals(d, doc) && d.Uses.Any(u => string.Equals(u, doc.Document.Path, System.StringComparison.OrdinalIgnoreCase))))
+        {
+            doc.Document.Visible = false;
+            return;
+        }
+        Docs.Remove(doc);
+        if (CloseKeepsComponents) return;
+        var used = Docs.SelectMany(d => d.Uses).ToList();
+        Docs.RemoveAll(d => !d.Document.Visible && !used.Any(u => string.Equals(u, d.Document.Path, System.StringComparison.OrdinalIgnoreCase)));
     }
 
     /// <summary>Adds a document the operations can see, wired so Activate makes it the active one.</summary>

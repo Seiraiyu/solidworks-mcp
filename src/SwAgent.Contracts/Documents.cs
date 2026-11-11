@@ -125,7 +125,7 @@ public sealed class SavedFile
 }
 
 [Operation("document.close", typeof(DocumentCloseResult))]
-[Description("Closes a document. Refuses one with unsaved changes unless discard, and one the agent did not open or create (document.new, document.open) unless users_document, which is only for when the user asked for it to be closed.")]
+[Description("Closes a document. Refuses one with unsaved changes unless discard, and one the agent did not open or create (document.new, document.open) unless users_document, which is only for when the user asked for it to be closed. Closing an assembly also unloads the components no other open document uses (listed in unloaded), so it is refused, unless discard, when any of them has unsaved changes too. A part an open assembly uses only loses its window: it stays loaded for the assembly, with its changes (still_used_by).")]
 public sealed class DocumentCloseRequest
 {
     [Description("The document: its title or full path. The active document when absent.")]
@@ -145,8 +145,16 @@ public sealed class DocumentCloseResult
     [Description("The document as it was just before it closed.")]
     public DocumentInfo Closed { get; set; } = new DocumentInfo();
 
-    [Description("True when it had unsaved changes, which were lost.")]
+    [Description("True when unsaved changes were lost: its own, or those of a document it unloaded.")]
     public bool Discarded { get; set; }
+
+    [Required]
+    [Description("For an assembly: the documents it used that SOLIDWORKS unloaded with it, as they were just before. Empty otherwise.")]
+    public List<DocumentInfo> Unloaded { get; set; } = new List<DocumentInfo>();
+
+    [Required]
+    [Description("The open documents (assemblies) that still use it: it lost its window but stays loaded for them, unsaved changes included. Empty when it was unloaded.")]
+    public List<string> StillUsedBy { get; set; } = new List<string>();
 }
 
 [Operation("document.rebuild", typeof(RebuildResult))]
