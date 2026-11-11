@@ -18,4 +18,6 @@ internal sealed partial class SolidWorksDocument
         }
         return paths;
     }
+
+    public ISwAssembly? Assembly() => Doc is SolidWorks.Interop.sldworks.IAssemblyDoc ? new SolidWorksAssembly(_sw, Doc) : null;
 }
