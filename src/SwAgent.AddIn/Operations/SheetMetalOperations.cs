@@ -154,3 +154,59 @@ public sealed class SheetMetalBaseFlangeOperation : ModelChangeOperation<SheetMe
         checks.Add(FormattableString.Invariant($"the volume grew by {added:0.###} mm³, the bend arithmetic's for {why}, with the material on the chain's {which}; {open.Bends} bends at the corners' angles"));
     }
 }
+
+public sealed class SheetMetalReadOperation : Operation<SheetMetalReadRequest, SheetMetalReadResult>
+{
+    readonly AddInServices _services;
+
+    public SheetMetalReadOperation(AddInServices services)
+    {
+        _services = services;
+    }
+
+    protected override SheetMetalReadResult Run(SheetMetalReadRequest request, IOperationContext context)
+    {
+        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "sheetmetal.read");
+        var result = new SheetMetalReadResult { Document = doc.Info() };
+        var defaults = SheetMetalParts.IsSheetMetal(doc) ? doc.SheetMetal.Defaults() : null;
+        if (defaults == null) return result;
+        var sheet = doc.SheetMetal;
+        var references = _services.References;
+        result.SheetMetal = true;
+        result.State = SheetMetalParts.State(doc);
+        result.ThicknessMm = defaults.ThicknessMm;
+        result.BendRadiusMm = defaults.BendRadiusMm;
+        result.Allowance = defaults.Allowance;
+        result.Relief = defaults.Relief;
+        result.ReliefRatio = defaults.ReliefRatio;
+        result.SheetBodies = sheet.SheetBodyCount();
+        result.OtherBodies = Math.Max(0, doc.SolidBodyCount() - result.SheetBodies);
+        result.Bends = SheetMetalParts.Describe(references, doc, sheet.Bends());
+        var face = SheetMetalParts.BaseFace(doc);
+        if (face != null) result.BaseFace = references.Describe(doc, face);
+        var cutList = sheet.CutList();
+        result.CutList = cutList.Select(p => $"{p.Key} = {p.Value}").ToList();
+        var size = SheetMetalParts.FlatSize(cutList, sheet.MmPerUnit());
+        if (size != null)
+        {
+            var counted = cutList.FirstOrDefault(p => p.Key == "Bends");
+            int bends = counted.Key != null && double.TryParse(counted.Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double n)
+                ? (int)Math.Round(n)
+                : result.Bends.Count;
+            result.Flat = new FlatSize { LengthMm = size.Value.LengthMm, WidthMm = size.Value.WidthMm, Bends = bends };
+        }
+        return result;
+    }
+
+    /// <summary>Read again, the part has the same thickness, state and bends.</summary>
+    protected override void Verify(SheetMetalReadRequest request, SheetMetalReadResult result, IOperationContext context)
+    {
+        if (!result.SheetMetal) return;
+        var doc = DocumentLocator.Find(_services.SolidWorks, DocumentKeys.Of(result.Document));
+        var defaults = doc.SheetMetal.Defaults();
+        var bends = doc.SheetMetal.Bends().Select(b => b.Name).ToList();
+        if (defaults == null || Math.Abs(defaults.ThicknessMm - result.ThicknessMm!.Value) > 1e-9 || SheetMetalParts.State(doc) != result.State
+            || !bends.SequenceEqual(result.Bends.Select(b => b.Name)))
+            throw new SwAgentException(ErrorCode.VerificationFailed, "the sheet metal changed while it was read; ask again");
+    }
+}

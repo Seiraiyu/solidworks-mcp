@@ -166,3 +166,70 @@ public class SheetMetalBaseFlangeTests : SheetMetalTestBase
         Assert.Contains(made.Checks, c => c.Contains("left"));
     }
 }
+
+public class SheetMetalReadTests : SheetMetalTestBase
+{
+    internal SheetMetalReadResult Read(string? document = null) => Run(new SheetMetalReadOperation(Services), new SheetMetalReadRequest { Document = document });
+
+    [Fact]
+    public void An_ordinary_part_reads_as_not_sheet_metal_and_nothing_more()
+    {
+        Part();
+        var read = Read();
+        Assert.False(read.SheetMetal);
+        Assert.Null(read.ThicknessMm);
+        Assert.Null(read.State);
+        Assert.Empty(read.Bends);
+        Assert.Null(read.Flat);
+        Assert.Equal("Part1", read.Document.Title);
+    }
+
+    [Fact]
+    public void A_channel_reads_its_defaults_bends_base_face_and_flat_size()
+    {
+        var doc = Part();
+        U();
+        Channel(new BendAllowance { KFactor = 0.3 });
+        var read = Read();
+        Assert.True(read.SheetMetal);
+        Assert.Equal(SheetState.Folded, read.State);
+        Assert.Equal(2, read.ThicknessMm);
+        Assert.Equal(3, read.BendRadiusMm);
+        Assert.Equal(0.3, read.Allowance!.KFactor);
+        Assert.Equal(ReliefType.Rectangular, read.Relief);
+        Assert.Equal(0.5, read.ReliefRatio);
+        Assert.Equal(1, read.SheetBodies);
+        Assert.Equal(0, read.OtherBodies);
+        Assert.Equal(new[] { "BaseBend1", "BaseBend2" }, read.Bends.Select(b => b.Name));
+        Assert.StartsWith("r1.face.", read.BaseFace!.Reference);
+        double ba = Math.PI / 2 * (3 + 0.3 * 2);
+        Assert.Equal(doc.FlatStraightMm + 2 * ba, read.Flat!.LengthMm, 5);
+        Assert.Equal(20, read.Flat.WidthMm, 9);
+        Assert.Equal(2, read.Flat.Bends);
+        Assert.Contains("Sheet Metal Thickness = 2", read.CutList);
+    }
+
+    [Fact]
+    public void Cut_list_values_are_converted_from_the_parts_units_and_a_size_that_is_not_a_number_is_left_out()
+    {
+        var doc = Part();
+        Tab();
+        doc.UnitMm = 25.4;
+        var read = Read();
+        Assert.Equal(40, read.Flat!.LengthMm, 4);
+        Assert.Equal(20, read.Flat.WidthMm, 4);
+        doc.CutListOverride = new List<KeyValuePair<string, string>> { new KeyValuePair<string, string>("Bounding Box Length", "1'6\"") };
+        read = Read();
+        Assert.Null(read.Flat);
+        Assert.Equal(new[] { "Bounding Box Length = 1'6\"" }, read.CutList);
+    }
+
+    [Fact]
+    public void A_flattened_part_reads_as_flattened()
+    {
+        var doc = Part();
+        Tab();
+        doc.Suppress(doc.FeatureByName("Flat-Pattern1")!, false);
+        Assert.Equal(SheetState.Flattened, Read().State);
+    }
+}

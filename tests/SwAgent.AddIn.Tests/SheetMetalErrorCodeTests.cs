@@ -56,3 +56,17 @@ public class SheetMetalErrorCodeTests : SheetMetalTestBase
         Assert.DoesNotContain(doc.Tree, f => f.Type == "SheetMetal");
     }
 }
+
+public class SheetMetalReadErrorCodeTests : SheetMetalTestBase
+{
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    public void Sheetmetal_read_reaches_every_listed_code(ErrorCode code)
+    {
+        if (code == ErrorCode.WrongDocumentType) Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+        else Part();
+        var request = new SheetMetalReadRequest { Document = code == ErrorCode.InvalidArgument ? "Nope" : null };
+        Assert.Equal(code, Fails(() => Run(new SheetMetalReadOperation(Services), request)).Code);
+    }
+}

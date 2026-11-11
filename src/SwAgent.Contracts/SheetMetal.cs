@@ -128,6 +128,76 @@ public sealed class SheetMetalFeatureResult : IModelChangeResult
     public List<string> Checks { get; set; } = new List<string>();
 }
 
+[Operation("sheetmetal.read", typeof(SheetMetalReadResult), ReadOnly = true)]
+[Description("Reads a part as a sheet-metal designer does: whether it is sheet metal, whether it is folded or flattened, its thickness, default bend radius, allowance and relief, its sheet-metal body and any ordinary bodies beside it, every bend with its angle, inner radius, allowance and width, its base face (the sheet's largest planar face, whose edges usually take flanges), and the flat pattern's size from SOLIDWORKS' cut list with the cut list's other properties. An ordinary part answers sheet_metal false and nothing more. Lengths in mm, angles in degrees. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class SheetMetalReadRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+}
+
+[Description("A part read as sheet metal.")]
+public sealed class SheetMetalReadResult
+{
+    [Required]
+    [Description("The part.")]
+    public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Description("True when the part is sheet metal (it has a SheetMetal feature). When false, nothing below is given.")]
+    public bool SheetMetal { get; set; }
+
+    [Description("folded or flattened.")]
+    public SheetState? State { get; set; }
+
+    [Description("The sheet's thickness, mm.")]
+    public double? ThicknessMm { get; set; }
+
+    [Description("The default inner bend radius, mm.")]
+    public double? BendRadiusMm { get; set; }
+
+    [Description("The default bend allowance; empty when SOLIDWORKS takes it from a bend or gauge table, which is not read.")]
+    public BendAllowance? Allowance { get; set; }
+
+    [Description("The automatic relief; absent when there is none or it is not rectangular, obround or tear.")]
+    public ReliefType? Relief { get; set; }
+
+    [Description("The relief's size as a ratio of the thickness.")]
+    public double? ReliefRatio { get; set; }
+
+    [Description("How many solid bodies are sheet metal (one, in a part this server made).")]
+    public int SheetBodies { get; set; }
+
+    [Description("How many solid bodies are ordinary solids beside the sheet.")]
+    public int OtherBodies { get; set; }
+
+    [Required]
+    [Description("Every bend, in tree order.")]
+    public List<BendInfo> Bends { get; set; } = new List<BendInfo>();
+
+    [Description("The sheet's largest planar face, with its reference; absent when its body has no planar face.")]
+    public EntityInfo? BaseFace { get; set; }
+
+    [Description("The flat pattern's size from the cut list; absent when the cut list does not give it as numbers.")]
+    public FlatSize? Flat { get; set; }
+
+    [Required]
+    [Description("Every property of the sheet's cut-list item, as name = value, in SOLIDWORKS' own names and the part's units.")]
+    public List<string> CutList { get; set; } = new List<string>();
+}
+
+[Description("The flat pattern's size: the rectangle of sheet it is cut from.")]
+public sealed class FlatSize
+{
+    [Description("The rectangle's length (its longer side), mm.")]
+    public double LengthMm { get; set; }
+
+    [Description("The rectangle's width, mm.")]
+    public double WidthMm { get; set; }
+
+    [Description("How many bends the cut list counts.")]
+    public int Bends { get; set; }
+}
+
 [Description("The sheet-metal facts a sheet-metal operation reads back after it.")]
 public sealed class SheetMetalFacts
 {
