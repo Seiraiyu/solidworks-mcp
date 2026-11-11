@@ -537,15 +537,31 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
         {
             var opened = await Call<DocumentOpenRequest, DocumentOpenResult>(new DocumentOpenRequest { Path = asm });
             Assert.Null((await _run.AddinStateAsync()).Dialog);
-            var swapped = Assert.Single(opened.Substituted);
-            Assert.Equal(meant, swapped.Expected, StringComparer.OrdinalIgnoreCase);
-            Assert.Equal(elsewhere, swapped.Loaded, StringComparer.OrdinalIgnoreCase);
-            Assert.Empty(opened.Missing);
-            var refused = await Refused(() => Measure(asm, top, "top"));
-            Assert.Equal(ErrorCode.ReferenceUnresolved, refused.Code);
-            Assert.Equal("component_file_changed", refused.Error.Details!["reason"]);
+            // SOLIDWORKS does not always search: 4.A's round 2 loaded the same-named file from elsewhere\, 4.B's round 2
+            // reported it missing. Either outcome is accepted, each checked strictly; the line says which one ran.
+            string branch;
+            SwAgentException refused;
+            if (opened.Substituted.Count > 0)
+            {
+                var swapped = Assert.Single(opened.Substituted);
+                Assert.Equal(meant, swapped.Expected, StringComparer.OrdinalIgnoreCase);
+                Assert.Equal(elsewhere, swapped.Loaded, StringComparer.OrdinalIgnoreCase);
+                Assert.Empty(opened.Missing);
+                refused = await Refused(() => Measure(asm, top, "top"));
+                Assert.Equal(ErrorCode.ReferenceUnresolved, refused.Code);
+                Assert.Equal("component_file_changed", refused.Error.Details!["reason"]);
+                branch = $"branch substituted: {swapped.Expected} -> {swapped.Loaded}; missing: none";
+            }
+            else
+            {
+                Assert.Equal(meant, Assert.Single(opened.Missing), StringComparer.OrdinalIgnoreCase);
+                refused = await Refused(() => Measure(asm, top, "top"));
+                Assert.Equal(ErrorCode.ReferenceUnresolved, refused.Code);
+                Assert.Equal("component_missing", refused.Error.Details!["reason"]);
+                branch = $"branch missing (SOLIDWORKS did not load elsewhere\\{name}.SLDPRT): missing: {opened.Missing[0]}; substituted: none";
+            }
             await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = asm, Discard = true });
-            return $"substituted: {swapped.Expected} -> {swapped.Loaded}; missing: none; no dialog; the reference issued before: {refused.Error.Details["reason"]}";
+            return $"{branch}; no dialog; the reference issued before: {refused.Error.Details!["reason"]}";
         }
         finally
         {
