@@ -242,3 +242,50 @@ public sealed class MateEditOperation : AssemblyChangeOperation<MateEditRequest,
         new SwAgentException(ErrorCode.VerificationFailed, $"{mate}'s {property} is {measured}, not {expected}",
             new JsonObject { ["check"] = property, ["expected"] = expected, ["measured"] = measured });
 }
+
+/// <summary>
+/// mate.delete (design 455, Mates). Nothing is recorded to roll back: a deleted mate cannot be made again exactly as it
+/// was, so a failed check reports what is left. The components stay where the mates left them.
+/// </summary>
+public sealed class MateDeleteOperation : AssemblyChangeOperation<MateDeleteRequest, MateDeleteResult>
+{
+    int _matesBefore;
+
+    public MateDeleteOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(MateDeleteRequest request) => request.Document;
+
+    protected override MateDeleteResult Change(ISwDocument doc, ISwAssembly asm, MateDeleteRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        if (request.Mates.Count == 0) throw MateRequests.Invalid("/mates", "mates is empty; name at least one");
+        var doomed = new List<(object Mate, MateFacts Facts)>();
+        for (int i = 0; i < request.Mates.Count; i++)
+        {
+            var mate = MateLookup.Find(Services.References, doc, asm, request.Mates[i], $"/mates/{i}");
+            var facts = asm.ReadMate(mate);
+            if (!doomed.Exists(d => d.Facts.Name == facts.Name)) doomed.Add((mate, facts));
+        }
+        var stayed = doomed.SelectMany(d => d.Facts.Entities).Where(e => e.Component != null)
+            .Select(e => asm.Identify(e.Component!).Name).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+        _matesBefore = asm.Mates().Count;
+        asm.DeleteMates(doomed.Select(d => d.Mate).ToList());
+        context.Log.Info($"mate.delete: {string.Join(", ", doomed.Select(d => d.Facts.Name))}");
+        return new MateDeleteResult { Deleted = doomed.Select(d => d.Facts.Name).ToList(), Stayed = stayed };
+    }
+
+    /// <summary>None of the mates is left, and the assembly has that many fewer.</summary>
+    protected override void Check(ISwDocument doc, ISwAssembly asm, MateDeleteRequest request, MateDeleteResult result)
+    {
+        var left = result.Deleted.Where(n => asm.MateByName(n) != null).ToList();
+        if (left.Count > 0)
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"SOLIDWORKS did not delete {string.Join(", ", left)}",
+                new JsonObject { ["check"] = "deleted", ["left"] = left.Select(l => (object?)l).ToList() });
+        int now = asm.Mates().Count;
+        if (now != _matesBefore - result.Deleted.Count)
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"the assembly has {now} mates, not {_matesBefore - result.Deleted.Count}",
+                new JsonObject { ["check"] = "mates", ["expected"] = _matesBefore - result.Deleted.Count, ["measured"] = now });
+    }
+}
