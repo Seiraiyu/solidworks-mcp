@@ -127,6 +127,18 @@ sealed partial class FakeDocument : ISwDocument
         Activated?.Invoke();
     }
 
+    /// <summary>How many times MarkDirty was called.</summary>
+    public int SaveFlagsSet { get; private set; }
+
+    /// <summary>When true, MarkDirty leaves the document clean (SOLIDWORKS ignoring SetSaveFlag).</summary>
+    public bool SaveFlagIgnored { get; set; }
+
+    public void MarkDirty()
+    {
+        SaveFlagsSet++;
+        if (!SaveFlagIgnored) Document.Dirty = true;
+    }
+
     /// <summary>When set, the next save reports this instead of saving.</summary>
     public SaveOutcome? FailNextSave { get; set; }
 

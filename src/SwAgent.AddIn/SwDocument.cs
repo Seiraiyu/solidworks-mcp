@@ -61,6 +61,9 @@ public interface ISwDocument
     /// <summary>Makes it the active document, without rebuilding it.</summary>
     void Activate();
 
+    /// <summary>Marks it as having unsaved changes (IModelDoc2.SetSaveFlag).</summary>
+    void MarkDirty();
+
     /// <summary>Saves it where it is, silently. SOLIDWORKS' swFileSaveError_e and swFileSaveWarning_e flags.</summary>
     SaveOutcome Save();
 

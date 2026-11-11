@@ -139,6 +139,8 @@ sealed class FakeSolidWorks : ISolidWorksApplication
         if (!CloseUnloadsUsed && doc.Document.Path != null && Docs.Any(d => !ReferenceEquals(d, doc) && d.Uses.Any(u => string.Equals(u, doc.Document.Path, System.StringComparison.OrdinalIgnoreCase))))
         {
             doc.Document.Visible = false;
+            // SOLIDWORKS keeps the changes in memory but clears the part's save flag (4.A live run, round 4).
+            doc.Document.Dirty = false;
             return;
         }
         Docs.Remove(doc);

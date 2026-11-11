@@ -328,6 +328,34 @@ public class AssemblyCloseTests : DocumentTestBase
         Assert.False(result.Discarded);
         Assert.Contains(plate, Sw.Docs);
         Assert.False(plate.Document.Visible);
+        // SOLIDWORKS cleared its save flag with the window; it is set again, so the assembly's save writes the part and
+        // its close asks for discard (4.A live run, round 4).
+        Assert.True(plate.Document.Dirty);
+        Assert.Equal(1, plate.SaveFlagsSet);
+    }
+
+    [Fact]
+    public void A_clean_part_an_open_assembly_uses_is_not_marked_dirty()
+    {
+        var (asm, _, _) = Scene();
+        var plate = Sw.Track(FakeDocument.Part("plate.SLDPRT", PathOf("plate.SLDPRT")));
+        asm.Uses.Add(plate.Document.Path!);
+        Close("plate.SLDPRT");
+        Assert.False(plate.Document.Dirty);
+        Assert.Equal(0, plate.SaveFlagsSet);
+    }
+
+    [Fact]
+    public void A_used_part_that_stays_clean_after_its_flag_is_set_fails_verification()
+    {
+        var (asm, _, _) = Scene();
+        var plate = Sw.Track(FakeDocument.Part("plate.SLDPRT", PathOf("plate.SLDPRT")));
+        asm.Uses.Add(plate.Document.Path!);
+        plate.Document.Dirty = true;
+        plate.SaveFlagIgnored = true;
+        var e = Fails(() => Close("plate.SLDPRT"));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Contains("save it from the assembly", e.Message);
     }
 
     // 4.A live run, case 6: SOLIDWORKS unloaded a part the assembly was said to use. That is never a quiet success.

@@ -36,6 +36,8 @@ internal sealed partial class SolidWorksDocument : ISwDocument
         _sw.ActivateDoc3(Doc.GetTitle(), false, (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, ref errors);
     }
 
+    public void MarkDirty() => Doc.SetSaveFlag();
+
     public SaveOutcome Save()
     {
         int errors = 0, warnings = 0;

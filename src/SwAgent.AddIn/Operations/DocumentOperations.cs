@@ -371,6 +371,9 @@ public sealed class DocumentCloseOperation : Operation<DocumentCloseRequest, Doc
                 new JsonObject { ["field"] = "discard", ["document"] = key, ["unsaved"] = lost.Select(l => (object?)DocumentLocator.Label(l)).ToList() });
         }
         sw.Close(doc);
+        // SOLIDWORKS keeps a used part's changes in memory but clears its save flag with the window: set it again, so the
+        // assembly's save writes the part and closing the assembly asks for discard (4.A live run, round 4).
+        if (usedBy.Count > 0 && info.Dirty) doc.MarkDirty();
         _services.Runtime.Owned.Remove(key);
         foreach (var gone in unloaded) _services.Runtime.Owned.Remove(DocumentKeys.Of(gone));
         context.Log.Info($"document.close: {key}{(lost.Count > 0 ? $", unsaved changes discarded ({string.Join(", ", lost.Select(l => l.Title))})" : "")}"
@@ -391,6 +394,13 @@ public sealed class DocumentCloseOperation : Operation<DocumentCloseRequest, Doc
         {
             if (still != null && still.Visible)
                 throw new SwAgentException(ErrorCode.VerificationFailed, $"{key} still has its window after closing it");
+            if (still != null && result.Closed.Dirty && !still.Dirty)
+            {
+                throw new SwAgentException(ErrorCode.VerificationFailed,
+                    $"{result.Closed.Title} lost its window, and SOLIDWORKS keeps its changes in memory but reports it saved, so nothing would save or protect them; " +
+                    $"save it from the assembly (document.save of {string.Join(", ", result.StillUsedBy)}) now",
+                    new JsonObject { ["document"] = key, ["dirty"] = false });
+            }
             if (still == null)
             {
                 // SOLIDWORKS unloaded it although an open document was read as using it (4.A live run, case 6).
