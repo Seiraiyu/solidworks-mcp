@@ -227,3 +227,110 @@ public class SheetMetalEdgeFlangeTests : SheetMetalFlangeTestBase
         Assert.Null(doc.FeatureByName("Edge-Flange1"));
     }
 }
+
+public class SheetMetalMiterFlangeTests : SheetMetalFlangeTestBase
+{
+    internal SheetMetalFeatureResult MiterFlange(SheetMetalMiterFlangeRequest request) => Run(new SheetMetalMiterFlangeOperation(Services), request);
+
+    /// <summary>A profile on the right plane (x = 0, square to the top edge, sketch x along -z): from the top edge's end at (0, 20, 0) down 20 mm, then on.</summary>
+    internal string Profile(params Point2[] points) => Sketch(new SketchGeometry
+    {
+        Lines = Enumerable.Range(0, points.Length - 1).Select(i => new SketchLine { Id = "l" + i, Start = points[i], End = points[i + 1] }).ToList(),
+    }, on: "right").Sketch.Name;
+
+    [Fact]
+    public void A_one_line_profile_runs_along_its_edge_with_one_bend_and_makes_the_part_as_long_as_the_line()
+    {
+        var doc = Sheet();
+        string top = Top(doc);
+        string sketch = Profile(P(0, 20), P(20, 20));
+        var made = MiterFlange(new SheetMetalMiterFlangeRequest { Sketch = sketch, Edges = new List<string> { top } });
+        Assert.Equal("Miter Flange1", made.Feature.Name);
+        Assert.Single(made.Sheet.Bends);
+        Assert.Equal(1600 + 40 * 2 * 20, made.Change.VolumeAfterMm3, 6);
+        Assert.Contains(made.Checks, c => c.Contains("1 bends (1 per edge) at inner radius 3 mm and K 0.5"));
+        Assert.Contains(made.Checks, c => c.Contains("the part is 20 mm across along the 20 mm profile"));
+        var (_, edges, spec) = doc.MiterFlanges.Single();
+        Assert.Single(edges);
+        Assert.Equal(0.5, spec.GapMm);
+        Assert.Equal(BendPosition.MaterialInside, spec.Position);
+        Assert.Null(spec.RadiusMm);
+        Assert.NotNull(doc.FeatureByName(sketch));
+    }
+
+    [Fact]
+    public void Each_corner_of_the_profile_is_one_more_bend_on_every_edge()
+    {
+        var doc = Sheet();
+        string top = Top(doc), right = Right(doc);
+        var made = MiterFlange(new SheetMetalMiterFlangeRequest { Sketch = Profile(P(0, 20), P(20, 20), P(20, 30)), Edges = new List<string> { top, right }, BendRadiusMm = 2, Allowance = new BendAllowance { KFactor = 0.4 } });
+        Assert.Equal(4, made.Sheet.Bends.Count);
+        Assert.All(made.Sheet.Bends, b => Assert.Equal(2, b.InnerRadiusMm));
+        Assert.All(made.Sheet.Bends, b => Assert.Equal(0.4, b.Allowance.KFactor));
+        Assert.Contains(made.Checks, c => c.Contains("4 bends (2 per edge)"));
+        Assert.Contains(made.Checks, c => c.Contains("length was not compared"));
+    }
+
+    [Fact]
+    public void A_flange_made_along_fewer_edges_than_asked_is_rolled_back()
+    {
+        var doc = Sheet();
+        string top = Top(doc), right = Right(doc);
+        doc.MiterFirstEdgeOnly = true;
+        var e = Fails(() => MiterFlange(new SheetMetalMiterFlangeRequest { Sketch = Profile(P(0, 20), P(20, 20)), Edges = new List<string> { top, right } }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("bends", e.Error.Details!["check"]);
+        Assert.Equal(1600, doc.MassProperties!.VolumeMm3, 9);
+        Assert.DoesNotContain(doc.Tree, f => f.Type == "SMMiteredFlange" || f.Type == "OneBend");
+        Assert.Equal(-2, doc.ExactBox!.Min.Z, 9);
+    }
+
+    [Fact]
+    public void A_profile_that_misses_the_edges_end_is_refused_before_SOLIDWORKS_sees_it()
+    {
+        var doc = Sheet();
+        string top = Top(doc);
+        var e = Fails(() => MiterFlange(new SheetMetalMiterFlangeRequest { Sketch = Profile(P(2, 20), P(22, 20)), Edges = new List<string> { top } }));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal("sketch", e.Error.Details!["field"]);
+        Assert.Equal(2.0, (double)e.Error.Details["gap_mm"]!, 9);
+        Assert.Contains("2 mm from an end of /edges/0", e.Message);
+        Assert.Empty(doc.MiterFlanges);
+    }
+
+    [Fact]
+    public void Requests_that_cannot_make_a_miter_flange_name_their_field()
+    {
+        var doc = Sheet();
+        string top = Top(doc);
+        string profile = Profile(P(0, 20), P(20, 20));
+        string flat = Sketch(new SketchGeometry { Lines = new List<SketchLine> { new SketchLine { Id = "a", Start = P(0, 20), End = P(0, 40) } } }).Sketch.Name;
+        string closed = Sketch(new SketchGeometry { Rectangles = new List<SketchRectangle> { new SketchRectangle { Id = "r", Corner1 = P(0, 20), Corner2 = P(10, 30) } } }, on: "right").Sketch.Name;
+        string Field(SheetMetalMiterFlangeRequest r) => (string)Fails(() => MiterFlange(r)).Error.Details!["field"]!;
+        Assert.Equal("edges", Field(new SheetMetalMiterFlangeRequest { Sketch = profile }));
+        Assert.Equal("gap_mm", Field(new SheetMetalMiterFlangeRequest { Sketch = profile, Edges = new List<string> { top }, GapMm = -1 }));
+        Assert.Equal("allowance", Field(new SheetMetalMiterFlangeRequest { Sketch = profile, Edges = new List<string> { top }, Allowance = new BendAllowance() }));
+        Assert.Equal("sketch", Field(new SheetMetalMiterFlangeRequest { Sketch = "Sketch9", Edges = new List<string> { top } }));
+        Assert.Equal("sketch", Field(new SheetMetalMiterFlangeRequest { Sketch = flat, Edges = new List<string> { top } }));
+        Assert.Equal("sketch", Field(new SheetMetalMiterFlangeRequest { Sketch = closed, Edges = new List<string> { top } }));
+        Assert.Empty(doc.MiterFlanges);
+    }
+
+    [Fact]
+    public void A_miter_flange_SOLIDWORKS_does_not_make_or_one_too_large_changes_nothing()
+    {
+        var doc = Sheet();
+        string top = Top(doc);
+        string profile = Profile(P(0, 20), P(20, 20));
+        doc.FeatureRefuses = true;
+        var e = Fails(() => MiterFlange(new SheetMetalMiterFlangeRequest { Sketch = profile, Edges = new List<string> { top } }));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.Contains("SOLIDWORKS made no miter flange from Sketch2", e.Message);
+        doc.FeatureRefuses = false;
+        doc.FeatureVolumeError = 5000;
+        e = Fails(() => MiterFlange(new SheetMetalMiterFlangeRequest { Sketch = profile, Edges = new List<string> { top } }));
+        Assert.Equal("volume", e.Error.Details!["check"]);
+        Assert.Equal(1600, doc.MassProperties!.VolumeMm3, 9);
+    }
+}
+

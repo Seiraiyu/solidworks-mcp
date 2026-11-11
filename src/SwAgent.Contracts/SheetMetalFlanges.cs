@@ -80,3 +80,31 @@ public sealed class SheetMetalEdgeFlangeRequest
     [Description("How far each flange stops short of its edge's two ends, mm, 0 or more, less than half the edge. Default 0: the whole edge.")]
     public double? OffsetMm { get; set; }
 }
+
+[Operation("sheetmetal.miter_flange", typeof(SheetMetalFeatureResult))]
+[Description("Runs a flange along edges of a sheet-metal part with a profile the agent drew: an open chain of lines in a sketch on a plane square to the first edge, touching one of that edge's ends (refgeom.plane with normal_to_curve makes such a plane at the end; sketch.create draws in it). Each line becomes a straight part of the flange and each corner a bend, with one more bend where the flange meets the sheet; several edges must meet end to end, and the flange turns their corners leaving gap_mm. Folded parts only: a flattened part is refused. Lengths in mm. Checked before SOLIDWORKS is called: the profile is one open chain of lines, its plane is square to the first edge, and it touches that edge's end (SOLIDWORKS refuses silently 2 mm away). Checked after: the feature is a miter flange with a bend per profile corner and one where it meets the sheet, for every edge, at the radius and allowance asked; the volume grew, by no more than the profile and its bends along the edges; a profile of one line square to the sheet leaves the part as long as the line that way (plus at most the thickness). Otherwise it is deleted and the part is as it was (rolled back); the sketch stays. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class SheetMetalMiterFlangeRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The profile's sketch: its name (Sketch2) or reference. One open chain of lines, on a plane square to the first edge, touching one of its ends.")]
+    public string Sketch { get; set; } = "";
+
+    [Required]
+    [Description("The edges, by reference, in order along the flange: straight edges where the sheet ends, meeting end to end. The first is the one the profile touches.")]
+    public List<string> Edges { get; set; } = new List<string>();
+
+    [Description("The gap the flange leaves where it turns a corner between two edges, mm, 0 or more. Default 0.5.")]
+    public double? GapMm { get; set; }
+
+    [Description("Where the bend sits relative to the edges: material_inside (the default), material_outside or bend_outside.")]
+    public BendPosition? Position { get; set; }
+
+    [Description("The bends' inner radius, mm, more than 0. The part's default when absent.")]
+    public double? BendRadiusMm { get; set; }
+
+    [Description("The bends' own allowance: exactly one of k_factor, allowance_mm or deduction_mm. The part's default when absent.")]
+    public BendAllowance? Allowance { get; set; }
+}

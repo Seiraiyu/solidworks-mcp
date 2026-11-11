@@ -251,3 +251,135 @@ public sealed class SheetMetalEdgeFlangeOperation : ModelChangeOperation<SheetMe
         }
     }
 }
+
+public sealed class SheetMetalMiterFlangeOperation : ModelChangeOperation<SheetMetalMiterFlangeRequest, SheetMetalFeatureResult>
+{
+    const string What = "miter flange";
+
+    SheetDefaults? _defaults;
+    double _radius;
+    BendAllowance? _allowance;
+    int _bendsPerEdge;
+    double _edgesMm;
+    double _profileMm;
+    SheetEdge? _first;
+    (Vector3 Direction, double LengthMm)? _line;
+    Box3? _boxBefore;
+
+    public SheetMetalMiterFlangeOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(SheetMetalMiterFlangeRequest request) => request.Document;
+
+    protected override SheetMetalFeatureResult Change(ISwDocument doc, SheetMetalMiterFlangeRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        var defaults = SheetMetalParts.Require(doc, Name);
+        SheetMetalParts.RequireFolded(doc, Name);
+        if (request.Edges.Count == 0) throw FeatureFacts.Invalid("edges", "name at least one edge for a miter flange (sheetmetal.read gives the base face, model.find its edges)");
+        double? radius = request.BendRadiusMm == null ? null : FeatureFacts.Length(request.BendRadiusMm, "bend_radius_mm", "a bend");
+        var allowance = request.Allowance == null ? null : SheetMetalParts.Allowance(request.Allowance, "allowance");
+        double gap = Flanges.Distance(request.GapMm, 0.5, "gap_mm");
+        double t = defaults.ThicknessMm;
+        var references = Services.References;
+        var (sketch, _) = references.Resolve(doc, request.Sketch, "sketch", ReferenceKind.Sketch);
+        var profile = FeatureFacts.Profile(doc, sketch, "sketch", What);
+        var edges = FeatureFacts.Entities(references, doc, request.Edges, "edges", ReferenceKind.Edge);
+        var sheetEdges = edges.Select((e, i) => SheetMetalParts.Edge(doc, e, $"/edges/{i}", t)).ToList();
+        var lines = profile.Segments.Where(s => !s.Construction).ToList();
+        var chain = lines.All(s => s.Kind == SketchSegmentKind.Line && s.Start != null && s.End != null)
+            ? BendArithmetic.Chain(lines.Select(s => (s.Start!, s.End!)).ToList())
+            : null;
+        if (chain == null) throw FeatureFacts.Invalid("sketch", $"{profile.Name} is not one open chain of lines: a miter flange's profile is lines end to end, each a straight part of the flange");
+        var first = sheetEdges[0];
+        var along = new Vector3(first.End.X - first.Start.X, first.End.Y - first.Start.Y, first.End.Z - first.Start.Z);
+        double square = Math.Abs(FeatureFacts.Dot(profile.Normal, along)) / first.LengthMm;
+        if (square < 1 - 1e-6)
+            throw FeatureFacts.Invalid("sketch", $"{profile.Name} is not on a plane square to /edges/0: a miter flange's profile is drawn on a plane normal to its first edge (refgeom.plane with normal_to_curve at the edge's end)");
+        Point3 Model(Point2 p) => new Point3(profile.Origin.X + p.X * profile.XAxis.X + p.Y * profile.YAxis.X, profile.Origin.Y + p.X * profile.XAxis.Y + p.Y * profile.YAxis.Y, profile.Origin.Z + p.X * profile.XAxis.Z + p.Y * profile.YAxis.Z);
+        double miss = FlangeGeometry.NearestEndMm(new[] { Model(chain[0]), Model(chain[chain.Count - 1]) }, first.Start, first.End);
+        if (miss > 1e-3)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                FormattableString.Invariant($"{profile.Name}'s nearest end is {miss:0.###} mm from an end of /edges/0; a miter flange's profile must touch an end of its first edge (SOLIDWORKS refuses one that misses, without saying why). Draw it from the edge's end. Nothing was changed"),
+                new JsonObject { ["field"] = "sketch", ["gap_mm"] = miss });
+        }
+        _defaults = defaults;
+        _radius = radius ?? defaults.BendRadiusMm;
+        _allowance = allowance;
+        _bendsPerEdge = BendArithmetic.OpenProfile(chain, _radius, t, 1).Bends + 1;
+        _edgesMm = sheetEdges.Sum(e => e.LengthMm);
+        _profileMm = Enumerable.Range(0, chain.Count - 1).Sum(i => Math.Sqrt(Math.Pow(chain[i + 1].X - chain[i].X, 2) + Math.Pow(chain[i + 1].Y - chain[i].Y, 2)));
+        _first = first;
+        _line = FeatureFacts.OnlyLine(profile);
+        _boxBefore = doc.BoundingBox(true);
+        var spec = new MiterFlangeSpec { RadiusMm = radius, GapMm = gap, Position = request.Position ?? BendPosition.MaterialInside, Allowance = allowance };
+        var flange = doc.SheetMetal.MiterFlange(sketch, edges, spec)
+            ?? throw FeatureFacts.NotMade(doc, What, $"from {profile.Name}", "check that the edges meet end to end and that the profile clears the rest of the part");
+        return Flanges.Result(new[] { FeatureFacts.Made(references, doc, flange, tx) });
+    }
+
+    /// <summary>A miter flange with its bends at the radius and allowance asked, the volume grown within its profile's reach, and the part as long as a one-line profile.</summary>
+    protected override void Check(ISwDocument doc, SheetMetalMiterFlangeRequest request, SheetMetalFeatureResult result)
+    {
+        var defaults = _defaults!;
+        var checks = result.Checks;
+        var probe = new FeatureResult { Feature = result.Feature, Faces = result.Faces, Checks = checks };
+        FeatureFacts.ExpectType(doc, probe, "SMMiteredFlange", What);
+        FeatureFacts.MadeFaces(probe, What);
+        var bends = Flanges.BendsOf(doc, new[] { result.Feature.Name! });
+        int expected = _bendsPerEdge * request.Edges.Count;
+        if (bends.Count != expected)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"the miter flange made {bends.Count} bends, not the {expected} its profile gives along {request.Edges.Count} edges ({_bendsPerEdge - 1} corners and the bend at the sheet, per edge)",
+                new JsonObject { ["check"] = "bends", ["expected"] = expected, ["measured"] = bends.Count });
+        }
+        var allowance = _allowance ?? defaults.Allowance;
+        Flanges.BendsAre(bends, null, _radius, allowance);
+        checks.Add(FormattableString.Invariant($"{bends.Count} bends ({_bendsPerEdge} per edge) at inner radius {_radius:0.####} mm and {allowance}"));
+        double after = Volume(doc, doc.SolidBodyCount());
+        FeatureFacts.VolumeChanged(probe, What, VolumeBefore, after, 1);
+        double t = defaults.ThicknessMm;
+        double most = _edgesMm * t * (_profileMm + _bendsPerEdge * Math.PI * (_radius + t / 2));
+        if (after - VolumeBefore > most * (1 + FeatureChecks.VolumeTolerance))
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                FormattableString.Invariant($"the miter flange added {after - VolumeBefore:0.###} mm³, more than the {most:0.###} mm³ its {_profileMm:0.###} mm profile and {_bendsPerEdge} bends can hold along {_edgesMm:0.###} mm of edge"),
+                new JsonObject { ["check"] = "volume", ["most"] = most, ["measured"] = after - VolumeBefore });
+        }
+        checks.Add(FormattableString.Invariant($"the volume grew by {after - VolumeBefore:0.###} mm³, within the {most:0.###} mm³ its profile and bends can hold along {_edgesMm:0.###} mm of edge"));
+        Long(doc, t, checks);
+        result.Sheet = SheetMetalParts.Facts(Services.References, doc, bends);
+    }
+
+    /// <summary>A one-line profile square to the sheet: the part is now as long as the line that way, plus at most the thickness.</summary>
+    void Long(ISwDocument doc, double t, List<string> checks)
+    {
+        var line = _line;
+        var n = _first!.Normal;
+        var box = doc.BoundingBox(true);
+        if (line == null || box == null || _boxBefore == null || Math.Abs(FeatureFacts.Dot(line.Value.Direction, n)) < line.Value.LengthMm * (1 - 1e-6) || Flanges.Reach(box, n) == null)
+        {
+            checks.Add("the flange's length was not compared: its profile is not one line square to the sheet along x, y or z");
+            return;
+        }
+        var flip = new Vector3(-n.X, -n.Y, -n.Z);
+        double extent = Flanges.Reach(box, n)!.Value + Flanges.Reach(box, flip)!.Value;
+        double before = Flanges.Reach(_boxBefore, n)!.Value + Flanges.Reach(_boxBefore, flip)!.Value;
+        double length = line.Value.LengthMm;
+        if (before > length)
+        {
+            checks.Add(FormattableString.Invariant($"the flange's length was not compared: the part was already {before:0.###} mm across that way"));
+            return;
+        }
+        if (extent < length - 1e-3 || extent > length + t + 1e-3)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                FormattableString.Invariant($"the part is {extent:0.####} mm across along the profile's line after the miter flange, not between its {length:0.####} mm and that plus the {t:0.####} mm thickness"),
+                new JsonObject { ["check"] = "length", ["expected"] = length, ["measured"] = extent });
+        }
+        checks.Add(FormattableString.Invariant($"the part is {extent:0.####} mm across along the {length:0.####} mm profile"));
+    }
+}

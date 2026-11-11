@@ -1,0 +1,62 @@
+{
+  "type": "object",
+  "description": "Runs a flange along edges of a sheet-metal part with a profile the agent drew: an open chain of lines in a sketch on a plane square to the first edge, touching one of that edge's ends (refgeom.plane with normal_to_curve makes such a plane at the end; sketch.create draws in it). Each line becomes a straight part of the flange and each corner a bend, with one more bend where the flange meets the sheet; several edges must meet end to end, and the flange turns their corners leaving gap_mm. Folded parts only: a flattened part is refused. Lengths in mm. Checked before SOLIDWORKS is called: the profile is one open chain of lines, its plane is square to the first edge, and it touches that edge's end (SOLIDWORKS refuses silently 2 mm away). Checked after: the feature is a miter flange with a bend per profile corner and one where it meets the sheet, for every edge, at the radius and allowance asked; the volume grew, by no more than the profile and its bends along the edges; a profile of one line square to the sheet leaves the part as long as the line that way (plus at most the thickness). Otherwise it is deleted and the part is as it was (rolled back); the sketch stays. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "sketch": {
+      "type": "string",
+      "description": "The profile's sketch: its name (Sketch2) or reference. One open chain of lines, on a plane square to the first edge, touching one of its ends."
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The edges, by reference, in order along the flange: straight edges where the sheet ends, meeting end to end. The first is the one the profile touches."
+    },
+    "gap_mm": {
+      "type": "number",
+      "description": "The gap the flange leaves where it turns a corner between two edges, mm, 0 or more. Default 0.5."
+    },
+    "position": {
+      "type": "string",
+      "enum": [
+        "material_inside",
+        "material_outside",
+        "bend_outside"
+      ],
+      "description": "Where the bend sits relative to the edges: material_inside (the default), material_outside or bend_outside."
+    },
+    "bend_radius_mm": {
+      "type": "number",
+      "description": "The bends' inner radius, mm, more than 0. The part's default when absent."
+    },
+    "allowance": {
+      "type": "object",
+      "properties": {
+        "k_factor": {
+          "type": "number",
+          "description": "The K-factor: where the neutral layer sits across the thickness, more than 0 and at most 1 (0.5 is the middle). The bend develops to angle × (inner radius + K × thickness)."
+        },
+        "allowance_mm": {
+          "type": "number",
+          "description": "The bend allowance itself, mm, more than 0: the length the bend develops to, whatever its angle."
+        },
+        "deduction_mm": {
+          "type": "number",
+          "description": "The bend deduction, mm, 0 or more: what the bend takes off the sum of the two flanges' outer lengths to the virtual sharp."
+        }
+      },
+      "additionalProperties": false,
+      "description": "The bends' own allowance: exactly one of k_factor, allowance_mm or deduction_mm. The part's default when absent."
+    }
+  },
+  "required": [
+    "sketch",
+    "edges"
+  ],
+  "additionalProperties": false
+}
