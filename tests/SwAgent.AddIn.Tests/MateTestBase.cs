@@ -1,4 +1,5 @@
 using System.Linq;
+using SwAgent.AddIn.Operations;
 using SwAgent.Contracts;
 using SwAgent.Contracts.Serialization;
 
@@ -48,6 +49,9 @@ public abstract class MateTestBase : AssemblyTestBase
     }
 
     internal static MateEntity Side(string entity, string? component = null) => new MateEntity { Entity = entity, Component = component };
+
+    internal MateAddResult Add(MateType type, MateEntity a, MateEntity b, double? distance = null, double? angle = null, MateAlignment? alignment = null, string? name = null) =>
+        Run(new MateAddOperation(Services), new MateAddRequest { Document = "stand.SLDASM", Type = type, Entities = { a, b }, DistanceMm = distance, AngleDeg = angle, Alignment = alignment, Name = name });
 
     internal static T Copy<T>(T value) where T : class => JsonCodec.Deserialize<T>(JsonCodec.Serialize(value));
 }
