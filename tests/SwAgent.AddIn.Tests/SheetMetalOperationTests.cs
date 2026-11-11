@@ -356,7 +356,7 @@ public class SheetMetalSetParametersTests : SheetMetalTestBase
         var set = Set(new SheetMetalSetParametersRequest { Allowance = new BendAllowance { KFactor = 0.1 } });
         Assert.Equal((false, 0.5), doc.FlangeK["Base-Flange1"]);
         Assert.Single(set.Change.Changed);
-        Assert.Contains(set.Checks, c => c == "the part's default K 0.1 reached every bend of the base flanges by itself; nothing was written into a base flange");
+        Assert.Contains(set.Checks, c => c == "the part's default K 0.1 reached every bend of the flanges by itself; nothing was written into a flange");
     }
 
     [Fact]

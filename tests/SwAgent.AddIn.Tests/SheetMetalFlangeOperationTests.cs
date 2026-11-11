@@ -408,3 +408,35 @@ public class SheetMetalHemTests : SheetMetalFlangeTestBase
         Assert.Equal(PersistState.Ok, ((FakeEntity)Services.References.Resolve(doc, top, "edges", ReferenceKind.Edge).Entity).State);
     }
 }
+
+public class SheetMetalFlangeParameterTests : SheetMetalFlangeTestBase
+{
+    [Fact]
+    public void A_K_factor_an_edge_flanges_bend_misses_is_written_into_that_flange_and_put_back_with_it()
+    {
+        var doc = Sheet();
+        EdgeFlange(new SheetMetalEdgeFlangeRequest { Edges = new List<string> { Top(doc) }, LengthMm = 25 });
+        doc.BendsKeepAllowance = true;
+        var set = Run(new SheetMetalSetParametersOperation(Services), new SheetMetalSetParametersRequest { Allowance = new BendAllowance { KFactor = 0.1 } });
+        Assert.Equal(0.1, Assert.Single(set.Sheet.Bends).Allowance.KFactor);
+        Assert.Equal((true, 0.1), doc.FlangeK["Edge-Flange1"]);
+        Assert.Contains(set.Change.Changed, c => c.Name == "Edge-Flange1" && c.Property == "k_factor" && c.Before == "override off, K 0.5");
+        Assert.Contains(set.Checks, c => c.StartsWith("Edge-Flange1's bends EdgeBend1 (K 0.5) did not take the part's default K 0.1, so it was written into Edge-Flange1 itself"));
+
+        doc.FlatErrorOnChange = 5;
+        var e = Fails(() => Run(new SheetMetalSetParametersOperation(Services), new SheetMetalSetParametersRequest { Allowance = new BendAllowance { KFactor = 0.9 } }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal((true, 0.1), doc.FlangeK["Edge-Flange1"]);
+        Assert.Equal(0.1, doc.FakeBends.Single(b => b.Owner == "Edge-Flange1").Allowance.KFactor);
+    }
+
+    [Fact]
+    public void A_K_factor_the_default_carries_to_every_flange_writes_none()
+    {
+        var doc = Sheet();
+        EdgeFlange(new SheetMetalEdgeFlangeRequest { Edges = new List<string> { Top(doc) }, LengthMm = 25 });
+        var set = Run(new SheetMetalSetParametersOperation(Services), new SheetMetalSetParametersRequest { Allowance = new BendAllowance { KFactor = 0.1 } });
+        Assert.Equal((false, 0.5), doc.FlangeK["Edge-Flange1"]);
+        Assert.Contains(set.Checks, c => c == "the part's default K 0.1 reached every bend of the flanges by itself; nothing was written into a flange");
+    }
+}

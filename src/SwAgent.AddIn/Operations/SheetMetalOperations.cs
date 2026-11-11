@@ -286,7 +286,7 @@ public sealed class SheetMetalSetParametersOperation : ModelChangeOperation<Shee
     static string FallbackLine(FlangeKFactorWrite w, double k) => FormattableString.Invariant(
         $"{w.Flange}'s bends {string.Join(", ", w.Missed)} did not take the part's default K {k:0.####}, so it was written into {w.Flange} itself (it held {FlangeK(w.OverrideBefore, w.KFactorBefore)}; ModifyDefinition answered {w.Accepted.ToString().ToLowerInvariant()})");
 
-    static string NoFallbackLine(double k) => FormattableString.Invariant($"the part's default K {k:0.####} reached every bend of the base flanges by itself; nothing was written into a base flange");
+    static string NoFallbackLine(double k) => FormattableString.Invariant($"the part's default K {k:0.####} reached every bend of the flanges by itself; nothing was written into a flange");
 
     /// <summary>Every value reads back, the geometry measures it, every bend that follows the default took it, and the flat size and volume moved as predicted.</summary>
     protected override void Check(ISwDocument doc, SheetMetalSetParametersRequest request, SheetMetalSetParametersResult result)

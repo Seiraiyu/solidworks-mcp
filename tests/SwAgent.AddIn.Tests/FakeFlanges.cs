@@ -92,6 +92,7 @@ sealed partial class FakeDocument
         if (section == null) return null;
         var flange = MakeFeature("Edge-Flange", "EdgeFlange", width * section.AddedPerWidthMm2, 3);
         string name = flange.Info.Name!;
+        FlangeK[name] = (spec.Allowance != null, spec.Allowance?.KFactor ?? 0.5);
         var e = (FakeEntity)edge;
         var face = _adjacent[e][0];
         var axis = e.Info.Axis!;
@@ -122,6 +123,7 @@ sealed partial class FakeDocument
             Entities.RemoveAll(bend.Faces.Contains);
             FakeBends.Remove(bend);
             ExactBox = boxBefore;
+            FlangeK.Remove(name);
         });
         return flange;
     }

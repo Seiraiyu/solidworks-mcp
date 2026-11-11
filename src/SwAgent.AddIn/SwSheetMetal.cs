@@ -34,14 +34,14 @@ public interface ISwSheetMetal
 
     /// <summary>
     /// The fallback for a K-factor default (design 454: the global K-factor was measured not reaching edge-flange bends):
-    /// a base flange whose own bends follow the part's default (SOLIDWORKS says so, or they read <paramref name="oldK"/>)
+    /// a flange (base, edge, miter or hem) whose own bends follow the part's default (SOLIDWORKS says so, or they read <paramref name="oldK"/>)
     /// but did not take <paramref name="k"/> gets it written into its own definition, with its K-factor override on.
     /// Nothing is written where the default reached them. Returns each flange it wrote, with what it held before and the
     /// bends that missed, so the caller can record it and put it back. Does not rebuild.
     /// </summary>
     IReadOnlyList<FlangeKFactorWrite> KFactorToBaseFlanges(double k, double? oldK);
 
-    /// <summary>Writes a base flange's own K-factor override switch and K-factor (the fallback's rollback). Does not rebuild.</summary>
+    /// <summary>Writes a flange's own K-factor override switch and K-factor (the fallback's rollback). Does not rebuild.</summary>
     void SetBaseFlangeKFactor(string flange, bool overrideKFactor, double kFactor);
 
     /// <summary>The sheet-metal body's cut-list properties, each name with its resolved value, after updating the cut list; empty when there is none.</summary>
