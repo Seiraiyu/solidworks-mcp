@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using SwAgent.Contracts;
 using SwAgent.Contracts.Rpc;
 using SwAgent.Contracts.Serialization;
+using SwAgent.Mcp.Install;
 using Xunit;
 
 namespace SwAgent.Mcp.Tests;
@@ -31,6 +32,12 @@ public class CliTests
     {
         public Client.ClientOptions Client { get; init; } = new Client.ClientOptions { Processes = new FakeProcesses(), Pipes = new FakePipes(_ => false) };
         public Microsoft.Win32.RegistryKey? Root { get; init; }
+
+        // The unzipped release install runs from; the test's own output folder unless a test sets it.
+        public string? BaseDirectory { get; init; }
+
+        // %LOCALAPPDATA% for install and uninstall: never the real one in a test.
+        public string? LocalAppData { get; init; }
         // Tests that do not attach get one that fails the test, so a slip cannot reach the real SOLIDWORKS.
         public Client.ISolidWorksAttach SolidWorks { get; init; } = new FakeAttach((_, _) => throw new InvalidOperationException("this test must not attach to SOLIDWORKS"));
 
@@ -50,7 +57,8 @@ public class CliTests
             Client = Client,
             // Tests that do not register get a read-only key, so a slip cannot write to the real HKCU.
             RegistryRoot = Root ?? Microsoft.Win32.Registry.CurrentUser.OpenSubKey("Software", writable: false)!,
-            BaseDirectory = AppContext.BaseDirectory,
+            BaseDirectory = BaseDirectory ?? AppContext.BaseDirectory,
+            LocalAppData = LocalAppData ?? Path.Combine(Path.GetTempPath(), "swagent-tests", "no-local-app-data"),
             SolidWorks = SolidWorks,
             AddinLoadWait = TimeSpan.FromMilliseconds(300),
             Serve = options => { Served.Add(options.Client.ProcessId); ServedApiCall.Add(options.ApiCall); return Task.FromResult(ExitCodes.Success); },
@@ -429,5 +437,102 @@ public class CliTests
     public void Sw_starting_has_its_own_exit_code()
     {
         Assert.Equal(15, ExitCodes.For(ErrorCode.SwStarting));
+    }
+
+    [Fact]
+    public async Task Install_copies_registers_and_prints_the_claude_line()
+    {
+        using var release = new FakeRelease();
+        using var home = new ScratchDirectory();
+        using var scratch = new ScratchRegistry();
+
+        var run = await RunAsync(new CliEnvironmentBuilder { Root = scratch.Root, BaseDirectory = release.Path, LocalAppData = home.Path }, "install");
+
+        Assert.Equal(ExitCodes.Success, run.Exit);
+        string version = InstallLayout.FolderName(Client.SwAgentClient.Version);
+        string target = new InstallLayout(home.Path).VersionDirectory(version);
+        Assert.Equal(true, run.Json["installed"]);
+        Assert.Equal(version, run.Json["version"]);
+        Assert.Equal(target, run.Json["path"]);
+        Assert.Equal(Path.Combine(target, "swmcp.exe"), run.Json["swmcp"]);
+        Assert.Equal((long)FakeRelease.Files, run.Json["marks_of_the_web_removed"]);
+        Assert.Equal($"claude mcp add --scope user solidworks -- \"{Path.Combine(target, "swmcp.exe")}\" serve", run.Json["claude_code"]);
+        Assert.Contains("3DEXPERIENCE", (string)run.Json["next"]!);
+        Assert.True(new Registration.AddinRegistrar(scratch.Root).Status().Registered);
+    }
+
+    [Fact]
+    public async Task Install_says_a_running_SOLIDWORKS_loads_the_new_addin_after_a_restart()
+    {
+        using var release = new FakeRelease();
+        using var home = new ScratchDirectory();
+        using var scratch = new ScratchRegistry();
+        var env = new CliEnvironmentBuilder
+        {
+            Root = scratch.Root,
+            BaseDirectory = release.Path,
+            LocalAppData = home.Path,
+            Client = new Client.ClientOptions { Processes = new FakeProcesses(4242), Pipes = new FakePipes(_ => true) },
+        };
+
+        var run = await RunAsync(env, "install");
+
+        Assert.Equal(ExitCodes.Success, run.Exit);
+        string next = (string)run.Json["next"]!;
+        Assert.Contains("process 4242", next);
+        Assert.Contains("start it again from the 3DEXPERIENCE dashboard", next);
+    }
+
+    [Fact]
+    public async Task Install_from_a_folder_that_is_not_a_release_answers_invalid_argument()
+    {
+        using var empty = new ScratchDirectory();
+        using var home = new ScratchDirectory();
+        using var scratch = new ScratchRegistry();
+
+        var run = await RunAsync(new CliEnvironmentBuilder { Root = scratch.Root, BaseDirectory = empty.Path, LocalAppData = home.Path }, "install");
+
+        Assert.Equal(ExitCodes.For(ErrorCode.InvalidArgument), run.Exit);
+        Assert.Equal("invalid_argument", run.Json["code"]);
+    }
+
+    [Fact]
+    public async Task Uninstall_removes_the_registration_and_the_installed_versions()
+    {
+        using var release = new FakeRelease();
+        using var home = new ScratchDirectory();
+        using var scratch = new ScratchRegistry();
+        var env = new CliEnvironmentBuilder { Root = scratch.Root, BaseDirectory = release.Path, LocalAppData = home.Path };
+        await RunAsync(env, "install");
+        string target = new InstallLayout(home.Path).VersionDirectory(InstallLayout.FolderName(Client.SwAgentClient.Version));
+
+        var run = await RunAsync(env, "uninstall");
+
+        Assert.Equal(ExitCodes.Success, run.Exit);
+        Assert.Equal(true, run.Json["uninstalled"]);
+        Assert.Equal(4, ((System.Collections.Generic.List<object?>)run.Json["removed_keys"]!).Count);
+        Assert.Equal(target, Assert.Single((System.Collections.Generic.List<object?>)run.Json["removed"]!));
+        Assert.Empty((System.Collections.Generic.List<object?>)run.Json["kept"]!);
+        Assert.Equal("claude mcp remove --scope user solidworks", run.Json["claude_code"]);
+        Assert.False(Directory.Exists(target));
+        Assert.False(new Registration.AddinRegistrar(scratch.Root).Status().ClsidKey);
+    }
+
+    [Theory]
+    [InlineData("install")]
+    [InlineData("uninstall")]
+    public async Task Install_and_uninstall_take_no_arguments(string command)
+    {
+        var run = await RunAsync(new CliEnvironmentBuilder(), command, "now");
+        Assert.Equal(ExitCodes.Usage, run.Exit);
+        Assert.Contains($"{command} takes no arguments", run.Error);
+    }
+
+    [Fact]
+    public async Task Usage_lists_install_and_uninstall()
+    {
+        var run = await RunAsync(new CliEnvironmentBuilder(), "--help");
+        Assert.Contains("swmcp install", run.Out);
+        Assert.Contains("swmcp uninstall", run.Out);
     }
 }

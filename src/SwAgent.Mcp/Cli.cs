@@ -10,6 +10,7 @@ using SwAgent.Client;
 using SwAgent.Contracts;
 using SwAgent.Contracts.Serialization;
 using SwAgent.Mcp.Registration;
+using SwAgent.Mcp.Install;
 using SwAgent.Mcp.Server;
 
 namespace SwAgent.Mcp;
@@ -28,6 +29,9 @@ public sealed class CliEnvironment
 
     /// <summary>Where swmcp.exe is; the add-in is expected in its addin\ folder.</summary>
     public string BaseDirectory { get; init; } = AppContext.BaseDirectory;
+
+    /// <summary>%LOCALAPPDATA%, under which install puts solidworks-mcp\app; a scratch folder in tests.</summary>
+    public string LocalAppData { get; init; } = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
     /// <summary>How swmcp asks a running SOLIDWORKS to load the add-in; a fake in tests.</summary>
     public ISolidWorksAttach SolidWorks { get; init; } = ComSolidWorksAttach.Instance;
@@ -82,6 +86,8 @@ public static class Cli
         "  swmcp addin load [--pid N]\n" +
         "  swmcp addin unregister\n" +
         "  swmcp addin status\n" +
+        "  swmcp install                 from an unzipped release: copies it to %LOCALAPPDATA%\\solidworks-mcp\\app\\<version> and registers its add-in\n" +
+        "  swmcp uninstall               unregisters the add-in and removes the installed versions\n" +
         "  swmcp --version";
 
     public static async Task<int> RunAsync(string[] args, CliEnvironment env)
@@ -110,6 +116,10 @@ public static class Cli
                     return await EventsAsync(args.Skip(1).ToArray(), env).ConfigureAwait(false);
                 case "addin":
                     return await AddinAsync(args.Skip(1).ToArray(), env).ConfigureAwait(false);
+                case "install":
+                    return Install(args.Skip(1).ToArray(), env);
+                case "uninstall":
+                    return Uninstall(args.Skip(1).ToArray(), env);
                 default:
                     throw new UsageException($"unknown command '{args[0]}'");
             }
@@ -314,6 +324,60 @@ public static class Cli
             default:
                 throw new UsageException($"unknown addin command '{args[0]}'");
         }
+    }
+
+    /// <summary>The line that adds the installed server to Claude Code, for every project.</summary>
+    public static string ClaudeLine(string swmcp) => $"claude mcp add --scope user solidworks -- \"{swmcp}\" serve";
+
+    /// <summary>
+    /// swmcp install (design 371), run from the unzipped release: copies it to its version folder, removes the Mark of
+    /// the Web, registers that copy's add-in under HKCU and writes current.txt. Needs no administrator rights.
+    /// </summary>
+    static int Install(string[] args, CliEnvironment env)
+    {
+        var a = Args.Parse(args);
+        if (a.Positional.Count > 0) throw new UsageException("install takes no arguments");
+        string version = InstallLayout.FolderName(SwAgentClient.Version);
+        var result = new Installer(new InstallLayout(env.LocalAppData), new AddinRegistrar(env.RegistryRoot)).Install(env.BaseDirectory, version);
+        var loaded = RunningSolidWorks(env).Where(s => s.AddinLoaded).Select(s => s.ProcessId).ToList();
+        Write(env, new JsonObject
+        {
+            ["installed"] = true,
+            ["version"] = result.Version,
+            ["path"] = result.Directory,
+            ["swmcp"] = result.Swmcp,
+            ["addin"] = result.Addin.Path,
+            ["files_copied"] = (long)result.FilesCopied,
+            ["marks_of_the_web_removed"] = (long)result.MarksRemoved,
+            ["claude_code"] = ClaudeLine(result.Swmcp),
+            ["next"] = loaded.Count > 0
+                ? $"SOLIDWORKS (process {string.Join(", ", loaded)}) has an earlier add-in loaded; this one loads after you close SOLIDWORKS and start it again from the 3DEXPERIENCE dashboard. Then run the claude_code line"
+                : "run the claude_code line, then start SOLIDWORKS from the 3DEXPERIENCE dashboard; the first tool call loads the add-in",
+        });
+        return ExitCodes.Success;
+    }
+
+    /// <summary>swmcp uninstall: removes the registration and every version folder except the one it runs from.</summary>
+    static int Uninstall(string[] args, CliEnvironment env)
+    {
+        var a = Args.Parse(args);
+        if (a.Positional.Count > 0) throw new UsageException("uninstall takes no arguments");
+        var result = new Installer(new InstallLayout(env.LocalAppData), new AddinRegistrar(env.RegistryRoot)).Uninstall(env.BaseDirectory);
+        bool loaded = RunningSolidWorks(env).Any(s => s.AddinLoaded);
+        Write(env, new JsonObject
+        {
+            ["uninstalled"] = true,
+            ["removed_keys"] = result.RemovedKeys.Select(k => (object?)k).ToList(),
+            ["removed"] = result.Removed.Select(d => (object?)d).ToList(),
+            ["kept"] = result.Kept.Select(k => (object?)new JsonObject { ["path"] = k.Directory, ["reason"] = k.Reason }).ToList(),
+            ["claude_code"] = "claude mcp remove --scope user solidworks",
+            ["next"] = loaded
+                ? "close SOLIDWORKS, then run swmcp uninstall again: SOLIDWORKS holds the add-in's files and rewrites its AddInsStartup entry when it exits"
+                : result.Kept.Count > 0
+                    ? "delete the folders under kept once this has exited, and run the claude_code line"
+                    : "run the claude_code line; nothing of solidworks-mcp is registered any more",
+        });
+        return ExitCodes.Success;
     }
 
     /// <summary>
