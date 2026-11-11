@@ -142,6 +142,14 @@ internal sealed class SolidWorksApplication : ISolidWorksApplication
         // Design 455, Assembly documents: resolved, whatever the user's lightweight setting, so every component can be referenced.
         if (type == DocumentType.Assembly) options |= (int)swOpenDocOptions_e.swOpenDocOptions_OverrideDefaultLoadLightweight;
         var doc = _sw.OpenDoc6(path, swType, options, "", ref errors, ref warnings);
+        if (doc != null && !doc.Visible)
+        {
+            // A component loaded only for an assembly: OpenDoc6 hands it back with no window of its own, and ActivateDoc3
+            // gives it one (4.A live run, round 3). Visible is set too, in case activating alone ever leaves it hidden.
+            int activateErrors = 0;
+            _sw.ActivateDoc3(path, false, (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, ref activateErrors);
+            if (!doc.Visible) doc.Visible = true;
+        }
         return new OpenOutcome(doc == null ? null : new SolidWorksDocument(_sw, doc), errors, warnings);
     }
 
