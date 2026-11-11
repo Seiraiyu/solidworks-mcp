@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using Microsoft.Win32;
 using SwAgent.Contracts;
+using SwAgent.Mcp.Install;
 
 namespace SwAgent.Mcp.Tests;
 
@@ -55,4 +56,37 @@ sealed class ScratchDirectory : IDisposable
         {
         }
     }
+}
+
+/// <summary>
+/// An unzipped release as a user meets it: swmcp.exe (a stand-in: install only needs it present), a runtime file, and
+/// the real add-in DLL in addin\ (registration reads its metadata), each marked as downloaded.
+/// </summary>
+sealed class FakeRelease : IDisposable
+{
+    readonly ScratchDirectory? _owned;
+
+    /// <summary>A release in a new scratch directory, or in <paramref name="at"/>, which the caller cleans up.</summary>
+    public FakeRelease(string? at = null)
+    {
+        if (at == null)
+        {
+            _owned = new ScratchDirectory();
+            at = _owned.Path;
+        }
+        Path = at;
+        Directory.CreateDirectory(System.IO.Path.Combine(Path, "addin"));
+        File.WriteAllText(System.IO.Path.Combine(Path, "swmcp.exe"), "a stand-in for swmcp.exe");
+        File.WriteAllText(System.IO.Path.Combine(Path, "System.Runtime.dll"), "a stand-in for the runtime");
+        File.Copy(Payload.AddinPath, System.IO.Path.Combine(Path, "addin", AddInIdentity.AssemblyFileName), overwrite: true);
+        foreach (var file in Directory.GetFiles(Path, "*", SearchOption.AllDirectories))
+            File.WriteAllText(file + ":" + MarkOfTheWeb.StreamName, "[ZoneTransfer]\r\nZoneId=3\r\n");
+    }
+
+    public string Path { get; }
+
+    /// <summary>The number of files in it: swmcp.exe, the runtime stand-in, the add-in.</summary>
+    public const int Files = 3;
+
+    public void Dispose() => _owned?.Dispose();
 }
