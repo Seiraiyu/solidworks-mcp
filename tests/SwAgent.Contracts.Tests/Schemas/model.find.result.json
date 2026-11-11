@@ -38,7 +38,36 @@
         "visible"
       ],
       "additionalProperties": false,
-      "description": "The part."
+      "description": "The part or assembly."
+    },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A component model.find did not search.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Its name, for example bracket-1."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "resolved",
+              "lightweight",
+              "suppressed",
+              "missing"
+            ],
+            "description": "Why: suppressed, lightweight or missing."
+          }
+        },
+        "required": [
+          "name",
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "description": "In an assembly, the components in the search that were not searched because they have no geometry (suppressed, lightweight or missing); component.set {suppression: resolved} loads one. Empty in a part."
     },
     "entities": {
       "type": "array",
@@ -272,6 +301,7 @@
   },
   "required": [
     "document",
+    "skipped",
     "entities",
     "total",
     "truncated"
