@@ -170,4 +170,29 @@ public static class SheetMetalParts
         double? length = Number(LengthProperty), width = Number(WidthProperty);
         return length == null || width == null ? ((double, double)?)null : (length.Value, width.Value);
     }
+
+    /// <summary>The flat size as a result gives it, with the bends the cut list counts (or <paramref name="bends"/> when it does not); null without a size.</summary>
+    public static FlatSize? Flat(IReadOnlyList<KeyValuePair<string, string>> cutList, double mmPerUnit, int bends)
+    {
+        var size = FlatSize(cutList, mmPerUnit);
+        if (size == null) return null;
+        var counted = cutList.FirstOrDefault(p => p.Key == "Bends");
+        int n = counted.Key != null && double.TryParse(counted.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double v) ? (int)Math.Round(v) : bends;
+        return new FlatSize { LengthMm = size.Value.LengthMm, WidthMm = size.Value.WidthMm, Bends = n };
+    }
+
+    /// <summary>
+    /// How far rounding can have put the cut list's length plus width off, mm: half a unit in the last decimal place
+    /// each is written to (SOLIDWORKS rounds them to the part's display precision; CADapter read 83.28 for 83.2832).
+    /// </summary>
+    public static double FlatRoundingMm(IReadOnlyList<KeyValuePair<string, string>> cutList, double mmPerUnit)
+    {
+        double Half(string name)
+        {
+            string value = cutList.FirstOrDefault(p => p.Key == name).Value?.Trim() ?? "";
+            int dot = value.IndexOf('.');
+            return 0.5 * Math.Pow(10, -(dot < 0 ? 0 : value.Length - dot - 1)) * mmPerUnit;
+        }
+        return Half(LengthProperty) + Half(WidthProperty);
+    }
 }

@@ -185,6 +185,51 @@ public sealed class SheetMetalReadResult
     public List<string> CutList { get; set; } = new List<string>();
 }
 
+[Operation("sheetmetal.set_parameters", typeof(SheetMetalSetParametersResult))]
+[Description("Changes a sheet-metal part's thickness, default bend radius, default allowance or automatic relief; give at least one. The radius and allowance reach every bend that uses the part's default (SOLIDWORKS says it does, or it has the old default's value). Folded parts only: a flattened part is refused. Lengths in mm. Checked on the part, never on SOLIDWORKS' answer: every value reads back; the thickness measures between the sheet's two faces; every bend that follows the default reads back the new radius and allowance, and its cylindrical faces measure the new radius; an allowance-only change moves the flat size by exactly what the bend arithmetic predicts when the bends are square to each other, and leaves the folded volume as it was. Otherwise every value is put back (rolled back). Busy with user_editing while the user is editing a sketch or has a command open.")]
+public sealed class SheetMetalSetParametersRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("The new thickness, mm, more than 0.")]
+    public double? ThicknessMm { get; set; }
+
+    [Description("The new default inner bend radius, mm, more than 0.")]
+    public double? BendRadiusMm { get; set; }
+
+    [Description("The new default bend allowance: exactly one of k_factor, allowance_mm or deduction_mm.")]
+    public BendAllowance? Allowance { get; set; }
+
+    [Description("The new automatic relief: rectangular, obround or tear.")]
+    public ReliefType? Relief { get; set; }
+
+    [Description("The relief's new size as a ratio of the thickness, at least 0.05 and at most 2.")]
+    public double? ReliefRatio { get; set; }
+}
+
+[Description("A sheet-metal part's parameters changed, every bend read back, and the part after it.")]
+public sealed class SheetMetalSetParametersResult : IModelChangeResult
+{
+    [Required]
+    [Description("The evidence: each value changed with its before and after, and the part's rebuild status, bodies and volume before and after.")]
+    public ModelChange Change { get; set; } = new ModelChange();
+
+    [Required]
+    [Description("The sheet's thickness and state, and every bend of the part as SOLIDWORKS reads it back now.")]
+    public SheetMetalFacts Sheet { get; set; } = new SheetMetalFacts();
+
+    [Description("The flat pattern's size before the change; absent when the cut list did not give it.")]
+    public FlatSize? FlatBefore { get; set; }
+
+    [Description("The flat pattern's size after the change; absent when the cut list does not give it.")]
+    public FlatSize? FlatAfter { get; set; }
+
+    [Required]
+    [Description("The checks made, each as a sentence with what was expected and measured.")]
+    public List<string> Checks { get; set; } = new List<string>();
+}
+
 [Description("The flat pattern's size: the rectangle of sheet it is cut from.")]
 public sealed class FlatSize
 {

@@ -69,6 +69,9 @@ sealed partial class FakeDocument : ISwSheetMetal
     /// <summary>The flat length is this much off the bend arithmetic.</summary>
     public double FlatError { get; set; }
 
+    /// <summary>Added to <see cref="FlatError"/> by each SetDefaults (a flat pattern that moves other than predicted).</summary>
+    public double FlatErrorOnChange { get; set; }
+
     public double UnitMm { get; set; } = 1;
 
     public SheetDefaults? Defaults() => Sheet == null || !Tree.Any(f => f.Type == SheetMetalParts.SheetMetalType) ? null : new SheetDefaults
@@ -177,6 +180,7 @@ sealed partial class FakeDocument : ISwSheetMetal
     {
         DefaultEdits.Add(edit);
         if (DefaultsIgnored || Sheet == null) return;
+        FlatError += FlatErrorOnChange;
         if (edit.ThicknessMm != null)
         {
             double ratio = edit.ThicknessMm.Value / Sheet.ThicknessMm;
@@ -216,7 +220,7 @@ sealed partial class FakeDocument : ISwSheetMetal
         if (CutListOverride != null) return CutListOverride;
         if (Sheet == null) return new List<KeyValuePair<string, string>>();
         double length = FlatStraightMm + FakeBends.Sum(b => BendArithmetic.AllowanceMm(b.AngleDeg, b.RadiusMm, Sheet.ThicknessMm, b.Allowance)) + FlatError;
-        string N(double v) => (v / UnitMm).ToString("0.######", CultureInfo.InvariantCulture);
+        string N(double v) => (v / UnitMm).ToString("F6", CultureInfo.InvariantCulture);
         return new List<KeyValuePair<string, string>>
         {
             new KeyValuePair<string, string>(SheetMetalParts.LengthProperty, N(Math.Max(length, FlatWidthMm))),

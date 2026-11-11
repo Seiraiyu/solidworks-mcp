@@ -186,15 +186,7 @@ public sealed class SheetMetalReadOperation : Operation<SheetMetalReadRequest, S
         if (face != null) result.BaseFace = references.Describe(doc, face);
         var cutList = sheet.CutList();
         result.CutList = cutList.Select(p => $"{p.Key} = {p.Value}").ToList();
-        var size = SheetMetalParts.FlatSize(cutList, sheet.MmPerUnit());
-        if (size != null)
-        {
-            var counted = cutList.FirstOrDefault(p => p.Key == "Bends");
-            int bends = counted.Key != null && double.TryParse(counted.Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double n)
-                ? (int)Math.Round(n)
-                : result.Bends.Count;
-            result.Flat = new FlatSize { LengthMm = size.Value.LengthMm, WidthMm = size.Value.WidthMm, Bends = bends };
-        }
+        result.Flat = SheetMetalParts.Flat(cutList, sheet.MmPerUnit(), result.Bends.Count);
         return result;
     }
 
@@ -208,5 +200,170 @@ public sealed class SheetMetalReadOperation : Operation<SheetMetalReadRequest, S
         if (defaults == null || Math.Abs(defaults.ThicknessMm - result.ThicknessMm!.Value) > 1e-9 || SheetMetalParts.State(doc) != result.State
             || !bends.SequenceEqual(result.Bends.Select(b => b.Name)))
             throw new SwAgentException(ErrorCode.VerificationFailed, "the sheet metal changed while it was read; ask again");
+    }
+}
+
+public sealed class SheetMetalSetParametersOperation : ModelChangeOperation<SheetMetalSetParametersRequest, SheetMetalSetParametersResult>
+{
+    SheetDefaults? _before;
+    List<BendRecord> _bendsBefore = new List<BendRecord>();
+    HashSet<string> _followRadius = new HashSet<string>(StringComparer.Ordinal);
+    HashSet<string> _followAllowance = new HashSet<string>(StringComparer.Ordinal);
+    IReadOnlyList<KeyValuePair<string, string>> _cutListBefore = new List<KeyValuePair<string, string>>();
+    SheetDefaultsEdit _edit = new SheetDefaultsEdit();
+
+    public SheetMetalSetParametersOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(SheetMetalSetParametersRequest request) => request.Document;
+
+    protected override SheetMetalSetParametersResult Change(ISwDocument doc, SheetMetalSetParametersRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        var before = SheetMetalParts.Require(doc, Name);
+        SheetMetalParts.RequireFolded(doc, Name);
+        if (request.ThicknessMm == null && request.BendRadiusMm == null && request.Allowance == null && request.Relief == null && request.ReliefRatio == null)
+            throw FeatureFacts.Invalid("thickness_mm", "give at least one of thickness_mm, bend_radius_mm, allowance, relief or relief_ratio to change");
+        var edit = new SheetDefaultsEdit
+        {
+            ThicknessMm = request.ThicknessMm == null ? null : FeatureFacts.Length(request.ThicknessMm, "thickness_mm", "a sheet"),
+            BendRadiusMm = request.BendRadiusMm == null ? null : FeatureFacts.Length(request.BendRadiusMm, "bend_radius_mm", "a bend"),
+            Allowance = request.Allowance == null ? null : SheetMetalParts.Allowance(request.Allowance, "allowance"),
+            Relief = request.Relief,
+            ReliefRatio = request.ReliefRatio == null ? null : SheetMetalParts.ReliefRatio(request.ReliefRatio, "relief_ratio"),
+        };
+        var sheet = doc.SheetMetal;
+        _before = before;
+        _edit = edit;
+        _bendsBefore = sheet.Bends().ToList();
+        _followRadius = new HashSet<string>(_bendsBefore.Where(b => b.DefaultRadius || Math.Abs(b.RadiusMm - before.BendRadiusMm) <= 1e-6).Select(b => b.Name), StringComparer.Ordinal);
+        _followAllowance = new HashSet<string>(_bendsBefore.Where(b => b.DefaultAllowance || SheetMetalParts.Same(b.Allowance, before.Allowance)).Select(b => b.Name), StringComparer.Ordinal);
+        _cutListBefore = sheet.CutList();
+        string owner = doc.Features().First(f => f.Type == SheetMetalParts.SheetMetalType).Name;
+        void Record(string property, string was, string now, SheetDefaultsEdit back) =>
+            tx.Edited(new ChangedItem { Name = owner, Property = property, Before = was, After = now }, () =>
+            {
+                sheet.SetDefaults(back);
+                doc.Rebuild(false);
+            });
+        string Mm(double v) => FormattableString.Invariant($"{v:0.####} mm");
+        if (edit.ThicknessMm != null) Record("thickness", Mm(before.ThicknessMm), Mm(edit.ThicknessMm.Value), new SheetDefaultsEdit { ThicknessMm = before.ThicknessMm });
+        if (edit.BendRadiusMm != null) Record("bend_radius", Mm(before.BendRadiusMm), Mm(edit.BendRadiusMm.Value), new SheetDefaultsEdit { BendRadiusMm = before.BendRadiusMm });
+        if (edit.Allowance != null) Record("allowance", before.Allowance.ToString(), edit.Allowance.ToString(), new SheetDefaultsEdit { Allowance = before.Allowance });
+        if (edit.Relief != null) Record("relief", before.Relief == null ? "none" : WireNames.ForEnum(before.Relief.Value), WireNames.ForEnum(edit.Relief.Value), new SheetDefaultsEdit { Relief = before.Relief ?? ReliefType.Rectangular });
+        if (edit.ReliefRatio != null) Record("relief_ratio", FormattableString.Invariant($"{before.ReliefRatio:0.####}"), FormattableString.Invariant($"{edit.ReliefRatio:0.####}"), new SheetDefaultsEdit { ReliefRatio = before.ReliefRatio });
+        sheet.SetDefaults(edit);
+        if (!doc.Rebuild(false)) context.Log.Warn($"{Name}: SOLIDWORKS reported the rebuild after the change failed; the checks read the part as it is");
+        return new SheetMetalSetParametersResult { FlatBefore = SheetMetalParts.Flat(_cutListBefore, sheet.MmPerUnit(), _bendsBefore.Count) };
+    }
+
+    /// <summary>Every value reads back, the geometry measures it, every bend that follows the default took it, and the flat size and volume moved as predicted.</summary>
+    protected override void Check(ISwDocument doc, SheetMetalSetParametersRequest request, SheetMetalSetParametersResult result)
+    {
+        var before = _before!;
+        var edit = _edit;
+        var checks = result.Checks;
+        var sheet = doc.SheetMetal;
+        var now = sheet.Defaults() ?? throw new SwAgentException(ErrorCode.VerificationFailed, "the part is no longer sheet metal after the change", new JsonObject { ["check"] = "sheet_metal" });
+        double thickness = edit.ThicknessMm ?? before.ThicknessMm;
+        SheetMetalParts.ThicknessIs(doc, thickness, checks);
+        if (edit.BendRadiusMm != null) FeatureChecks.Near("bend_radius", "the part's default bend radius as SOLIDWORKS reads it back", edit.BendRadiusMm.Value, now.BendRadiusMm, 1e-6, "mm");
+        if (edit.Allowance != null && !SheetMetalParts.Same(edit.Allowance, now.Allowance))
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"the part's default allowance reads back as {now.Allowance}, not the {edit.Allowance} asked",
+                new JsonObject { ["check"] = "allowance", ["expected"] = edit.Allowance.ToString(), ["measured"] = now.Allowance.ToString() });
+        }
+        if (edit.Relief != null && now.Relief != edit.Relief)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"the part's relief reads back as {(now.Relief == null ? "none" : WireNames.ForEnum(now.Relief.Value))}, not {WireNames.ForEnum(edit.Relief.Value)}",
+                new JsonObject { ["check"] = "relief", ["expected"] = WireNames.ForEnum(edit.Relief.Value) });
+        }
+        if (edit.ReliefRatio != null) FeatureChecks.Near("relief_ratio", "the relief ratio as SOLIDWORKS reads it back", edit.ReliefRatio.Value, now.ReliefRatio, 1e-6, "");
+        var bends = sheet.Bends().ToList();
+        Followed(doc, bends, edit, thickness, checks);
+        double after = Volume(doc, doc.SolidBodyCount());
+        var cutList = sheet.CutList();
+        result.FlatAfter = SheetMetalParts.Flat(cutList, sheet.MmPerUnit(), bends.Count);
+        if (edit.ThicknessMm == null && edit.BendRadiusMm == null)
+        {
+            FeatureChecks.VolumeChanged(Name, VolumeBefore, after, 0);
+            checks.Add(FormattableString.Invariant($"the folded volume stayed at {after:0.###} mm³"));
+            if (edit.Allowance != null) FlatMoved(doc, bends, edit.Allowance, thickness, result, cutList, checks);
+        }
+        else
+        {
+            if (edit.ThicknessMm != null && bends.Count == 0 && BodiesBefore == 1)
+            {
+                double ratio = edit.ThicknessMm.Value / before.ThicknessMm;
+                string why = FormattableString.Invariant($"a flat sheet {before.ThicknessMm:0.####} -> {edit.ThicknessMm:0.####} mm thick");
+                FeatureChecks.VolumeChangeIs(Name, VolumeBefore * (ratio - 1), after - VolumeBefore, why);
+                checks.Add(FormattableString.Invariant($"the volume went {VolumeBefore:0.###} -> {after:0.###} mm³, {why}"));
+            }
+            if (result.FlatBefore != null && result.FlatAfter != null)
+                checks.Add(FormattableString.Invariant($"the flat size went {result.FlatBefore.LengthMm:0.###} × {result.FlatBefore.WidthMm:0.###} -> {result.FlatAfter.LengthMm:0.###} × {result.FlatAfter.WidthMm:0.###} mm (not predicted: the flanges' lengths hold where they were measured to)"));
+        }
+        result.Sheet = SheetMetalParts.Facts(Services.References, doc, bends);
+    }
+
+    /// <summary>Every bend that followed the default before reads back the new radius and allowance, and its cylindrical faces measure the radius.</summary>
+    void Followed(ISwDocument doc, IReadOnlyList<BendRecord> bends, SheetDefaultsEdit edit, double thickness, List<string> checks)
+    {
+        int radii = 0, allowances = 0;
+        foreach (var bend in bends)
+        {
+            if (edit.BendRadiusMm != null && _followRadius.Contains(bend.Name))
+            {
+                FeatureChecks.Near("bend_follows", $"{bend.Name}'s inner radius, which used the part's default", edit.BendRadiusMm.Value, bend.RadiusMm, 1e-6, "mm");
+                var cylinders = doc.FacesOf(bend.Feature).Select(doc.Describe).Where(i => i.Geometry == GeometryType.Cylinder && i.RadiusMm != null).ToList();
+                if (cylinders.Count > 0)
+                    FeatureChecks.Near("bend_radius_measured", $"{bend.Name}'s inner cylindrical face's radius", edit.BendRadiusMm.Value, cylinders.Min(i => i.RadiusMm!.Value), 1e-4, "mm");
+                radii++;
+            }
+            if (edit.Allowance != null && _followAllowance.Contains(bend.Name))
+            {
+                if (!SheetMetalParts.Same(edit.Allowance, bend.Allowance))
+                {
+                    throw new SwAgentException(ErrorCode.VerificationFailed,
+                        $"{bend.Name} used the part's default allowance and SOLIDWORKS kept it at {bend.Allowance}, not the {edit.Allowance} asked",
+                        new JsonObject { ["check"] = "bend_follows", ["bend"] = bend.Name, ["expected"] = edit.Allowance.ToString(), ["measured"] = bend.Allowance.ToString() });
+                }
+                allowances++;
+            }
+        }
+        if (edit.BendRadiusMm != null) checks.Add(FormattableString.Invariant($"{radii} bends that used the default radius read back and measure {edit.BendRadiusMm:0.####} mm"));
+        if (edit.Allowance != null) checks.Add($"{allowances} bends that used the default allowance read back {edit.Allowance}");
+    }
+
+    /// <summary>
+    /// An allowance-only change leaves the straight legs as they are, so the flat size's length plus width moves by the
+    /// change in each following bend's allowance; checked when every bend is square to the others (so each lies along
+    /// one side of the flat rectangle) and both sizes are known, within the cut list's precision.
+    /// </summary>
+    void FlatMoved(ISwDocument doc, IReadOnlyList<BendRecord> bends, BendAllowance allowance, double thickness, SheetMetalSetParametersResult result, IReadOnlyList<KeyValuePair<string, string>> cutList, List<string> checks)
+    {
+        var flatBefore = result.FlatBefore;
+        var flatAfter = result.FlatAfter;
+        if (flatBefore == null || flatAfter == null || bends.Count == 0)
+        {
+            checks.Add("the flat size was not compared: " + (bends.Count == 0 ? "the part has no bends" : "the cut list did not give it as numbers"));
+            return;
+        }
+        var axes = bends.Select(b => doc.FacesOf(b.Feature).Select(doc.Describe).FirstOrDefault(i => i.Geometry == GeometryType.Cylinder && i.Axis != null)?.Axis).ToList();
+        bool square = axes.All(a => a != null) && axes.All(a => axes.All(b => { double d = Math.Abs(FeatureFacts.Dot(a!, b!)); return d < 1e-6 || d > 1 - 1e-6; }));
+        if (!square)
+        {
+            checks.Add("the flat size was not compared: the bends are not square to each other");
+            return;
+        }
+        double predicted = bends.Where(b => _followAllowance.Contains(b.Name)).Sum(b =>
+        {
+            var old = _bendsBefore.First(x => x.Name == b.Name);
+            return BendArithmetic.AllowanceMm(b.AngleDeg, b.RadiusMm, thickness, allowance) - BendArithmetic.AllowanceMm(old.AngleDeg, old.RadiusMm, thickness, old.Allowance);
+        });
+        double measured = flatAfter.LengthMm + flatAfter.WidthMm - flatBefore.LengthMm - flatBefore.WidthMm;
+        double tolerance = SheetMetalParts.FlatRoundingMm(cutList, doc.SheetMetal.MmPerUnit()) + SheetMetalParts.FlatRoundingMm(_cutListBefore, doc.SheetMetal.MmPerUnit()) + 1e-9;
+        FeatureChecks.Near("flat_size", "how far the flat size's length plus width moved", predicted, measured, tolerance, "mm");
+        checks.Add(FormattableString.Invariant($"the flat size's length plus width moved {measured:0.####} mm, the bend arithmetic's {predicted:0.####} mm within the cut list's {tolerance:0.####} mm"));
     }
 }

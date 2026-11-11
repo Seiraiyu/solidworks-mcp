@@ -206,7 +206,7 @@ public class SheetMetalReadTests : SheetMetalTestBase
         Assert.Equal(doc.FlatStraightMm + 2 * ba, read.Flat!.LengthMm, 5);
         Assert.Equal(20, read.Flat.WidthMm, 9);
         Assert.Equal(2, read.Flat.Bends);
-        Assert.Contains("Sheet Metal Thickness = 2", read.CutList);
+        Assert.Contains("Sheet Metal Thickness = 2.000000", read.CutList);
     }
 
     [Fact]
@@ -231,5 +231,109 @@ public class SheetMetalReadTests : SheetMetalTestBase
         Tab();
         doc.Suppress(doc.FeatureByName("Flat-Pattern1")!, false);
         Assert.Equal(SheetState.Flattened, Read().State);
+    }
+}
+
+public class SheetMetalSetParametersTests : SheetMetalTestBase
+{
+    internal SheetMetalSetParametersResult Set(SheetMetalSetParametersRequest request) => Run(new SheetMetalSetParametersOperation(Services), request);
+
+    [Fact]
+    public void A_K_factor_reaches_every_default_bend_and_moves_the_flat_size_by_the_bend_arithmetic()
+    {
+        var doc = Part();
+        U();
+        Channel();
+        double volume = doc.MassProperties!.VolumeMm3;
+        var set = Set(new SheetMetalSetParametersRequest { Allowance = new BendAllowance { KFactor = 0.1 } });
+        Assert.All(set.Sheet.Bends, b => Assert.Equal(0.1, b.Allowance.KFactor));
+        Assert.Equal(volume, set.Change.VolumeAfterMm3, 9);
+        double moved = 2 * Math.PI / 2 * (0.1 - 0.5) * 2;
+        Assert.Equal(set.FlatBefore!.LengthMm + moved, set.FlatAfter!.LengthMm, 5);
+        Assert.Contains(set.Checks, c => c.Contains("2 bends that used the default allowance read back K 0.1"));
+        Assert.Contains(set.Checks, c => c.StartsWith("the flat size's length plus width moved -2.5133 mm"));
+        var changed = Assert.Single(set.Change.Changed);
+        Assert.Equal("Sheet-Metal1", changed.Name);
+        Assert.Equal("allowance", changed.Property);
+        Assert.Equal("K 0.5", changed.Before);
+        Assert.Equal("K 0.1", changed.After);
+    }
+
+    [Fact]
+    public void A_radius_reaches_every_default_bend_and_its_faces_measure_it()
+    {
+        var doc = Part();
+        U();
+        Channel();
+        var set = Set(new SheetMetalSetParametersRequest { BendRadiusMm = 8 });
+        Assert.All(set.Sheet.Bends, b => Assert.Equal(8, b.InnerRadiusMm));
+        Assert.Contains(set.Checks, c => c.Contains("2 bends that used the default radius read back and measure 8 mm"));
+        Assert.Contains(set.Checks, c => c.Contains("not predicted"));
+        Assert.Equal(8, doc.Sheet!.BendRadiusMm);
+    }
+
+    [Fact]
+    public void A_flat_tabs_thickness_scales_its_volume_and_measures_between_its_faces()
+    {
+        var doc = Part();
+        Tab();
+        var set = Set(new SheetMetalSetParametersRequest { ThicknessMm = 3, Relief = ReliefType.Obround, ReliefRatio = 1 });
+        Assert.Equal(2400, set.Change.VolumeAfterMm3, 6);
+        Assert.Equal(3, set.Sheet.ThicknessMm);
+        Assert.Contains(set.Checks, c => c.Contains("measures 3 mm between the sheet's two faces"));
+        Assert.Equal(new[] { "thickness", "relief", "relief_ratio" }, set.Change.Changed.Select(c => c.Property));
+        Assert.Equal(ReliefType.Obround, doc.Sheet!.Relief);
+    }
+
+    [Fact]
+    public void An_ordinary_part_a_flattened_part_and_an_empty_request_are_refused()
+    {
+        var doc = Part();
+        Assert.Equal(ErrorCode.WrongDocumentType, Fails(() => Set(new SheetMetalSetParametersRequest { ThicknessMm = 3 })).Code);
+        Tab();
+        Assert.Equal("thickness_mm", Fails(() => Set(new SheetMetalSetParametersRequest())).Error.Details!["field"]);
+        Assert.Equal("allowance/k_factor", Fails(() => Set(new SheetMetalSetParametersRequest { Allowance = new BendAllowance { KFactor = 2 } })).Error.Details!["field"]);
+        doc.Suppress(doc.FeatureByName("Flat-Pattern1")!, false);
+        Assert.Equal("flattened", Fails(() => Set(new SheetMetalSetParametersRequest { ThicknessMm = 3 })).Error.Details!["state"]);
+        Assert.Empty(doc.DefaultEdits);
+    }
+
+    [Fact]
+    public void A_change_SOLIDWORKS_ignores_is_caught_and_every_value_is_put_back()
+    {
+        var doc = Part();
+        Tab();
+        doc.DefaultsIgnored = true;
+        var e = Fails(() => Set(new SheetMetalSetParametersRequest { ThicknessMm = 3, BendRadiusMm = 5 }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("thickness", e.Error.Details!["check"]);
+        Assert.Equal(new object?[] { "Sheet-Metal1", "Sheet-Metal1" }, ((IEnumerable<object?>)e.Error.Details["rolled_back"]!).ToArray());
+        Assert.Equal(new double?[] { 3, null, 2 }, doc.DefaultEdits.Select(d => d.ThicknessMm));
+        Assert.Equal(new double?[] { 5, 3, null }, doc.DefaultEdits.Select(d => d.BendRadiusMm));
+    }
+
+    [Fact]
+    public void A_bend_that_keeps_its_allowance_when_the_default_moves_is_caught_and_rolled_back()
+    {
+        var doc = Part();
+        U();
+        Channel();
+        doc.BendsKeepAllowance = true;
+        var e = Fails(() => Set(new SheetMetalSetParametersRequest { Allowance = new BendAllowance { KFactor = 0.9 } }));
+        Assert.Equal("bend_follows", e.Error.Details!["check"]);
+        Assert.Equal("BaseBend1", e.Error.Details["bend"]);
+        Assert.Equal(0.5, doc.Sheet!.Allowance.KFactor);
+    }
+
+    [Fact]
+    public void A_flat_size_that_does_not_move_as_predicted_is_caught_and_rolled_back()
+    {
+        var doc = Part();
+        U();
+        Channel();
+        doc.FlatErrorOnChange = 0.5;
+        var e = Fails(() => Set(new SheetMetalSetParametersRequest { Allowance = new BendAllowance { AllowanceMm = 6 } }));
+        Assert.Equal("flat_size", e.Error.Details!["check"]);
+        Assert.Equal(0.5, doc.Sheet!.Allowance.KFactor);
     }
 }

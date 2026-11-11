@@ -70,3 +70,32 @@ public class SheetMetalReadErrorCodeTests : SheetMetalTestBase
         Assert.Equal(code, Fails(() => Run(new SheetMetalReadOperation(Services), request)).Code);
     }
 }
+
+public class SheetMetalSetParametersErrorCodeTests : SheetMetalTestBase
+{
+    [Theory]
+    [InlineData(ErrorCode.InvalidArgument)]
+    [InlineData(ErrorCode.WrongDocumentType)]
+    [InlineData(ErrorCode.Busy)]
+    [InlineData(ErrorCode.VerificationFailed)]
+    public void Sheetmetal_set_parameters_reaches_every_listed_code(ErrorCode code)
+    {
+        var request = new SheetMetalSetParametersRequest { ThicknessMm = 3 };
+        var doc = Part();
+        if (code != ErrorCode.WrongDocumentType) Tab();
+        switch (code)
+        {
+            case ErrorCode.InvalidArgument:
+                request.ThicknessMm = -1;
+                break;
+            case ErrorCode.Busy:
+                doc.EditingSketchName = "Sketch1";
+                break;
+            case ErrorCode.VerificationFailed:
+                doc.DefaultsIgnored = true;
+                break;
+        }
+        Assert.Equal(code, Fails(() => Run(new SheetMetalSetParametersOperation(Services), request)).Code);
+        Assert.NotEqual(3, doc.Sheet?.ThicknessMm);
+    }
+}

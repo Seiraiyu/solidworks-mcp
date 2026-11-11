@@ -1,0 +1,51 @@
+{
+  "type": "object",
+  "description": "Changes a sheet-metal part's thickness, default bend radius, default allowance or automatic relief; give at least one. The radius and allowance reach every bend that uses the part's default (SOLIDWORKS says it does, or it has the old default's value). Folded parts only: a flattened part is refused. Lengths in mm. Checked on the part, never on SOLIDWORKS' answer: every value reads back; the thickness measures between the sheet's two faces; every bend that follows the default reads back the new radius and allowance, and its cylindrical faces measure the new radius; an allowance-only change moves the flat size by exactly what the bend arithmetic predicts when the bends are square to each other, and leaves the folded volume as it was. Otherwise every value is put back (rolled back). Busy with user_editing while the user is editing a sketch or has a command open.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The part: its title or full path. The active document when absent."
+    },
+    "thickness_mm": {
+      "type": "number",
+      "description": "The new thickness, mm, more than 0."
+    },
+    "bend_radius_mm": {
+      "type": "number",
+      "description": "The new default inner bend radius, mm, more than 0."
+    },
+    "allowance": {
+      "type": "object",
+      "properties": {
+        "k_factor": {
+          "type": "number",
+          "description": "The K-factor: where the neutral layer sits across the thickness, more than 0 and at most 1 (0.5 is the middle). The bend develops to angle × (inner radius + K × thickness)."
+        },
+        "allowance_mm": {
+          "type": "number",
+          "description": "The bend allowance itself, mm, more than 0: the length the bend develops to, whatever its angle."
+        },
+        "deduction_mm": {
+          "type": "number",
+          "description": "The bend deduction, mm, 0 or more: what the bend takes off the sum of the two flanges' outer lengths to the virtual sharp."
+        }
+      },
+      "additionalProperties": false,
+      "description": "The new default bend allowance: exactly one of k_factor, allowance_mm or deduction_mm."
+    },
+    "relief": {
+      "type": "string",
+      "enum": [
+        "rectangular",
+        "obround",
+        "tear"
+      ],
+      "description": "The new automatic relief: rectangular, obround or tear."
+    },
+    "relief_ratio": {
+      "type": "number",
+      "description": "The relief's new size as a ratio of the thickness, at least 0.05 and at most 2."
+    }
+  },
+  "additionalProperties": false
+}
