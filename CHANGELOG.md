@@ -5,7 +5,9 @@ tools and their parameters.
 
 ## 0.1.0
 
-The first release: an agent can model parts in a running SOLIDWORKS 2026 SP4 on Windows, through MCP.
+The first release: an agent can model parts, sheet-metal parts and assemblies in a running SOLIDWORKS 2026 SP4 on
+Windows, through MCP. The add-in and swmcp speak protocol 5, and swmcp refuses an add-in at any other version
+(`addin_incompatible`).
 
 ### Parts
 
@@ -24,6 +26,26 @@ The first release: an agent can model parts in a running SOLIDWORKS 2026 SP4 on 
 - Export: STEP, Parasolid, STL and 3MF, leaving the part and your export preferences as they were.
 - `sw_api_call`, a logged escape hatch to the rest of SOLIDWORKS' API, with the members that close documents, end
   SOLIDWORKS or run code refused. `--no-api-call` or `SWMCP_API_CALL=0` turns it off.
+
+### Sheet metal
+
+- `sw_sheetmetal_base_flange`: a sheet-metal part from a sketch, a closed profile as a flat tab or an open chain
+  bent at each corner, with its thickness, bend radius, allowance (K-factor 0.5 by default) and relief.
+- `sw_sheetmetal_read`: whether a part is sheet metal, folded or flattened, its thickness, defaults, bodies, every
+  bend with its angle, radius, allowance and width, its base face and the flat pattern's size.
+- `sw_sheetmetal_set_parameters`: change the thickness, default bend radius, allowance or relief of a folded part.
+- Each is checked against the part, and rolled back when the check fails.
+
+### Assemblies
+
+- Documents: `sw_document_new` makes assemblies; `sw_document_open` opens them with every component resolved and
+  lists missing component files; `sw_document_save` saves the changed documents an assembly uses first;
+  `sw_document_close` refuses to lose a component's unsaved changes, and a part an open assembly uses keeps them.
+- `sw_assembly_insert`: a part or assembly as a component, at a point and orientation; the first one is fixed.
+- `sw_assembly_components`: the components in tree order, top level or the whole tree, with their state, position,
+  box and how far each is defined.
+- `sw_component_place`, `sw_component_set` (fixed, suppressed, configuration, rigid or flexible, hidden) and
+  `sw_component_delete` (with the mates that use the component).
 
 ### Reliability
 
@@ -46,7 +68,8 @@ The first release: an agent can model parts in a running SOLIDWORKS 2026 SP4 on 
 
 ### Known limits
 
-- Parts only: assemblies, drawings and sheet metal come in later releases.
+- No drawings yet. Assemblies have no mates yet, and sheet metal has only the base flange; flanges, hems and the
+  rest come in later releases.
 - SOLIDWORKS 2026 SP4 or later, started from the 3DEXPERIENCE dashboard. swmcp never starts SOLIDWORKS.
 - The binaries are not signed.
 - The dialog watcher can match a 3DEXPERIENCE sign-in window that opens while it is looking for another dialog,
