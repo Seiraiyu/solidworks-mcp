@@ -37,6 +37,28 @@ public class DocumentUseTests
         Assert.Equal(new[] { bracket, pin }, DocumentUse.WouldUnload(sw, asm));
     }
 
+    /// <summary>
+    /// SolidWorksApplication.Documents() wraps each document anew on every call, so the assembly being closed is never
+    /// the same object as the one in the list (4.A live run, round 2: closing placing.SLDASM reported nothing unloaded).
+    /// </summary>
+    static FakeDocument AnotherWrapperOf(FakeDocument doc)
+    {
+        var copy = new FakeDocument(doc.Document.Title, doc.Document.Path, doc.Document.Type);
+        copy.Uses.AddRange(doc.Uses);
+        return copy;
+    }
+
+    [Fact]
+    public void A_document_is_known_by_its_key_not_by_which_wrapper_holds_it()
+    {
+        var (sw, asm, bracket, pin, plate) = Scene();
+        var closing = AnotherWrapperOf(asm);
+        Assert.Equal(new[] { bracket, pin }, DocumentUse.WouldUnload(sw, closing));
+        Assert.Equal(new[] { bracket, pin, plate }, DocumentUse.Used(sw, closing));
+        Assert.Empty(DocumentUse.UsedBy(sw, closing));
+        Assert.Equal(new[] { asm }, DocumentUse.UsedBy(sw, AnotherWrapperOf(pin)));
+    }
+
     [Fact]
     public void A_component_another_open_assembly_uses_stays_loaded()
     {
