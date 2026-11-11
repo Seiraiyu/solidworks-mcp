@@ -17,7 +17,7 @@ public sealed class ConfigurationListOperation : Operation<ConfigurationListRequ
 
     protected override ConfigurationListResult Run(ConfigurationListRequest request, IOperationContext context)
     {
-        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "configuration.list");
+        var doc = DocumentLocator.FindModel(_services.SolidWorks, request.Document, "configuration.list");
         return new ConfigurationListResult { Document = doc.Info(), Active = doc.ActiveConfiguration(), Configurations = doc.ConfigurationNames().ToList() };
     }
 
@@ -77,6 +77,8 @@ public sealed class ConfigurationAddOperation : ModelChangeOperation<Configurati
 
     protected override string? DocumentOf(ConfigurationAddRequest request) => request.Document;
 
+    protected override bool TakesAssemblies => true;
+
     protected override ConfigurationResult Change(ISwDocument doc, ConfigurationAddRequest request, ModelTransaction tx, IOperationContext context)
     {
         string name = request.Name.Trim();
@@ -107,6 +109,8 @@ public sealed class ConfigurationActivateOperation : ModelChangeOperation<Config
     }
 
     protected override string? DocumentOf(ConfigurationActivateRequest request) => request.Document;
+
+    protected override bool TakesAssemblies => true;
 
     protected override ConfigurationResult Change(ISwDocument doc, ConfigurationActivateRequest request, ModelTransaction tx, IOperationContext context)
     {

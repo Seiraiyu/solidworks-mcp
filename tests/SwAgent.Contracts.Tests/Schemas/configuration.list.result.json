@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "A part's configurations.",
+  "description": "A part's or assembly's configurations.",
   "properties": {
     "document": {
       "type": "object",
@@ -38,7 +38,7 @@
         "visible"
       ],
       "additionalProperties": false,
-      "description": "The part."
+      "description": "The part or assembly."
     },
     "active": {
       "type": "string",

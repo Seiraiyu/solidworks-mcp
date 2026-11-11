@@ -36,6 +36,13 @@ public abstract class ModelChangeOperation<TRequest, TResult> : Operation<TReque
     /// <summary>The request's document field: the part's title or path, or null for the active document.</summary>
     protected abstract string? DocumentOf(TRequest request);
 
+    /// <summary>
+    /// True for an operation that changes assemblies as well as parts (plan 4.B: the configuration family). An assembly
+    /// then also waits while the user edits a component in its context (<see cref="AssemblyChangeGuard"/>), and the
+    /// evidence block's bodies, volume and box are its resolved components'.
+    /// </summary>
+    protected virtual bool TakesAssemblies => false;
+
     /// <summary>Makes the change, recording in <paramref name="tx"/> everything made or edited as it is made. Never leaves a sketch open.</summary>
     protected abstract TResult Change(ISwDocument doc, TRequest request, ModelTransaction tx, IOperationContext context);
 
@@ -45,8 +52,11 @@ public abstract class ModelChangeOperation<TRequest, TResult> : Operation<TReque
     protected sealed override TResult Run(TRequest request, IOperationContext context)
     {
         _pending = null;
-        var doc = DocumentLocator.FindPart(Services.SolidWorks, DocumentOf(request), Name);
-        ModelChangeGuard.Require(Services.SolidWorks, doc, Name);
+        var doc = TakesAssemblies
+            ? DocumentLocator.FindModel(Services.SolidWorks, DocumentOf(request), Name)
+            : DocumentLocator.FindPart(Services.SolidWorks, DocumentOf(request), Name);
+        if (doc.Assembly() is ISwAssembly asm) AssemblyChangeGuard.Require(Services.SolidWorks, doc, asm, Name);
+        else ModelChangeGuard.Require(Services.SolidWorks, doc, Name);
         int bodiesBefore = doc.SolidBodyCount();
         double volumeBefore = Volume(doc, bodiesBefore);
         BodiesBefore = bodiesBefore;

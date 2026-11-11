@@ -467,7 +467,8 @@ public class MoreErrorCodeTests : FeatureTestBase
     {
         if (code == ErrorCode.WrongDocumentType)
         {
-            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            // Plan 4.B: the configuration family takes assemblies; a drawing is still the wrong type.
+            Sw.Track(new FakeDocument("Sheet1", null, DocumentType.Drawing));
             Assert.Equal(code, Reach(() => Run(new ConfigurationListOperation(Services), new ConfigurationListRequest())).Code);
             return;
         }
@@ -489,7 +490,8 @@ public class MoreErrorCodeTests : FeatureTestBase
         var request = new ConfigurationAddRequest { Name = "Long" };
         if (code == ErrorCode.WrongDocumentType)
         {
-            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            // Plan 4.B: the configuration family takes assemblies; a drawing is still the wrong type.
+            Sw.Track(new FakeDocument("Sheet1", null, DocumentType.Drawing));
             Assert.Equal(code, Reach(() => Run(new ConfigurationAddOperation(Services), request)).Code);
             return;
         }
@@ -525,7 +527,8 @@ public class MoreErrorCodeTests : FeatureTestBase
         var request = new ConfigurationActivateRequest { Name = "Long" };
         if (code == ErrorCode.WrongDocumentType)
         {
-            Sw.Track(new FakeDocument("Assem1", null, DocumentType.Assembly));
+            // Plan 4.B: the configuration family takes assemblies; a drawing is still the wrong type.
+            Sw.Track(new FakeDocument("Sheet1", null, DocumentType.Drawing));
             Assert.Equal(code, Reach(() => Run(new ConfigurationActivateOperation(Services), request)).Code);
             return;
         }
