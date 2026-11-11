@@ -211,6 +211,7 @@ public sealed class SheetMetalSetParametersOperation : ModelChangeOperation<Shee
     HashSet<string> _followAllowance = new HashSet<string>(StringComparer.Ordinal);
     IReadOnlyList<KeyValuePair<string, string>> _cutListBefore = new List<KeyValuePair<string, string>>();
     SheetDefaultsEdit _edit = new SheetDefaultsEdit();
+    List<FlangeKFactorWrite> _fallback = new List<FlangeKFactorWrite>();
 
     public SheetMetalSetParametersOperation(AddInServices services)
         : base(services)
@@ -251,12 +252,41 @@ public sealed class SheetMetalSetParametersOperation : ModelChangeOperation<Shee
         if (edit.ThicknessMm != null) Record("thickness", Mm(before.ThicknessMm), Mm(edit.ThicknessMm.Value), new SheetDefaultsEdit { ThicknessMm = before.ThicknessMm });
         if (edit.BendRadiusMm != null) Record("bend_radius", Mm(before.BendRadiusMm), Mm(edit.BendRadiusMm.Value), new SheetDefaultsEdit { BendRadiusMm = before.BendRadiusMm });
         if (edit.Allowance != null) Record("allowance", before.Allowance.ToString(), edit.Allowance.ToString(), new SheetDefaultsEdit { Allowance = before.Allowance });
-        if (edit.Relief != null) Record("relief", before.Relief == null ? "none" : WireNames.ForEnum(before.Relief.Value), WireNames.ForEnum(edit.Relief.Value), new SheetDefaultsEdit { Relief = before.Relief ?? ReliefType.Rectangular });
+        if (edit.Relief != null) Record("relief", ReliefName(before), WireNames.ForEnum(edit.Relief.Value), ReliefBack(before));
         if (edit.ReliefRatio != null) Record("relief_ratio", FormattableString.Invariant($"{before.ReliefRatio:0.####}"), FormattableString.Invariant($"{edit.ReliefRatio:0.####}"), new SheetDefaultsEdit { ReliefRatio = before.ReliefRatio });
         sheet.SetDefaults(edit);
+        _fallback = new List<FlangeKFactorWrite>();
+        if (edit.Allowance?.KFactor is double k)
+        {
+            _fallback = sheet.KFactorToBaseFlanges(k, before.Allowance.KFactor).ToList();
+            foreach (var w in _fallback)
+            {
+                tx.Edited(new ChangedItem { Name = w.Flange, Property = "k_factor", Before = FlangeK(w.OverrideBefore, w.KFactorBefore), After = FlangeK(true, k) }, () =>
+                {
+                    sheet.SetBaseFlangeKFactor(w.Flange, w.OverrideBefore, w.KFactorBefore);
+                    doc.Rebuild(false);
+                });
+                context.Log.Info($"{Name}: {FallbackLine(w, k)}");
+            }
+            if (_fallback.Count == 0) context.Log.Info($"{Name}: {NoFallbackLine(k)}");
+        }
         if (!doc.Rebuild(false)) context.Log.Warn($"{Name}: SOLIDWORKS reported the rebuild after the change failed; the checks read the part as it is");
         return new SheetMetalSetParametersResult { FlatBefore = SheetMetalParts.Flat(_cutListBefore, sheet.MmPerUnit(), _bendsBefore.Count) };
     }
+
+    static string ReliefName(SheetDefaults d) => d.Relief != null ? WireNames.ForEnum(d.Relief.Value) : d.UseAutoRelief ? $"type {d.ReliefTypeCode}" : "none";
+
+    /// <summary>The edit that puts the relief back as it was: its type, SOLIDWORKS' own type where this stage names none, or off.</summary>
+    static SheetDefaultsEdit ReliefBack(SheetDefaults d) => d.Relief != null
+        ? new SheetDefaultsEdit { Relief = d.Relief }
+        : d.UseAutoRelief ? new SheetDefaultsEdit { UseAutoRelief = true, ReliefTypeCode = d.ReliefTypeCode } : new SheetDefaultsEdit { UseAutoRelief = false };
+
+    static string FlangeK(bool overridden, double k) => FormattableString.Invariant($"override {(overridden ? "on" : "off")}, K {k:0.####}");
+
+    static string FallbackLine(FlangeKFactorWrite w, double k) => FormattableString.Invariant(
+        $"{w.Flange}'s bends {string.Join(", ", w.Missed)} did not take the part's default K {k:0.####}, so it was written into {w.Flange} itself (it held {FlangeK(w.OverrideBefore, w.KFactorBefore)}; ModifyDefinition answered {w.Accepted.ToString().ToLowerInvariant()})");
+
+    static string NoFallbackLine(double k) => FormattableString.Invariant($"the part's default K {k:0.####} reached every bend of the base flanges by itself; nothing was written into a base flange");
 
     /// <summary>Every value reads back, the geometry measures it, every bend that follows the default took it, and the flat size and volume moved as predicted.</summary>
     protected override void Check(ISwDocument doc, SheetMetalSetParametersRequest request, SheetMetalSetParametersResult result)
@@ -264,6 +294,11 @@ public sealed class SheetMetalSetParametersOperation : ModelChangeOperation<Shee
         var before = _before!;
         var edit = _edit;
         var checks = result.Checks;
+        if (edit.Allowance?.KFactor is double k)
+        {
+            if (_fallback.Count == 0) checks.Add(NoFallbackLine(k));
+            checks.AddRange(_fallback.Select(w => FallbackLine(w, k)));
+        }
         var sheet = doc.SheetMetal;
         var now = sheet.Defaults() ?? throw new SwAgentException(ErrorCode.VerificationFailed, "the part is no longer sheet metal after the change", new JsonObject { ["check"] = "sheet_metal" });
         double thickness = edit.ThicknessMm ?? before.ThicknessMm;
@@ -324,9 +359,11 @@ public sealed class SheetMetalSetParametersOperation : ModelChangeOperation<Shee
             {
                 if (!SheetMetalParts.Same(edit.Allowance, bend.Allowance))
                 {
+                    string fallback = _fallback.Count == 0 ? "" : $" (even after it was written into {string.Join(", ", _fallback.Select(w => w.Flange))} itself)";
                     throw new SwAgentException(ErrorCode.VerificationFailed,
-                        $"{bend.Name} used the part's default allowance and SOLIDWORKS kept it at {bend.Allowance}, not the {edit.Allowance} asked",
-                        new JsonObject { ["check"] = "bend_follows", ["bend"] = bend.Name, ["expected"] = edit.Allowance.ToString(), ["measured"] = bend.Allowance.ToString() });
+                        $"{bend.Name} used the part's default allowance and SOLIDWORKS kept it at {bend.Allowance}, not the {edit.Allowance} asked{fallback}",
+                        new JsonObject { ["check"] = "bend_follows", ["bend"] = bend.Name, ["expected"] = edit.Allowance.ToString(), ["measured"] = bend.Allowance.ToString(),
+                            ["flanges_written"] = _fallback.Select(w => (object?)w.Flange).ToList() });
                 }
                 allowances++;
             }

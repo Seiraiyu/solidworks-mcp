@@ -319,10 +319,91 @@ public class SheetMetalSetParametersTests : SheetMetalTestBase
         U();
         Channel();
         doc.BendsKeepAllowance = true;
+        doc.FlangeKIgnored = true;
         var e = Fails(() => Set(new SheetMetalSetParametersRequest { Allowance = new BendAllowance { KFactor = 0.9 } }));
         Assert.Equal("bend_follows", e.Error.Details!["check"]);
         Assert.Equal("BaseBend1", e.Error.Details["bend"]);
+        Assert.Contains("even after it was written into Base-Flange1 itself", e.Error.Message);
+        Assert.Equal(new object?[] { "Base-Flange1", "Sheet-Metal1" }, ((IEnumerable<object?>)e.Error.Details["rolled_back"]!).ToArray());
         Assert.Equal(0.5, doc.Sheet!.Allowance.KFactor);
+        Assert.Equal((false, 0.5), doc.FlangeK["Base-Flange1"]);
+    }
+
+    [Fact]
+    public void A_K_factor_the_bends_miss_is_written_into_the_base_flange_and_recorded_there()
+    {
+        var doc = Part();
+        U();
+        Channel();
+        doc.BendsKeepAllowance = true;
+        var set = Set(new SheetMetalSetParametersRequest { Allowance = new BendAllowance { KFactor = 0.1 } });
+        Assert.All(set.Sheet.Bends, b => Assert.Equal(0.1, b.Allowance.KFactor));
+        Assert.Equal((true, 0.1), doc.FlangeK["Base-Flange1"]);
+        Assert.Equal(new[] { "Sheet-Metal1", "Base-Flange1" }, set.Change.Changed.Select(c => c.Name));
+        var flange = set.Change.Changed[1];
+        Assert.Equal("k_factor", flange.Property);
+        Assert.Equal("override off, K 0.5", flange.Before);
+        Assert.Equal("override on, K 0.1", flange.After);
+        Assert.Contains(set.Checks, c => c.StartsWith("Base-Flange1's bends BaseBend1 (K 0.5), BaseBend2 (K 0.5) did not take the part's default K 0.1, so it was written into Base-Flange1 itself (it held override off, K 0.5; ModifyDefinition answered true)"));
+    }
+
+    [Fact]
+    public void A_K_factor_the_default_carries_writes_no_base_flange_and_says_so()
+    {
+        var doc = Part();
+        U();
+        Channel();
+        var set = Set(new SheetMetalSetParametersRequest { Allowance = new BendAllowance { KFactor = 0.1 } });
+        Assert.Equal((false, 0.5), doc.FlangeK["Base-Flange1"]);
+        Assert.Single(set.Change.Changed);
+        Assert.Contains(set.Checks, c => c == "the part's default K 0.1 reached every bend of the base flanges by itself; nothing was written into a base flange");
+    }
+
+    [Fact]
+    public void A_base_flange_written_by_the_fallback_is_put_back_when_a_later_check_fails()
+    {
+        var doc = Part();
+        U();
+        Channel();
+        doc.BendsKeepAllowance = true;
+        doc.FlatErrorOnChange = 0.5;
+        var e = Fails(() => Set(new SheetMetalSetParametersRequest { Allowance = new BendAllowance { KFactor = 0.1 } }));
+        Assert.Equal("flat_size", e.Error.Details!["check"]);
+        Assert.Equal(new object?[] { "Base-Flange1", "Sheet-Metal1" }, ((IEnumerable<object?>)e.Error.Details["rolled_back"]!).ToArray());
+        Assert.Equal((false, 0.5), doc.FlangeK["Base-Flange1"]);
+        Assert.Equal(0.5, doc.Sheet!.Allowance.KFactor);
+        Assert.All(doc.FakeBends, b => Assert.Equal(0.5, b.Allowance.KFactor));
+    }
+
+    [Fact]
+    public void A_relief_change_on_a_part_with_no_relief_is_rolled_back_to_none()
+    {
+        var doc = Part();
+        Tab();
+        doc.Sheet!.Relief = null;
+        doc.Sheet.UseAutoRelief = false;
+        doc.FaceGapError = 0.5;
+        var e = Fails(() => Set(new SheetMetalSetParametersRequest { ThicknessMm = 3, Relief = ReliefType.Obround }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Null(doc.Sheet.Relief);
+        Assert.False(doc.Sheet.UseAutoRelief);
+        var back = doc.DefaultEdits.Last(d => d.UseAutoRelief != null);
+        Assert.False(back.UseAutoRelief);
+        Assert.Null(back.Relief);
+    }
+
+    [Fact]
+    public void A_relief_type_this_server_does_not_name_is_put_back_by_its_own_code()
+    {
+        var doc = Part();
+        Tab();
+        doc.Sheet!.Relief = null;
+        doc.Sheet.ReliefTypeCode = 7;
+        doc.FaceGapError = 0.5;
+        Fails(() => Set(new SheetMetalSetParametersRequest { ThicknessMm = 3, Relief = ReliefType.Tear }));
+        Assert.True(doc.Sheet.UseAutoRelief);
+        Assert.Null(doc.Sheet.Relief);
+        Assert.Equal(7, doc.DefaultEdits.Last(d => d.UseAutoRelief != null).ReliefTypeCode);
     }
 
     [Fact]

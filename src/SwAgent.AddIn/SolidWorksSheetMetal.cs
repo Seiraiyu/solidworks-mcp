@@ -29,6 +29,8 @@ internal sealed partial class SolidWorksDocument : ISwSheetMetal
             BendRadiusMm = d.BendRadius * Mm,
             Allowance = Read(d.GetCustomBendAllowance()),
             Relief = d.UseAutoRelief ? Relief(d.AutoReliefType) : null,
+            UseAutoRelief = d.UseAutoRelief,
+            ReliefTypeCode = d.AutoReliefType,
             ReliefRatio = d.ReliefRatio,
         };
     }
@@ -137,16 +139,16 @@ internal sealed partial class SolidWorksDocument : ISwSheetMetal
             if (bf.UseGaugeTable) bf.OverrideThickness = true;
             flange.ModifyDefinition(bf, Doc, null);
         }
-        if (e.BendRadiusMm == null && e.Allowance == null && e.Relief == null && e.ReliefRatio == null) return;
+        bool relief = e.Relief != null || e.UseAutoRelief != null || e.ReliefRatio != null;
+        if (e.BendRadiusMm == null && e.Allowance == null && !relief) return;
         var feature = FirstOfType("SheetMetal") ?? throw new SwAgentException(ErrorCode.ApiError, "the part has no SheetMetal feature to change");
-        var oldDefaults = Defaults();
         var d = (ISheetMetalFeatureData)feature.GetDefinition();
         // Each kind of default has its own override switch: SetOverrideDefaultParameter covers the bend parameters (the
         // radius) only, and without the allowance's and the relief's own switch ModifyDefinition keeps their old values
         // and still says true (6.A live run: K 0.1 read back as 0.5).
         d.SetOverrideDefaultParameter(true);
         if (e.Allowance != null) d.SetOverrideDefaultParameter2((int)swSheetMetalOverrideDefaultParameters_e.swSheetMetalOverrideDefaultParameters_BendAllowance, true);
-        if (e.Relief != null || e.ReliefRatio != null) d.SetOverrideDefaultParameter2((int)swSheetMetalOverrideDefaultParameters_e.swSheetMetalOverrideDefaultParameters_AutoRelief, true);
+        if (relief) d.SetOverrideDefaultParameter2((int)swSheetMetalOverrideDefaultParameters_e.swSheetMetalOverrideDefaultParameters_AutoRelief, true);
         if (e.BendRadiusMm != null) d.BendRadius = e.BendRadiusMm.Value / Mm;
         if (e.Allowance != null) d.SetCustomBendAllowance(Write(d.GetCustomBendAllowance(), e.Allowance));
         if (e.Relief != null)
@@ -154,33 +156,50 @@ internal sealed partial class SolidWorksDocument : ISwSheetMetal
             d.UseAutoRelief = true;
             d.AutoReliefType = Relief(e.Relief.Value);
         }
+        else if (e.UseAutoRelief == false) d.UseAutoRelief = false;
+        else if (e.UseAutoRelief == true)
+        {
+            d.UseAutoRelief = true;
+            if (e.ReliefTypeCode != null) d.AutoReliefType = e.ReliefTypeCode.Value;
+        }
         if (e.ReliefRatio != null) d.ReliefRatio = e.ReliefRatio.Value;
         feature.ModifyDefinition(d, Doc, null);
-        if (e.Allowance?.KFactor is double k) KFactorToBaseFlanges(k, oldDefaults?.Allowance.KFactor);
     }
 
-    /// <summary>
-    /// The plan's fallback (design 454: the global K-factor was measured not reaching edge-flange bends): a base flange
-    /// whose own bends follow the part's default (SOLIDWORKS says so, or they read the old default K) but did not take
-    /// <paramref name="k"/> gets it written into its own definition. Nothing is written where the default reached them.
-    /// </summary>
-    void KFactorToBaseFlanges(double k, double? oldK)
+    public IReadOnlyList<FlangeKFactorWrite> KFactorToBaseFlanges(double k, double? oldK)
     {
+        var written = new List<FlangeKFactorWrite>();
         foreach (var flange in TopFeatures().Where(f => f.GetTypeName2() == "SMBaseFlange").ToList())
         {
-            bool missed = false;
+            var missed = new List<string>();
             for (var sub = flange.GetFirstSubFeature() as IFeature; sub != null; sub = sub.GetNextSubFeature() as IFeature)
             {
                 if (!(sub.GetDefinition() is IOneBendFeatureData b)) continue;
-                double? bendK = Read(b.GetCustomBendAllowance()).KFactor;
+                var allowance = Read(b.GetCustomBendAllowance());
+                double? bendK = allowance.KFactor;
                 bool follows = b.UseDefaultBendAllowance || (oldK != null && bendK != null && Math.Abs(bendK.Value - oldK.Value) <= 1e-6);
-                if (follows && (bendK == null || Math.Abs(bendK.Value - k) > 1e-9)) missed = true;
+                if (follows && (bendK == null || Math.Abs(bendK.Value - k) > 1e-9)) missed.Add($"{sub.Name} ({allowance})");
             }
-            if (!missed || !(flange.GetDefinition() is IBaseFlangeFeatureData bf)) continue;
+            if (missed.Count == 0 || !(flange.GetDefinition() is IBaseFlangeFeatureData bf)) continue;
+            bool overrideBefore = bf.OverrideKFactor;
+            double kBefore = bf.KFactor;
             bf.OverrideKFactor = true;
             bf.KFactor = k;
-            flange.ModifyDefinition(bf, Doc, null);
+            bool accepted = flange.ModifyDefinition(bf, Doc, null);
+            written.Add(new FlangeKFactorWrite(flange.Name, overrideBefore, kBefore, missed, accepted));
         }
+        return written;
+    }
+
+    public void SetBaseFlangeKFactor(string flange, bool overrideKFactor, double kFactor)
+    {
+        var feature = TopFeatures().FirstOrDefault(f => f.Name == flange && f.GetTypeName2() == "SMBaseFlange")
+            ?? throw new SwAgentException(ErrorCode.ApiError, $"the part has no base flange {flange} to put back");
+        if (!(feature.GetDefinition() is IBaseFlangeFeatureData bf))
+            throw new SwAgentException(ErrorCode.ApiError, $"{flange}'s definition is not a base flange's");
+        bf.KFactor = kFactor;
+        bf.OverrideKFactor = overrideKFactor;
+        feature.ModifyDefinition(bf, Doc, null);
     }
 
     public IReadOnlyList<KeyValuePair<string, string>> CutList()

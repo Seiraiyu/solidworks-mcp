@@ -80,6 +80,8 @@ sealed partial class FakeDocument : ISwSheetMetal
         BendRadiusMm = Sheet.BendRadiusMm,
         Allowance = Sheet.Allowance,
         Relief = Sheet.Relief,
+        UseAutoRelief = Sheet.UseAutoRelief,
+        ReliefTypeCode = Sheet.ReliefTypeCode,
         ReliefRatio = Sheet.ReliefRatio,
     };
 
@@ -130,7 +132,8 @@ sealed partial class FakeDocument : ISwSheetMetal
         AddFeature("Sheet-Metal1", SheetMetalParts.SheetMetalType);
         var flange = MakeFeature("Base-Flange", "SMBaseFlange", volume, 2);
         AddFeature("Flat-Pattern1", SheetMetalParts.FlatPatternType, suppressed: true);
-        Sheet = new SheetDefaults { ThicknessMm = spec.ThicknessMm, BendRadiusMm = spec.BendRadiusMm, Allowance = spec.Allowance, Relief = spec.Relief, ReliefRatio = spec.ReliefRatio };
+        Sheet = new SheetDefaults { ThicknessMm = spec.ThicknessMm, BendRadiusMm = spec.BendRadiusMm, Allowance = spec.Allowance, Relief = spec.Relief, UseAutoRelief = true, ReliefRatio = spec.ReliefRatio };
+        FlangeK[flange.Info.Name!] = (false, spec.Allowance.KFactor ?? 0.5);
         SheetBodies = 1;
         var top = Add(ReferenceKind.Face, new EntityInfo { Feature = flange.Info.Name, Geometry = GeometryType.Plane, AreaMm2 = 1000, Normal = normal, Origin = new Point3(0, 0, 0) });
         var bottom = Add(ReferenceKind.Face, new EntityInfo { Feature = flange.Info.Name, Geometry = GeometryType.Plane, AreaMm2 = 999, Normal = new Vector3(-normal.X, -normal.Y, -normal.Z) });
@@ -211,8 +214,51 @@ sealed partial class FakeDocument : ISwSheetMetal
                 foreach (var b in FakeBends.Where(b => b.DefaultAllowance)) b.Allowance = edit.Allowance;
             }
         }
-        if (edit.Relief != null) Sheet.Relief = edit.Relief;
+        if (edit.Relief != null)
+        {
+            Sheet.Relief = edit.Relief;
+            Sheet.UseAutoRelief = true;
+        }
+        else if (edit.UseAutoRelief != null)
+        {
+            Sheet.UseAutoRelief = edit.UseAutoRelief.Value;
+            Sheet.Relief = null;
+            if (edit.ReliefTypeCode != null) Sheet.ReliefTypeCode = edit.ReliefTypeCode.Value;
+        }
         if (edit.ReliefRatio != null) Sheet.ReliefRatio = edit.ReliefRatio.Value;
+    }
+
+    /// <summary>Each base flange's own K-factor override switch and K-factor.</summary>
+    public Dictionary<string, (bool Override, double K)> FlangeK { get; } = new Dictionary<string, (bool, double)>();
+
+    /// <summary>A K-factor written into a base flange does not reach its bends either.</summary>
+    public bool FlangeKIgnored { get; set; }
+
+    public IReadOnlyList<FlangeKFactorWrite> KFactorToBaseFlanges(double k, double? oldK)
+    {
+        var written = new List<FlangeKFactorWrite>();
+        foreach (var flange in FlangeK.Keys.Where(n => FeatureByName(n) != null).ToList())
+        {
+            var missed = FakeBends.Where(b => b.Owner == flange && Entities.Contains(b.Feature)
+                    && (b.DefaultAllowance || (oldK != null && b.Allowance.KFactor != null && Math.Abs(b.Allowance.KFactor.Value - oldK.Value) <= 1e-6))
+                    && (b.Allowance.KFactor == null || Math.Abs(b.Allowance.KFactor.Value - k) > 1e-9))
+                .ToList();
+            if (missed.Count == 0) continue;
+            var (overrideBefore, kBefore) = FlangeK[flange];
+            written.Add(new FlangeKFactorWrite(flange, overrideBefore, kBefore, missed.Select(b => $"{b.Feature.Info.Name} ({b.Allowance})").ToList(), true));
+            SetBaseFlangeKFactor(flange, true, k);
+        }
+        return written;
+    }
+
+    public void SetBaseFlangeKFactor(string flange, bool overrideKFactor, double kFactor)
+    {
+        if (!FlangeK.ContainsKey(flange)) throw new SwAgentException(ErrorCode.ApiError, $"the part has no base flange {flange} to put back");
+        FlangeK[flange] = (overrideKFactor, kFactor);
+        if (FlangeKIgnored || Sheet == null) return;
+        // Override on: the bends read the flange's K. Off (a rollback): they go back to what they read before, its K here.
+        var allowance = new BendAllowance { KFactor = kFactor };
+        foreach (var b in FakeBends.Where(b => b.Owner == flange && b.DefaultAllowance)) b.Allowance = allowance;
     }
 
     public IReadOnlyList<KeyValuePair<string, string>> CutList()

@@ -32,6 +32,18 @@ public interface ISwSheetMetal
     /// </summary>
     void SetDefaults(SheetDefaultsEdit edit);
 
+    /// <summary>
+    /// The fallback for a K-factor default (design 454: the global K-factor was measured not reaching edge-flange bends):
+    /// a base flange whose own bends follow the part's default (SOLIDWORKS says so, or they read <paramref name="oldK"/>)
+    /// but did not take <paramref name="k"/> gets it written into its own definition, with its K-factor override on.
+    /// Nothing is written where the default reached them. Returns each flange it wrote, with what it held before and the
+    /// bends that missed, so the caller can record it and put it back. Does not rebuild.
+    /// </summary>
+    IReadOnlyList<FlangeKFactorWrite> KFactorToBaseFlanges(double k, double? oldK);
+
+    /// <summary>Writes a base flange's own K-factor override switch and K-factor (the fallback's rollback). Does not rebuild.</summary>
+    void SetBaseFlangeKFactor(string flange, bool overrideKFactor, double kFactor);
+
     /// <summary>The sheet-metal body's cut-list properties, each name with its resolved value, after updating the cut list; empty when there is none.</summary>
     IReadOnlyList<KeyValuePair<string, string>> CutList();
 
@@ -51,6 +63,12 @@ public sealed class SheetDefaults
     /// <summary>The automatic relief, or null when there is none or it is one this stage does not name.</summary>
     public ReliefType? Relief { get; set; }
 
+    /// <summary>Whether the part has automatic relief at all (Relief is null both when it has none and when its type is not named).</summary>
+    public bool UseAutoRelief { get; set; }
+
+    /// <summary>SOLIDWORKS' own relief type (swSheetMetalReliefTypes_e), to put back a type this stage does not name.</summary>
+    public int ReliefTypeCode { get; set; }
+
     public double ReliefRatio { get; set; }
 }
 
@@ -60,8 +78,47 @@ public sealed class SheetDefaultsEdit
     public double? ThicknessMm { get; set; }
     public double? BendRadiusMm { get; set; }
     public BendAllowance? Allowance { get; set; }
+
+    /// <summary>Turns automatic relief on with this type.</summary>
     public ReliefType? Relief { get; set; }
+
+    /// <summary>
+    /// A rollback's relief: false turns automatic relief off; true turns it on with <see cref="ReliefTypeCode"/> (a type
+    /// this stage does not name). Ignored when <see cref="Relief"/> is given.
+    /// </summary>
+    public bool? UseAutoRelief { get; set; }
+
+    /// <summary>SOLIDWORKS' relief type (swSheetMetalReliefTypes_e) to put back with UseAutoRelief true.</summary>
+    public int? ReliefTypeCode { get; set; }
+
     public double? ReliefRatio { get; set; }
+}
+
+/// <summary>A base flange the K-factor fallback wrote: what it held before, the bends that had missed the default, and what SOLIDWORKS answered.</summary>
+public sealed class FlangeKFactorWrite
+{
+    public FlangeKFactorWrite(string flange, bool overrideBefore, double kFactorBefore, IReadOnlyList<string> missed, bool accepted)
+    {
+        Flange = flange;
+        OverrideBefore = overrideBefore;
+        KFactorBefore = kFactorBefore;
+        Missed = missed;
+        Accepted = accepted;
+    }
+
+    public string Flange { get; }
+
+    /// <summary>IBaseFlangeFeatureData.OverrideKFactor before the write.</summary>
+    public bool OverrideBefore { get; }
+
+    /// <summary>IBaseFlangeFeatureData.KFactor before the write.</summary>
+    public double KFactorBefore { get; }
+
+    /// <summary>Each bend that followed the default and did not take it, with the allowance it read, e.g. "BaseBend1 (K 0.5)".</summary>
+    public IReadOnlyList<string> Missed { get; }
+
+    /// <summary>What ModifyDefinition answered (not evidence: the caller reads the bends back).</summary>
+    public bool Accepted { get; }
 }
 
 /// <summary>A base flange as ISwSheetMetal.BaseFlange makes it.</summary>
