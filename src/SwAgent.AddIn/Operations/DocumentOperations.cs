@@ -139,6 +139,8 @@ public sealed class DocumentOpenOperation : Operation<DocumentOpenRequest, Docum
             return new DocumentOpenResult { Document = open.Info(), AlreadyOpen = true, ReadOnly = open.ReadOnly };
         }
 
+        // Read before opening: once open, SOLIDWORKS holds the paths it found instead (plan 4.B; 4.A live run, case 7).
+        var stored = PathRules.TypeOf(path) == DocumentType.Assembly ? _services.SolidWorks.StoredReferences(path) : new string[0];
         var outcome = _services.SolidWorks.OpenDocument(path, PathRules.TypeOf(path), readOnly);
         var warnings = SolidWorksCodes.LoadWarnings(outcome.Warnings).ToList();
         if (outcome.Document == null)
@@ -156,9 +158,12 @@ public sealed class DocumentOpenOperation : Operation<DocumentOpenRequest, Docum
         var info = outcome.Document.Info();
         _services.Runtime.DocumentOpened(DocumentKeys.Of(info), owned: true);
         // Design 455: opened silently, so SOLIDWORKS never asked where a component's file went: the files it uses that are not there.
-        var missing = outcome.Document.UsedFiles().Where(f => !File.Exists(f)).ToList();
+        var used = outcome.Document.UsedFiles();
+        var missing = used.Where(f => !File.Exists(f)).ToList();
         if (missing.Count > 0) context.Log.Warn($"document.open: {path} uses {missing.Count} file(s) that are not there: {string.Join(", ", missing)}");
-        return new DocumentOpenResult { Document = info, ReadOnly = outcome.Document.ReadOnly, Warnings = warnings, Missing = missing };
+        var substituted = Substitutions.Find(stored, used);
+        foreach (var s in substituted) context.Log.Warn($"document.open: {path} names {s.Expected}, which is not there; SOLIDWORKS loaded {s.Loaded} instead");
+        return new DocumentOpenResult { Document = info, ReadOnly = outcome.Document.ReadOnly, Warnings = warnings, Missing = missing, Substituted = substituted };
     }
 
     /// <summary>The file is open as the document reported, read-only when asked.</summary>

@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "Opens a part, assembly or drawing from a local file and makes it the active document. An assembly opens with every component resolved (never lightweight); component files that are missing are listed, never searched for with a dialog. A document that is already open is made active, not opened again. A document this call opened is the agent's own, so document.close may close it.",
+  "description": "Opens a part, assembly or drawing from a local file and makes it the active document. An assembly opens with every component resolved (never lightweight), and never with a dialog. When a component's file is not where the assembly says, SOLIDWORKS looks for the same file name in other folders (ones it opened this session, the assembly's own) and loads what it finds without asking: each such file is listed in substituted, and references issued before to that component's entities no longer resolve (component_file_changed). A file it finds nowhere is listed in missing. A document that is already open is made active, not opened again. A document this call opened is the agent's own, so document.close may close it.",
   "properties": {
     "path": {
       "type": "string",
