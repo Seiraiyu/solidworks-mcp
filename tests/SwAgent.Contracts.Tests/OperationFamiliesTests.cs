@@ -31,6 +31,10 @@ public class OperationFamiliesTests
         Assert.Equal(TimeSpan.FromSeconds(30), OperationFamilies.DefaultDeadline("refgeom"));
         Assert.Equal(TimeSpan.FromSeconds(30), OperationFamilies.DefaultDeadline("configuration"));
         Assert.Equal(TimeSpan.FromSeconds(60), OperationFamilies.DefaultDeadline("sheetmetal"));
+        Assert.Equal(TimeSpan.FromSeconds(120), OperationFamilies.DefaultDeadline("assembly"));
+        Assert.Equal(TimeSpan.FromSeconds(60), OperationFamilies.DefaultDeadline("component"));
+        Assert.Equal(TimeSpan.FromSeconds(60), OperationFamilies.DefaultDeadline("mate"));
+        Assert.Equal(TimeSpan.FromSeconds(60), OperationFamilies.DefaultDeadline("explode"));
     }
 
     [Fact]

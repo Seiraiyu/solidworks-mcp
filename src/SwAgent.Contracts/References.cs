@@ -20,6 +20,8 @@ public enum ReferenceKind
     Axis,
     Point,
     Dimension,
+    Component,
+    Mate,
 }
 
 /// <summary>What a reference string carries (design 371, References).</summary>

@@ -36,12 +36,17 @@
         "dirty": {
           "type": "boolean",
           "description": "True when the document has unsaved changes."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "False for a document SOLIDWORKS loaded only because an open assembly uses it: it has no window of its own."
         }
       },
       "required": [
         "title",
         "type",
-        "dirty"
+        "dirty",
+        "visible"
       ],
       "additionalProperties": false,
       "description": "The document a document or reference target was in, or the one rebuilt; absent for an app call that rebuilt nothing."

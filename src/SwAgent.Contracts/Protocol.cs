@@ -6,7 +6,8 @@ public static class Protocol
     /// 2: busy and timeout answered by the add-in, event notifications, addin.* operations.
     /// 3: persistent references, the document, model and selection families, session.status internal.
     /// 4: the sheetmetal family.
-    public const int Version = 4;
+    /// 5: assemblies: component and mate references, DocumentInfo.visible, the assembly and component families.
+    public const int Version = 5;
 
     public const string PipeNamePrefix = "solidworks-mcp-";
 

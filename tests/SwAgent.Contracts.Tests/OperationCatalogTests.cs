@@ -147,7 +147,7 @@ public class OperationCatalogTests
     public void Pipe_name_carries_the_process_id()
     {
         Assert.Equal("solidworks-mcp-1234", Protocol.PipeName(1234));
-        Assert.Equal(4, Protocol.Version);
+        Assert.Equal(5, Protocol.Version);
     }
 
     [Fact]
@@ -160,7 +160,7 @@ public class OperationCatalogTests
             OpenDocumentCount = 1, QueuedRequests = 0,
         };
         string json = JsonCodec.Serialize(status);
-        Assert.Contains("\"active_document\":{\"title\":\"Part1\",\"type\":\"part\",\"dirty\":true}", json);
+        Assert.Contains("\"active_document\":{\"title\":\"Part1\",\"type\":\"part\",\"dirty\":true,\"visible\":true}", json);
         Assert.Equal(json, JsonCodec.Serialize(JsonCodec.Deserialize<SessionStatusResult>(json)));
     }
 
