@@ -47,3 +47,36 @@ public enum HemKind
     /// <summary>Rolled through angle_deg at radius_mm, open.</summary>
     Rolled,
 }
+
+[Operation("sheetmetal.edge_flange", typeof(SheetMetalFeatureResult))]
+[Description("Bends a flange up from straight edges of a sheet-metal part, one flange per edge: each rises from the edge towards the outward normal of the sheet's face the edge bounds (to bend the other way, take the edge of the opposite face), turned angle_deg from the sheet and length_mm long. The add-in draws each flange's profile itself; the agent gives only the edges (sheetmetal.read gives the base face, model.find its edges). Folded parts only: a flattened part is refused. Lengths in mm, angles in degrees. Checked for each flange: one new bend at the angle, inner radius and allowance asked; the volume grows by exactly the flange's straight part and bend less the sheet its bend takes back (within the reliefs SOLIDWORKS cuts when offset_mm leaves sheet beside it); up to 90°, the part reaches the flange's height above the face. Otherwise every flange made is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+public sealed class SheetMetalEdgeFlangeRequest
+{
+    [Description("The part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The edges, by reference: straight edges where the sheet ends, each between one of its faces and the thin face it ends in. Each gets its own flange, in order.")]
+    public List<string> Edges { get; set; } = new List<string>();
+
+    [Description("How long each flange is, mm, more than 0, measured from length_from.")]
+    public double LengthMm { get; set; }
+
+    [Description("How far each flange turns from the sheet, degrees, more than 0 and less than 180. Default 90.")]
+    public double? AngleDeg { get; set; }
+
+    [Description("Where length_mm is measured from: outer_virtual_sharp (the default), inner_virtual_sharp or tangent (the straight part only).")]
+    public FlangeLengthFrom? LengthFrom { get; set; }
+
+    [Description("Where the bend sits relative to the edge: material_inside (the default: the flange's outside face on the edge, so the outline does not grow), material_outside or bend_outside.")]
+    public BendPosition? Position { get; set; }
+
+    [Description("The bends' inner radius, mm, more than 0. The part's default when absent.")]
+    public double? BendRadiusMm { get; set; }
+
+    [Description("The bends' own allowance: exactly one of k_factor, allowance_mm or deduction_mm. The part's default when absent.")]
+    public BendAllowance? Allowance { get; set; }
+
+    [Description("How far each flange stops short of its edge's two ends, mm, 0 or more, less than half the edge. Default 0: the whole edge.")]
+    public double? OffsetMm { get; set; }
+}
