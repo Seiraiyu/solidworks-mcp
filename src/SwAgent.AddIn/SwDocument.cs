@@ -225,6 +225,9 @@ public interface ISwDocument
 
     /// <summary>The document's own IModelDoc2, for api.call's document target only (the escape hatch calls it by late binding).</summary>
     object ApiObject();
+
+    /// <summary>The part's sheet metal (design 454).</summary>
+    ISwSheetMetal SheetMetal { get; }
 }
 
 /// <summary>One selected object as SOLIDWORKS reports it.</summary>
