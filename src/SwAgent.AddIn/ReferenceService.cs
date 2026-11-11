@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using SwAgent.AddIn.Core;
 using SwAgent.Contracts;
 using SwAgent.Contracts.Serialization;
@@ -12,6 +13,9 @@ namespace SwAgent.AddIn;
 /// entity: anything else is reference_unresolved, with what the entity was when the reference was issued. A string that
 /// is not a reference is a name: front, top, right and origin first (the template's own planes and origin, whatever
 /// their language), then a feature's exact name. UI thread only.
+/// In an assembly (design 455, Assembly references) a reference to an entity of a component is issued against the
+/// assembly and carries the component's name and file; it resolves only while that component is loaded and is still
+/// that file.
 /// </summary>
 public sealed class ReferenceService
 {
@@ -19,25 +23,59 @@ public sealed class ReferenceService
 
     readonly RenameMap _renames;
 
+    /// <summary>
+    /// The component each assembly-context entity was resolved through, for the ones SOLIDWORKS names no component for
+    /// (a component's plane, named front@bracket-1): so it is described and referenced as that component's.
+    /// </summary>
+    readonly ConditionalWeakTable<object, object> _components = new ConditionalWeakTable<object, object>();
+
     public ReferenceService(RenameMap renames)
     {
         _renames = renames;
     }
 
-    /// <summary>The entity's description with its reference, when SOLIDWORKS can give one.</summary>
+    /// <summary>The entity's description with its reference, when SOLIDWORKS can give one; in an assembly, an entity of a component in the assembly's coordinates, naming it.</summary>
     public EntityInfo Describe(ISwDocument doc, object entity)
     {
-        var info = doc.Describe(entity);
+        var asm = doc.Assembly();
+        var component = asm == null ? null : ComponentOf(doc, entity);
+        var info = component != null ? asm!.Describe(component, entity) : doc.Describe(entity);
         info.Reference = Issue(doc, entity, info);
         return info;
     }
 
-    /// <summary>A reference to <paramref name="entity"/> in <paramref name="doc"/>, or null when SOLIDWORKS gives no persistent id.</summary>
+    /// <summary>
+    /// A reference to <paramref name="entity"/> in <paramref name="doc"/>, or null when SOLIDWORKS gives no persistent id.
+    /// In an assembly a component's entity (and a component itself) carries the component's name and file, and
+    /// <paramref name="info"/> gains the component's name.
+    /// </summary>
     public string? Issue(ISwDocument doc, object entity, EntityInfo info)
     {
         var id = doc.PersistId(entity);
         if (id == null || id.Length == 0) return null;
-        return References.Encode(new ReferenceData(info.Kind, DocumentKeys.Of(doc.Info()), id, EntityFilter.Describe(info)));
+        string? component = null, componentPath = null;
+        if (doc.Assembly() is ISwAssembly asm)
+        {
+            var owner = info.Kind == ReferenceKind.Component ? entity : ComponentOf(doc, entity);
+            if (owner != null)
+            {
+                var who = asm.Identify(owner);
+                component = who.Name;
+                componentPath = who.Path;
+                if (info.Kind != ReferenceKind.Component) info.Component ??= who.Name;
+            }
+        }
+        return References.Encode(new ReferenceData(info.Kind, DocumentKeys.Of(doc.Info()), id, EntityFilter.Describe(info), component, componentPath));
+    }
+
+    /// <summary>The component an entity of an assembly belongs to: as SOLIDWORKS says, or as it was resolved; null for the assembly's own.</summary>
+    object? ComponentOf(ISwDocument doc, object entity) =>
+        doc.KindOf(entity) == ReferenceKind.Component ? null : doc.ComponentOf(entity) ?? (_components.TryGetValue(entity, out var c) ? c : null);
+
+    void Remember(object entity, object component)
+    {
+        _components.Remove(entity);
+        _components.Add(entity, component);
     }
 
     /// <summary>
@@ -79,6 +117,7 @@ public sealed class ReferenceService
         bool suppressedComponent = state == PersistState.Suppressed && data.Kind == ReferenceKind.Component && entity != null;
         if ((state != PersistState.Ok && !suppressedFeature && !suppressedComponent) || entity == null)
         {
+            if (Owner(doc, data, null) is (ISwAssembly asm, object owner)) NotLoaded(text, field, data, asm.Identify(owner));
             string reason = state switch
             {
                 PersistState.Deleted => "deleted",
@@ -93,8 +132,49 @@ public sealed class ReferenceService
         var kind = doc.KindOf(entity);
         if (kind != data.Kind)
             throw Unresolved(text, field, data, "changed_kind", $"it now names a {(kind == null ? "different kind of entity" : Wire(kind.Value))}");
+        if (Owner(doc, data, entity) is (ISwAssembly assembly, object component))
+        {
+            var who = assembly.Identify(component);
+            if (data.Kind != ReferenceKind.Component)
+            {
+                NotLoaded(text, field, data, who);
+                Remember(entity, component);
+            }
+            if (data.ComponentPath != null && who.Path != null && !DocumentKeys.Same(_renames.Current(data.ComponentPath), who.Path))
+            {
+                throw Unresolved(text, field, data, "component_file_changed",
+                    $"its component {who.Name} is now the file {who.Path}, not {data.ComponentPath} (SOLIDWORKS loads a same-named file from another folder when the file is not where the assembly says: document.open lists it under substituted)");
+            }
+        }
         return (entity, data.Kind);
     }
+
+    /// <summary>
+    /// The assembly and component an assembly reference was issued for: the resolved entity's own component, or the
+    /// component with the name recorded at issue. Null for a part's references and an assembly's own entities.
+    /// </summary>
+    (ISwAssembly, object)? Owner(ISwDocument doc, ReferenceData data, object? entity)
+    {
+        if (data.Component == null || !(doc.Assembly() is ISwAssembly asm)) return null;
+        object? owner = data.Kind == ReferenceKind.Component ? entity : entity == null ? null : ComponentOf(doc, entity);
+        owner ??= asm.ComponentByName(data.Component);
+        return owner == null ? ((ISwAssembly, object)?)null : (asm, owner);
+    }
+
+    /// <summary>reference_unresolved when an entity's component is not loaded in full (design 455): suppressed, lightweight or missing have no geometry to resolve.</summary>
+    void NotLoaded(string text, string field, ReferenceData data, ComponentIdentity who)
+    {
+        if (data.Kind == ReferenceKind.Component || who.State == ComponentState.Resolved) return;
+        string reason = "component_" + WireNames.ForEnum(who.State);
+        throw Unresolved(text, field, data, reason, $"its component {who.Name} is {WireNames.ForEnum(who.State)}, so it has no geometry; {Remedy(who)}");
+    }
+
+    /// <summary>What to do about a component that is not loaded in full.</summary>
+    internal static string Remedy(ComponentIdentity who) => who.State switch
+    {
+        ComponentState.Missing => $"its file {who.Path} is not there (document.open lists missing files)",
+        _ => $"load it with component.set {{components: [\"{who.Name}\"], suppression: \"resolved\"}}",
+    };
 
     (object, ReferenceKind) ResolveName(ISwDocument doc, string name, string field)
     {
