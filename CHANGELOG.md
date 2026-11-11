@@ -3,7 +3,7 @@
 Each release of solidworks-mcp. The version numbers follow semantic versioning; until 1.0.0 a minor version may change
 tools and their parameters.
 
-## 0.1.0
+## 0.1.0 (2026-11-11)
 
 The first release: an agent can model parts, sheet-metal parts and assemblies in a running SOLIDWORKS 2026 SP4 on
 Windows, through MCP. The add-in and swmcp speak protocol 5, and swmcp refuses an add-in at any other version
