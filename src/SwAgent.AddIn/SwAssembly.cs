@@ -57,4 +57,10 @@ public interface ISwAssembly
 
     /// <summary>Rebuilds the assembly, solving its mates.</summary>
     void Rebuild();
+
+    /// <summary>Fault testing only (diag.edit_component): starts editing a component in context as the user would; false when SOLIDWORKS refused.</summary>
+    bool EditInContext(object component);
+
+    /// <summary>Fault testing only: returns to editing the assembly itself.</summary>
+    void EditAssembly();
 }

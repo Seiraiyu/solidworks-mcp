@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "description": "Fault testing only: starts editing a component in the assembly's context as the user would (Edit Part) and leaves it so (editing true), or returns to editing the assembly (editing false), so the fault suite can show an assembly change waiting for the user without anyone at SOLIDWORKS. Refused unless diagnostics are on.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "component": {
+      "type": "string",
+      "description": "The component to edit, by name or reference; for editing true."
+    },
+    "editing": {
+      "type": "boolean",
+      "description": "true to start editing the component in context, false to return to the assembly."
+    }
+  },
+  "required": [
+    "editing"
+  ],
+  "additionalProperties": false
+}

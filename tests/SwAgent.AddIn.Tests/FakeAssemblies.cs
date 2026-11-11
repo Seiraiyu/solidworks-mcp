@@ -216,6 +216,18 @@ sealed class FakeAssembly : ISwAssembly
         }
     }
 
+    /// <summary>When true, EditInContext reports SOLIDWORKS refusing.</summary>
+    public bool EditRefused { get; set; }
+
+    public bool EditInContext(object component)
+    {
+        if (EditRefused) return false;
+        EditingTitle = System.IO.Path.GetFileName(Of(component).Info.Path);
+        return true;
+    }
+
+    public void EditAssembly() => EditingTitle = null;
+
     public int Rebuilds { get; private set; }
 
     public void Rebuild()

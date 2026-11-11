@@ -117,6 +117,27 @@ public sealed class DiagEditingResult
     [Description("The title of the command (PropertyManager) the user has open; absent when none.")]
     public string? Command { get; set; }
 }
+[Operation("diag.edit_component", typeof(DiagEditComponentResult), Internal = true)]
+[Description("Fault testing only: starts editing a component in the assembly's context as the user would (Edit Part) and leaves it so (editing true), or returns to editing the assembly (editing false), so the fault suite can show an assembly change waiting for the user without anyone at SOLIDWORKS. Refused unless diagnostics are on.")]
+public sealed class DiagEditComponentRequest
+{
+    [Description("The assembly: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("The component to edit, by name or reference; for editing true.")]
+    public string? Component { get; set; }
+
+    [Description("true to start editing the component in context, false to return to the assembly.")]
+    public bool Editing { get; set; }
+}
+
+[Description("What the user is editing in the assembly's context.")]
+public sealed class DiagEditComponentResult
+{
+    [Description("The title of the document being edited in context; absent when the assembly itself is.")]
+    public string? Editing { get; set; }
+}
+
 [Operation("diag.edit_sketch", typeof(DiagEditingResult), Internal = true)]
 [Description("Fault testing only: opens a sketch for editing as the user would (Edit Sketch) and leaves it open (open true), or exits the sketch being edited (open false), so the fault suite can show a model change waiting for the user without anyone at SOLIDWORKS. Refused unless diagnostics are on.")]
 public sealed class DiagEditSketchRequest

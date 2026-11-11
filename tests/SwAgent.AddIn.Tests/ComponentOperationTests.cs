@@ -307,6 +307,41 @@ public class ComponentDeleteTests : AssemblyTestBase
     }
 }
 
+public class DiagEditComponentTests : AssemblyTestBase
+{
+    AddInServices Diagnostic => new AddInServices(Sw, "0.1.0-test", new SwAgent.AddIn.Core.AgentRuntime("0.1.0-test", 1, SwAgent.AddIn.Core.NullLog.Instance, diagnosticsEnabled: true));
+
+    [Fact]
+    public void An_in_context_edit_makes_assembly_changes_wait_until_it_ends()
+    {
+        Asm.AddComponent("pin-1", PathOf("pin.SLDPRT"));
+        var services = Diagnostic;
+        Assert.Equal("pin.SLDPRT", Run(new DiagEditComponentOperation(services), new DiagEditComponentRequest { Component = "pin-1", Editing = true }).Editing);
+        var busy = Fails(() => Run(new ComponentSetOperation(services), new ComponentSetRequest { Components = { "pin-1" }, Hidden = true }));
+        Assert.Equal(ErrorCode.Busy, busy.Code);
+        Assert.Equal("pin.SLDPRT", busy.Error.Details!["component"]);
+        Assert.Null(Run(new DiagEditComponentOperation(services), new DiagEditComponentRequest { Editing = false }).Editing);
+        Assert.True(Run(new ComponentSetOperation(services), new ComponentSetRequest { Components = { "pin-1" }, Hidden = true }).Components[0].Hidden);
+    }
+
+    [Fact]
+    public void Refused_unless_diagnostics_are_on()
+    {
+        Asm.AddComponent("pin-1", PathOf("pin.SLDPRT"));
+        var e = Fails(() => Run(new DiagEditComponentOperation(Services), new DiagEditComponentRequest { Component = "pin-1", Editing = true }));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Null(Asm.EditingTitle);
+    }
+
+    [Fact]
+    public void SOLIDWORKS_refusing_is_an_api_error()
+    {
+        Asm.AddComponent("pin-1", PathOf("pin.SLDPRT"));
+        Asm.EditRefused = true;
+        Assert.Equal(ErrorCode.ApiError, Fails(() => Run(new DiagEditComponentOperation(Diagnostic), new DiagEditComponentRequest { Component = "pin-1", Editing = true })).Code);
+    }
+}
+
 public class AssemblyInsertTests : AssemblyTestBase
 {
     AssemblyInsertResult Insert(AssemblyInsertRequest request) => Run(new AssemblyInsertOperation(Services), request);
