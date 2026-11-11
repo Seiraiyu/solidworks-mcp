@@ -78,6 +78,11 @@ sealed class FakeSolidWorks : ISolidWorksApplication
 
     public string? DefaultPartTemplate() => DefaultTemplate;
 
+    /// <summary>What DefaultAssemblyTemplate returns.</summary>
+    public string? DefaultAsmTemplate { get; set; }
+
+    public string? DefaultAssemblyTemplate() => DefaultAsmTemplate;
+
     public ISwDocument NewDocument(string template)
     {
         NewFrom.Add(template);

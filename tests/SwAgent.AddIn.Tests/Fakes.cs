@@ -59,7 +59,12 @@ sealed partial class FakeDocument : ISwDocument
         return e;
     }
 
-    public DocumentInfo Info() => new DocumentInfo { Title = Document.Title, Path = Document.Path, Type = Document.Type, Dirty = Document.Dirty };
+    public DocumentInfo Info() => new DocumentInfo { Title = Document.Title, Path = Document.Path, Type = Document.Type, Dirty = Document.Dirty, Visible = Document.Visible };
+
+    /// <summary>The full paths UsedFiles reports: an assembly's components, nested ones included.</summary>
+    public List<string> Uses { get; } = new List<string>();
+
+    public IReadOnlyList<string> UsedFiles() => Uses.ToList();
 
     public byte[]? PersistId(object entity) => ((FakeEntity)entity).Id;
 
