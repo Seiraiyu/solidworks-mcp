@@ -429,6 +429,11 @@ public sealed class SheetMetalHemOperation : ModelChangeOperation<SheetMetalHemR
                 spec.AngleDeg = Flanges.Angle(r.AngleDeg, 0, "angle_deg", 360);
                 if (r.Kind == HemKind.Teardrop && spec.AngleDeg <= 180)
                     throw FeatureFacts.Invalid("angle_deg", FormattableString.Invariant($"a teardrop hem rolls more than 180 degrees, not {spec.AngleDeg}"));
+                // SOLIDWORKS' own defaults for what these kinds do not take: with 0 it makes no teardrop, and a rolled hem
+                // with no faces (6.B live run; the same hems made by hand read back these values).
+                spec.LengthMm = 10;
+                spec.GapMm = 10;
+                spec.MiterGapMm = 1;
                 break;
         }
         var position = r.Position ?? BendPosition.MaterialInside;

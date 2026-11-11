@@ -127,4 +127,11 @@ public class FlangeGeometryTests
         Assert.Equal(100 * BendArithmetic.FoldedVolumeMm3(1, 270, 3, 2), rolled.ExpectedMm3, 9);
         Assert.Equal(100 * 2 * 5, rolled.ToleranceMm3, 9);
     }
+
+    [Fact]
+    public void A_rolled_hem_made_by_hand_adds_what_the_geometry_says()
+    {
+        // 6.B live run: a rolled hem made by hand at R 3, 200°, inside, on the 100 mm edge of a 2 mm tab added 1792.527 mm³.
+        Assert.Equal(1792.527, FlangeGeometry.Hem(HemKind.Rolled, 2, 100, null, null, 3, 200, BendPosition.MaterialInside).ExpectedMm3, 3);
+    }
 }

@@ -106,7 +106,7 @@ internal sealed partial class SolidWorksDocument
             var fm = Doc.FeatureManager;
             var cba = s.Allowance == null ? null : Write(fm.CreateCustomBendAllowance(), s.Allowance);
             int position = s.Inside ? (int)swHemPositionTypes_e.swHemPositionTypeInside : (int)swHemPositionTypes_e.swHemPositionTypeOutside;
-            return fm.InsertSheetMetalHem2(HemType(s.Kind), position, s.Reverse, s.LengthMm / Mm, s.GapMm / Mm, s.AngleDeg * Rad, s.RadiusMm / Mm, 0, cba,
+            return fm.InsertSheetMetalHem2(HemType(s.Kind), position, s.Reverse, s.LengthMm / Mm, s.GapMm / Mm, s.AngleDeg * Rad, s.RadiusMm / Mm, s.MiterGapMm / Mm, cba,
                 true, (int)swSheetMetalReliefTypes_e.swSheetMetalReliefRectangular, 1, true, 0.5, 0, 0);
         }
         finally

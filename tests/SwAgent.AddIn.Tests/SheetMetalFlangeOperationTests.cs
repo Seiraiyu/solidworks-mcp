@@ -371,6 +371,32 @@ public class SheetMetalHemTests : SheetMetalFlangeTestBase
         Assert.Equal(radius ?? 0, spec.RadiusMm);
     }
 
+    [Theory]
+    [InlineData(HemKind.Teardrop, 10.0, 10.0, 1.0)]
+    [InlineData(HemKind.Rolled, 10.0, 10.0, 1.0)]
+    [InlineData(HemKind.Closed, 10.0, 0.0, 0.0)]
+    [InlineData(HemKind.Open, 10.0, 1.0, 0.0)]
+    public void Teardrop_and_rolled_hems_pass_SOLIDWORKS_own_defaults_for_the_dimensions_they_do_not_take(HemKind kind, double length, double gap, double miterGap)
+    {
+        // 6.B live run: InsertSheetMetalHem2 made no teardrop, and a rolled hem with no faces, with length, gap and miter
+        // gap 0; the same hems made by hand read back length 10 mm, gap 10 mm and miter gap 1 mm, SOLIDWORKS' defaults.
+        var doc = Sheet();
+        bool rolls = kind == HemKind.Teardrop || kind == HemKind.Rolled;
+        Hem(new SheetMetalHemRequest
+        {
+            Edges = new List<string> { Top(doc) },
+            Kind = kind,
+            LengthMm = rolls ? null : 10,
+            GapMm = kind == HemKind.Open ? 1 : null,
+            RadiusMm = rolls ? 3 : null,
+            AngleDeg = rolls ? 200 : null,
+        });
+        var (_, spec) = doc.Hems.Single();
+        Assert.Equal(length, spec.LengthMm);
+        Assert.Equal(gap, spec.GapMm);
+        Assert.Equal(miterGap, spec.MiterGapMm);
+    }
+
     [Fact]
     public void Requests_that_cannot_make_a_hem_name_their_field()
     {
