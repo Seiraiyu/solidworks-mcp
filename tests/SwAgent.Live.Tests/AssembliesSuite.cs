@@ -22,7 +22,7 @@ public sealed class AssembliesSuiteRun : LiveRun
 
 /// <summary>
 /// The assemblies live suite (design 455, Testing; plan 4.A covers assembly documents, components and the in-context
-/// precondition): every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve does, in
+/// precondition, cases 1 to 9; plan 4.B assembly references and inspection, cases 10 to 15): every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve does, in
 /// [Step] order, and checks positions and states against exact values. It builds its own parts (diag.scratch_block) and
 /// assemblies in its scratch directory, records each before creating it, never ends SOLIDWORKS, stops the run if a
 /// document it did not create is open, and closes everything it made at the end. Skipped unless SWMCP_LIVE=1.
@@ -342,8 +342,217 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
         }
     });
 
+    // Plan 4.B. refs.SLDASM: block-1 (40 x 20 x 10) fixed at the origin, and column-1 (10 x 10 x 30) turned a quarter
+    // about z at (100, 0, 0), as case 3's post: its own x runs along the assembly's y and its own y along the
+    // assembly's -x, so its box is x 90..100, y 0..10, z 0..30, and every position below proves the turn was applied.
+
+    Task<ModelFindResult> FindFaces(string document, string? component, Vector3 direction) =>
+        Call<ModelFindRequest, ModelFindResult>(new ModelFindRequest { Document = document, Component = component, Kind = TopologyKind.Face, Direction = direction });
+
+    Task<ModelMeasureResult> Measure(string assembly, string a, string b, string? aComponent = null, string? bComponent = null) =>
+        Call<ModelMeasureRequest, ModelMeasureResult>(new ModelMeasureRequest { Document = assembly, A = a, AComponent = aComponent, B = b, BComponent = bComponent });
+
+    static void Along(Vector3 expected, Vector3 actual, string what) =>
+        Assert.True(Math.Abs(expected.X - actual.X) <= 1e-6 && Math.Abs(expected.Y - actual.Y) <= 1e-6 && Math.Abs(expected.Z - actual.Z) <= 1e-6,
+            $"{what}: expected {expected}, got {actual}");
+
     [SkippableFact, Step(10)]
-    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(10, "the suite's documents closed", async () =>
+    public Task A_components_face_is_named_three_ways_in_the_assembly() => _run.CaseAsync(10, "a component's face by assembly reference and by {component, entity}; its planes by name@component; all in assembly coordinates", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string block = await ClosedBlock("block", 40, 20, 10);
+        string column = await ClosedBlock("column", 10, 10, 30);
+        string asm = await NewAssembly("refs");
+        await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = block });
+        await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest
+        {
+            Document = asm, Path = column, At = new Point3(100, 0, 0), XAxis = new Vector3(0, 1, 0), ZAxis = new Vector3(0, 0, 1),
+        });
+
+        // The column's top face, found in the assembly: in assembly coordinates, naming its component, the assembly's reference.
+        var top = Assert.Single((await FindFaces(asm, "column-1", new Vector3(0, 0, 1))).Entities);
+        Assert.Equal("column-1", top.Component);
+        Near(95, top.Origin!.X, "the column top's centre, x");
+        Near(5, top.Origin.Y, "the column top's centre, y");
+        Near(30, top.Origin.Z, "the column top's centre, z");
+        Near(90, top.Box!.Min.X, "the column top's box, min x");
+        // Its own -x side faces the assembly's -y: found by the turned direction, and not by its own.
+        var side = Assert.Single((await FindFaces(asm, "column-1", new Vector3(0, -1, 0))).Entities);
+        Near(0, side.Origin!.Y, "the column's own -x side, at assembly y");
+        Assert.DoesNotContain((await FindFaces(asm, "column-1", new Vector3(-1, 0, 0))).Entities, e => Math.Abs(e.Origin!.X - 100) < Tol);
+
+        // The same face as the column's own part names it, with its component: the same face, distance 0, same description.
+        await Call<DocumentOpenRequest, DocumentOpenResult>(new DocumentOpenRequest { Path = column });
+        var partTop = Assert.Single((await FindFaces(column, null, new Vector3(0, 0, 1))).Entities);
+        Near(5, partTop.Origin!.X, "the top's centre in the column's own part, x");
+        var tree = await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = column });
+        string partFront = tree.Features.First(f => f.Kind == ReferenceKind.Plane).Reference!;
+        await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = column });
+        var same = await Measure(asm, top.Reference!, partTop.Reference!, bComponent: "column-1");
+        Near(0, same.DistanceMm, "assembly reference to {component, entity}");
+        Near(0, same.AngleDeg!.Value, "their angle");
+        Assert.Equal(same.A.Origin!.ToString(), same.B.Origin!.ToString());
+
+        // Planes by name@component, turned with the column: its own right plane's normal is the assembly's y.
+        var right = await Measure(asm, "right@column-1", "top");
+        Near(0, right.AngleDeg!.Value, "right@column-1 against the assembly's top");
+        Assert.Equal("column-1", right.A.Component);
+        var front = await Measure(asm, "front@column-1", partFront, bComponent: "column-1");
+        Near(0, front.DistanceMm, "front@column-1 against the column's front plane by {component, entity}");
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        return $"top of column-1 at {top.Origin} box {top.Box.Min}..{top.Box.Max}; its own -x side faces {side.Normal}; " +
+               $"by {{component, entity}} {same.DistanceMm} mm away; right@column-1 {right.AngleDeg}° to top; front@column-1 {front.DistanceMm} mm from the part's front plane";
+    });
+
+    [SkippableFact, Step(11)]
+    public Task An_assembly_reference_survives_and_a_suppressed_component_says_why() => _run.CaseAsync(11, "a face's assembly reference across a rebuild and a close and reopen; unresolved while its component is suppressed", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string asm = LiveScratchPath("refs", ".SLDASM");
+        string top = Assert.Single((await FindFaces(asm, "column-1", new Vector3(0, 0, 1))).Entities).Reference!;
+        await Call<DocumentRebuildRequest, RebuildResult>(new DocumentRebuildRequest { Document = asm, Force = true });
+        Near(30, (await Measure(asm, top, "top")).PointA!.Z, "after a rebuild");
+        await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = asm });
+        await Call<DocumentOpenRequest, DocumentOpenResult>(new DocumentOpenRequest { Path = asm });
+        var reopened = await Measure(asm, top, "top");
+        Near(30, reopened.PointA!.Z, "after a close and reopen");
+
+        await Call<ComponentSetRequest, ComponentSetResult>(new ComponentSetRequest { Document = asm, Components = { "column-1" }, Suppression = Suppression.Suppressed });
+        try
+        {
+            var stale = await Refused(() => Measure(asm, top, "top"));
+            Assert.Equal(ErrorCode.ReferenceUnresolved, stale.Code);
+            Assert.Equal("component_suppressed", stale.Error.Details!["reason"]);
+            var named = await Refused(() => Measure(asm, "front@column-1", "top"));
+            Assert.Equal(ErrorCode.InvalidArgument, named.Code);
+            Assert.Equal("suppressed", named.Error.Details!["state"]);
+            var skipped = await FindFaces(asm, null, new Vector3(0, 0, 1));
+            Assert.Contains(skipped.Skipped, s => s.Name == "column-1" && s.State == ComponentState.Suppressed);
+            Assert.All(skipped.Entities, e => Assert.Equal("block-1", e.Component));
+            await Call<ComponentSetRequest, ComponentSetResult>(new ComponentSetRequest { Document = asm, Components = { "column-1" }, Suppression = Suppression.Resolved });
+            Near(30, (await Measure(asm, top, "top")).PointA!.Z, "resolved again");
+            return $"resolved after a rebuild and after a reopen ({reopened.A.Component}); suppressed: {stale.Error.Details["reason"]}; front@column-1: {named.Error.Details["state"]}; model.find skipped column-1";
+        }
+        finally
+        {
+            await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        }
+    });
+
+    [SkippableFact, Step(12)]
+    public Task An_assembly_is_measured_weighed_and_boxed() => _run.CaseAsync(12, "model.measure between components; model.mass the sum of its parts; model.bounding_box", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string asm = LiveScratchPath("refs", ".SLDASM");
+        var blockRight = (await FindFaces(asm, "block-1", new Vector3(1, 0, 0))).Entities.Single();
+        var columnLeft = (await FindFaces(asm, "column-1", new Vector3(-1, 0, 0))).Entities.Single();
+        var gap = await Measure(asm, blockRight.Reference!, columnLeft.Reference!);
+        Near(50, gap.DistanceMm, "block-1's x = 40 face to column-1's x = 90 face");
+        Near(0, gap.AngleDeg!.Value, "their angle");
+
+        var mass = await Call<ModelMassRequest, ModelMassResult>(new ModelMassRequest { Document = asm });
+        Assert.Equal(new[] { "block-1", "column-1" }, mass.Components!.Select(c => c.Name));
+        Near(11000, mass.VolumeMm3, "the assembly's volume");
+        Near(8000, mass.Components![0].VolumeMm3, "block-1's volume");
+        Near(3000, mass.Components![1].VolumeMm3, "column-1's volume");
+        Near(mass.Components!.Sum(c => c.MassG), mass.MassG, "the components' masses add up");
+        Near(95, mass.Components![1].CenterOfMass!.X, "column-1's centre of mass, x");
+        Near(5, mass.Components![1].CenterOfMass!.Y, "column-1's centre of mass, y");
+        Near(15, mass.Components![1].CenterOfMass!.Z, "column-1's centre of mass, z");
+
+        var exact = await Call<ModelBoundingBoxRequest, ModelBoundingBoxResult>(new ModelBoundingBoxRequest { Document = asm, Precise = true });
+        Near(0, exact.Box!.Min.X, "exact box min x");
+        Near(100, exact.Box.Max.X, "exact box max x");
+        Near(20, exact.Box.Max.Y, "exact box max y");
+        Near(30, exact.Box.Max.Z, "exact box max z");
+        var quick = await Call<ModelBoundingBoxRequest, ModelBoundingBoxResult>(new ModelBoundingBoxRequest { Document = asm });
+        Assert.True(quick.Box!.Min.X <= Tol && quick.Box.Max.X >= 100 - Tol && quick.Box.Max.Z >= 30 - Tol, $"the quick box {quick.Box.Min}..{quick.Box.Max} does not hold the exact one");
+        return $"gap {gap.DistanceMm} mm at {gap.AngleDeg}°; mass {mass.MassG} g = {string.Join(" + ", mass.Components!.Select(c => $"{c.Name} {c.MassG} g"))}, column-1's centre {mass.Components![1].CenterOfMass}; " +
+               $"exact box {exact.Box.Min}..{exact.Box.Max}, quick {quick.Box.Min}..{quick.Box.Max}";
+    });
+
+    [SkippableFact, Step(13)]
+    public Task An_assemblys_selection_is_reported() => _run.CaseAsync(13, "diag.select of a component's face, a component's plane and a component; selection.get and selection.changed", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string asm = LiveScratchPath("refs", ".SLDASM");
+        string top = Assert.Single((await FindFaces(asm, "column-1", new Vector3(0, 0, 1))).Entities).Reference!;
+        long cursor = Sw.Events.LastSeq;
+        var selected = await Call<DiagSelectRequest, SelectionResult>(new DiagSelectRequest { Document = asm, Items = new List<string> { top, "front@column-1", "block-1" } });
+        Assert.Equal(new[] { "face", "plane", "component" }, selected.Items.Select(i => i.Type));
+        var got = await Call<SelectionGetRequest, SelectionResult>(new SelectionGetRequest { Document = asm });
+        Assert.Equal("column-1", got.Items[0].Entity!.Component);
+        Near(30, got.Items[0].Entity!.Origin!.Z, "the selected top face's centre, z");
+        Assert.Equal("column-1", got.Items[1].Entity!.Component);
+        Assert.Equal(ReferenceKind.Component, got.Items[2].Entity!.Kind);
+        EventEnvelope? changed = null;
+        await LiveRun.WaitForAsync(() =>
+        {
+            changed = Sw.ReadEvents(new SwEventsRequest { AfterSeq = cursor, Kinds = new List<string> { "selection.changed" } }).Events.LastOrDefault();
+            return Task.FromResult(changed != null && ((List<object?>)changed.Data!["items"]!).Count == 3);
+        }, TimeSpan.FromSeconds(10), "selection.changed with the face, the plane and the component");
+        return $"selected {string.Join(", ", got.Items.Select(i => $"{i.Type} {i.Entity!.Name ?? i.Entity.Feature} ({i.Entity.Component ?? "assembly"})"))}; selection.changed raised with 3 items";
+    });
+
+    [SkippableFact, Step(14)]
+    public Task An_assemblys_configurations_are_listed_added_and_activated() => _run.CaseAsync(14, "configuration.list, add and activate on an assembly", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string asm = LiveScratchPath("refs", ".SLDASM");
+        var list = await Call<ConfigurationListRequest, ConfigurationListResult>(new ConfigurationListRequest { Document = asm });
+        string first = list.Active;
+        var added = await Call<ConfigurationAddRequest, ConfigurationResult>(new ConfigurationAddRequest { Document = asm, Name = "Spare" });
+        Assert.Equal("Spare", added.Active);
+        Assert.Equal(DocumentType.Assembly, added.Change.Document.Type);
+        Near(11000, added.Change.VolumeAfterMm3, "the evidence block's volume");
+        var back = await Call<ConfigurationActivateRequest, ConfigurationResult>(new ConfigurationActivateRequest { Document = asm, Name = first });
+        Assert.Equal(first, back.Active);
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        return $"{first} active; added Spare ({added.Change.BodiesAfter} bodies, {added.Change.VolumeAfterMm3} mm³); {first} active again; configurations {string.Join(", ", back.Configurations)}";
+    });
+
+    [SkippableFact, Step(15)]
+    public Task A_component_found_in_another_folder_is_listed_and_its_references_refused() => _run.CaseAsync(15, "document.open lists a component SOLIDWORKS loaded from another folder; its old references are refused", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        // 4.A live run, case 7, round 2: a moved component file was loaded from a same-named file in a folder SOLIDWORKS
+        // had opened that session. This makes that happen on purpose: the same name, saved in a second folder first.
+        string name = "swap-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+        string other = Path.Combine(_run.Guard.ScratchDirectory, "elsewhere");
+        Directory.CreateDirectory(other);
+        string elsewhere = Path.Combine(other, name + ".SLDPRT");
+        _run.Guard.Created(elsewhere);
+        await Call<DiagScratchBlockRequest, DocumentInfo>(new DiagScratchBlockRequest { Path = elsewhere, XMm = 20, YMm = 20, ZMm = 20 });
+        await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = elsewhere });
+        string meant = await ClosedBlock(name, 10, 10, 10);
+        string asm = await NewAssembly("swap");
+        var inserted = await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = meant });
+        string top = Assert.Single((await FindFaces(asm, inserted.Component.Name, new Vector3(0, 0, 1))).Entities).Reference!;
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = asm });
+        File.Move(meant, meant + ".moved");
+        try
+        {
+            var opened = await Call<DocumentOpenRequest, DocumentOpenResult>(new DocumentOpenRequest { Path = asm });
+            Assert.Null((await _run.AddinStateAsync()).Dialog);
+            var swapped = Assert.Single(opened.Substituted);
+            Assert.Equal(meant, swapped.Expected, StringComparer.OrdinalIgnoreCase);
+            Assert.Equal(elsewhere, swapped.Loaded, StringComparer.OrdinalIgnoreCase);
+            Assert.Empty(opened.Missing);
+            var refused = await Refused(() => Measure(asm, top, "top"));
+            Assert.Equal(ErrorCode.ReferenceUnresolved, refused.Code);
+            Assert.Equal("component_file_changed", refused.Error.Details!["reason"]);
+            await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = asm, Discard = true });
+            return $"substituted: {swapped.Expected} -> {swapped.Loaded}; missing: none; no dialog; the reference issued before: {refused.Error.Details["reason"]}";
+        }
+        finally
+        {
+            File.Move(meant + ".moved", meant);
+        }
+    });
+
+    [SkippableFact, Step(16)]
+    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(16, "the suite's documents closed", async () =>
     {
         var state = await _run.RequireOnlyOwnDocumentsAsync();
         int closed = 0;
