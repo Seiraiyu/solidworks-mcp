@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "description": "The add-in's interference sessions.",
+  "properties": {
+    "opened": {
+      "type": "integer",
+      "description": "How many interference sessions the add-in has opened since it loaded."
+    },
+    "closed": {
+      "type": "integer",
+      "description": "How many of them it has closed (IInterferenceDetectionMgr.Done)."
+    },
+    "armed_ms": {
+      "type": "integer",
+      "description": "The delay armed for the next session, ms; 0 when none."
+    }
+  },
+  "required": [
+    "opened",
+    "closed",
+    "armed_ms"
+  ],
+  "additionalProperties": false
+}

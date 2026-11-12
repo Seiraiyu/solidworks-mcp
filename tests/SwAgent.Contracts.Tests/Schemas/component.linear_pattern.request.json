@@ -1,0 +1,72 @@
+{
+  "type": "object",
+  "description": "Repeats components in rows along a direction, and optionally in columns along a second one (a component pattern; SOLIDWORKS' LocalLPattern). Lengths in mm. The direction is a straight edge, an axis, or a plane or planar face (along its normal): a reference issued in the assembly, name@component (Axis1@plate-1), or with direction_component a reference issued in that component's own part. The seeds must be top-level, resolved components that are not themselves pattern instances. Checked: the pattern has the instances asked for, and each one sits at its seed's position moved by spacing × i along the direction (and spacing × j along the second), axes unchanged, within 0.001 mm and 0.01 degrees; SOLIDWORKS chooses which way along an edge to go, and sense says which (reverse flips it). Otherwise the pattern is deleted and every moved component put back (rolled back). Delete it later with component.delete and its name or reference. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The components to repeat (the seeds): each a reference (r1.component.…) or a name (pin-1)."
+    },
+    "direction": {
+      "type": "string",
+      "description": "The first direction: a straight edge, an axis, or a plane or planar face (along its normal). See the operation's description for the forms it takes."
+    },
+    "direction_component": {
+      "type": "string",
+      "description": "Only when direction is a reference issued in a component's own part (or a name there): that component, by reference or name."
+    },
+    "spacing_mm": {
+      "type": "number",
+      "description": "The distance between instances, mm, more than 0 and at most 10000."
+    },
+    "count": {
+      "type": "integer",
+      "description": "How many instances along the direction, the seed included: 2 to 500."
+    },
+    "reverse": {
+      "type": "boolean",
+      "description": "Go the other way along the direction. Default false."
+    },
+    "direction2": {
+      "type": "object",
+      "properties": {
+        "direction": {
+          "type": "string",
+          "description": "A straight edge, an axis, or a plane or planar face (along its normal), in the assembly: a reference issued in the assembly (model.find), name@component for a component's own plane or axis (Axis1@plate-1), or front, top or right for the assembly's own. With direction_component, a reference issued in that component's own part, or a name there."
+        },
+        "direction_component": {
+          "type": "string",
+          "description": "Only when direction is a reference issued in a component's own part (or a name there): that component, by reference or name."
+        },
+        "spacing_mm": {
+          "type": "number",
+          "description": "The distance between instances, mm, more than 0 and at most 10000."
+        },
+        "count": {
+          "type": "integer",
+          "description": "How many instances in this direction, the seed's row included: 2 to 500."
+        },
+        "reverse": {
+          "type": "boolean",
+          "description": "Go the other way along the direction. Default false."
+        }
+      },
+      "required": [
+        "direction"
+      ],
+      "additionalProperties": false,
+      "description": "A second direction, making a grid."
+    }
+  },
+  "required": [
+    "components",
+    "direction"
+  ],
+  "additionalProperties": false
+}
