@@ -95,6 +95,20 @@ public interface ISwSheetMetal
     /// not returned: the caller finds what was made by its new names. Clears the selection.
     /// </summary>
     void ConvertToSheet(object fixedFace, IReadOnlyList<object> bendEdges, ConvertSpec spec);
+
+    /// <summary>
+    /// Writes the flat pattern to <paramref name="path"/> (.dxf or .dwg) with IPartDoc.ExportFlatPatternView, its bend
+    /// lines removed unless <paramref name="bendLines"/>. Only on a part saved to disk. What SOLIDWORKS answered is not
+    /// evidence (CADapter: it fails inconsistently); the caller reads the file back.
+    /// </summary>
+    bool ExportFlatPatternView(string path, bool bendLines);
+
+    /// <summary>
+    /// Writes the flat pattern to <paramref name="path"/> with IPartDoc.ExportToDWG2 and swExportToDWG_ExportSheetMetal,
+    /// the part named by <paramref name="partPath"/>, its sheet-metal option bits <paramref name="sheetMetalOptions"/>
+    /// (<see cref="FlatPatternExports.DwgOptions"/>). Only on a part saved to disk; the answer is not evidence.
+    /// </summary>
+    bool ExportToDwg2(string path, string partPath, int sheetMetalOptions);
 }
 
 /// <summary>A sketched bend as ISwSheetMetal.SketchedBend makes it.</summary>

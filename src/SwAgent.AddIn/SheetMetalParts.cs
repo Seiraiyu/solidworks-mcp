@@ -320,15 +320,15 @@ public static class SheetMetalParts
     /// How far rounding can have put the cut list's length plus width off, mm: half a unit in the last decimal place
     /// each is written to (SOLIDWORKS rounds them to the part's display precision; CADapter read 83.28 for 83.2832).
     /// </summary>
-    public static double FlatRoundingMm(IReadOnlyList<KeyValuePair<string, string>> cutList, double mmPerUnit)
+    public static double FlatRoundingMm(IReadOnlyList<KeyValuePair<string, string>> cutList, double mmPerUnit) =>
+        HalfUnitMm(cutList, LengthProperty, mmPerUnit) + HalfUnitMm(cutList, WidthProperty, mmPerUnit);
+
+    /// <summary>Half a unit in the last decimal place the cut list writes <paramref name="name"/> to, mm: how far its rounding can be off.</summary>
+    public static double HalfUnitMm(IReadOnlyList<KeyValuePair<string, string>> cutList, string name, double mmPerUnit)
     {
-        double Half(string name)
-        {
-            string value = cutList.FirstOrDefault(p => p.Key == name).Value?.Trim() ?? "";
-            int dot = value.IndexOf('.');
-            return 0.5 * Math.Pow(10, -(dot < 0 ? 0 : value.Length - dot - 1)) * mmPerUnit;
-        }
-        return Half(LengthProperty) + Half(WidthProperty);
+        string value = cutList.FirstOrDefault(p => p.Key == name).Value?.Trim() ?? "";
+        int dot = value.IndexOf('.');
+        return 0.5 * Math.Pow(10, -(dot < 0 ? 0 : value.Length - dot - 1)) * mmPerUnit;
     }
 }
 
