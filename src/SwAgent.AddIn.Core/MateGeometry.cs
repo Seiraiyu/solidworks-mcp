@@ -109,7 +109,7 @@ public static class MateGeometry
                 yield return Deg("angle_deg", mixed ? 0 : 90, FeatureChecks.AngleDeg(DirectionOf(a), DirectionOf(b)));
                 break;
             case MateType.Tangent:
-                yield return Mm("distance_mm", 0, closest());
+                yield return Mm("distance_mm", 0, Touching(a, b, closest));
                 break;
             case MateType.Concentric:
                 var (oa, xa) = AxisOf(a);
@@ -163,6 +163,34 @@ public static class MateGeometry
             var s = ShapeOf(other);
             bool parallelPlane = s == MateShape.Planar && other.Normal != null && FeatureChecks.AngleDeg(plane.Normal, other.Normal) <= AngleToleranceDeg;
             if (s == MateShape.Point || s == MateShape.Linear || parallelPlane) return FeatureChecks.Offset(plane.Origin, plane.Normal, other.Origin);
+        }
+        return closest();
+    }
+
+    /// <summary>
+    /// How far two tangent sides are from touching, treating each face as its whole surface as a mate does: a cylinder
+    /// lying along a plane (its axis's offset less its radius), a sphere and a plane (its centre's offset less its
+    /// radius), two parallel cylinders (their axes' distance against the sum or difference of the radii, whichever is
+    /// nearer). Otherwise SOLIDWORKS' closest distance, which is between the finite faces (live 4.C case 17: a pin laid
+    /// on a plate's top plane past the top face's edge measured 30.7 mm by closest distance).
+    /// </summary>
+    public static double Touching(EntityInfo a, EntityInfo b, Func<double> closest)
+    {
+        var plane = ShapeOf(a) == MateShape.Planar ? a : ShapeOf(b) == MateShape.Planar ? b : null;
+        var other = plane == a ? b : a;
+        if (plane?.Normal != null && plane.Origin != null && other.Origin != null && other.RadiusMm is double r)
+        {
+            var s = ShapeOf(other);
+            if (s == MateShape.Spherical) return Math.Abs(FeatureChecks.Offset(plane.Origin, plane.Normal, other.Origin) - r);
+            if (s == MateShape.Cylindrical && other.Axis != null && Math.Abs(EntityFilter.AngleDeg(plane.Normal, other.Axis) - 90) <= AngleToleranceDeg)
+                return Math.Abs(FeatureChecks.Offset(plane.Origin, plane.Normal, other.Origin) - r);
+        }
+        if (ShapeOf(a) == MateShape.Cylindrical && ShapeOf(b) == MateShape.Cylindrical
+            && a.Origin != null && a.Axis != null && b.Origin != null && b.Axis != null && a.RadiusMm is double ra && b.RadiusMm is double rb
+            && FeatureChecks.AngleDeg(a.Axis, b.Axis) <= AngleToleranceDeg)
+        {
+            double d = LineOffset(a.Origin, a.Axis, b.Origin);
+            return Math.Min(Math.Abs(d - (ra + rb)), Math.Abs(d - Math.Abs(ra - rb)));
         }
         return closest();
     }

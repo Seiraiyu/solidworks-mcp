@@ -79,11 +79,37 @@ public class MateGeometryTests
     }
 
     [Fact]
-    public void Tangent_is_the_closest_distance()
+    public void A_cylinder_lying_on_a_plane_is_measured_against_the_whole_plane_not_the_face()
     {
-        var m = MateGeometry.Measure(MateType.Tangent, Plane(new Point3(0, 0, 10), new Vector3(0, 0, 1)), Cylinder(new Point3(0, 0, 15), new Vector3(1, 0, 0)), null, null, () => 0.0004).Single();
+        // Live 4.C case 17: the pin lay on the plate's top plane, 30 mm beyond the top face's edge.
+        var m = MateGeometry.Measure(MateType.Tangent, Plane(new Point3(20, 10, 10), new Vector3(0, 0, 1)), Cylinder(new Point3(80, 0, 15.0004), new Vector3(1, 0, 0)), null, null, Never).Single();
+        Assert.Equal("distance_mm", m.Condition);
         Assert.Equal(0.0004, m.Measured, 9);
         Assert.Null(MateGeometry.Failing(new[] { m }));
+        var off = MateGeometry.Measure(MateType.Tangent, Cylinder(new Point3(80, 0, 17), new Vector3(0, 1, 0)), Plane(new Point3(20, 10, 10), new Vector3(0, 0, 1)), null, null, Never).Single();
+        Assert.Equal(2, off.Measured, 9);
+    }
+
+    [Fact]
+    public void A_sphere_on_a_plane_and_two_parallel_cylinders_are_measured_by_their_radii()
+    {
+        var plane = Plane(new Point3(0, 0, 10), new Vector3(0, 0, 1));
+        var ball = new EntityInfo { Kind = ReferenceKind.Face, Geometry = GeometryType.Sphere, Origin = new Point3(300, 0, 14), RadiusMm = 4 };
+        Assert.Equal(0, MateGeometry.Measure(MateType.Tangent, plane, ball, null, null, Never).Single().Measured, 9);
+        var outside = MateGeometry.Measure(MateType.Tangent, Cylinder(new Point3(0, 0, 0), new Vector3(0, 0, 1)), Cylinder(new Point3(10, 0, 50), new Vector3(0, 0, -1)), null, null, Never).Single();
+        Assert.Equal(0, outside.Measured, 9);
+        var inside = new EntityInfo { Kind = ReferenceKind.Face, Geometry = GeometryType.Cylinder, Origin = new Point3(3, 0, 0), Axis = new Vector3(0, 0, 1), RadiusMm = 8 };
+        Assert.Equal(0, MateGeometry.Measure(MateType.Tangent, Cylinder(new Point3(0, 0, 0), new Vector3(0, 0, 1)), inside, null, null, Never).Single().Measured, 9);
+    }
+
+    [Fact]
+    public void Tangent_falls_back_to_the_closest_distance_where_there_is_no_formula()
+    {
+        var cone = new EntityInfo { Kind = ReferenceKind.Face, Geometry = GeometryType.Cone, Origin = new Point3(0, 0, 15), Axis = new Vector3(1, 0, 0), RadiusMm = 5 };
+        var m = MateGeometry.Measure(MateType.Tangent, Plane(new Point3(0, 0, 10), new Vector3(0, 0, 1)), cone, null, null, () => 0.0004).Single();
+        Assert.Equal(0.0004, m.Measured, 9);
+        var upright = MateGeometry.Measure(MateType.Tangent, Plane(new Point3(0, 0, 10), new Vector3(0, 0, 1)), Cylinder(new Point3(0, 0, 15), new Vector3(0, 0, 1)), null, null, () => 7).Single();
+        Assert.Equal(7, upright.Measured, 9);
     }
 
     [Fact]
