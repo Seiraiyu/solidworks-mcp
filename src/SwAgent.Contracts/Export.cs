@@ -40,6 +40,16 @@ public enum MeshResolution
     Fine,
 }
 
+[Description("A format export.flat_pattern writes.")]
+public enum FlatPatternFormat
+{
+    [Description("DXF (.dxf), ASCII, checked against the flat size.")]
+    Dxf,
+
+    [Description("DWG (.dwg), checked by its header and size.")]
+    Dwg,
+}
+
 [Operation("export.part", typeof(ExportPartResult))]
 [Description("Writes a copy of a part as STEP, Parasolid (.x_t), binary STL or 3MF, in mm; the part keeps its own path and unsaved changes. A part that is not the active document is made active for the export, and the document that was active is made active again afterwards. The export options it needs (STEP schema, STL units and format, and the mesh resolution when one is asked) are set for the call and put back afterwards; without a resolution, STL and 3MF use the user's own mesh settings untouched. A resolution is refused when the user's is custom, which SOLIDWORKS cannot put back. Checked on disk: the file was written by this call, is not empty, and has its format's header (ISO-10303-21; and the schema asked, the Parasolid transmit header, a binary STL whose size matches its triangle count, a 3MF zip holding 3D/3dmodel.model).")]
 public sealed class ExportPartRequest

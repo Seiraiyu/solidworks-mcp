@@ -49,13 +49,7 @@ public static class ExportFileCheck
 
     public static ExportFile Check(string path, ExportFormat format, DateTime startedUtc, StepSchema stepSchema, int bodies)
     {
-        var info = new FileInfo(path);
-        if (!info.Exists) throw Failed("file_written", path, "the file", "no file", $"SOLIDWORKS reported {path} exported, but the file is not there");
-        if (info.LastWriteTimeUtc < startedUtc - Slack)
-            throw Failed("file_written", path, $"written after {startedUtc:o}", info.LastWriteTimeUtc.ToString("o"), $"{path} was last written at {info.LastWriteTimeUtc:o}, before this call: SOLIDWORKS wrote nothing");
-        if (info.Length == 0) throw Failed("file_written", path, "more than 0 bytes", "0 bytes", $"SOLIDWORKS wrote {path} empty");
-        var file = new ExportFile { Bytes = info.Length };
-        file.Checks.Add($"{Path.GetFileName(path)} written by this call, {info.Length} bytes");
+        var file = Written(path, startedUtc);
         switch (format)
         {
             case ExportFormat.Step:
@@ -71,6 +65,19 @@ public static class ExportFileCheck
                 ThreeMf(path, file);
                 break;
         }
+        return file;
+    }
+
+    /// <summary>The file exists, was written by the call that began at <paramref name="startedUtc"/>, and is not empty; its size and that check.</summary>
+    public static ExportFile Written(string path, DateTime startedUtc)
+    {
+        var info = new FileInfo(path);
+        if (!info.Exists) throw Failed("file_written", path, "the file", "no file", $"SOLIDWORKS reported {path} exported, but the file is not there");
+        if (info.LastWriteTimeUtc < startedUtc - Slack)
+            throw Failed("file_written", path, $"written after {startedUtc:o}", info.LastWriteTimeUtc.ToString("o"), $"{path} was last written at {info.LastWriteTimeUtc:o}, before this call: SOLIDWORKS wrote nothing");
+        if (info.Length == 0) throw Failed("file_written", path, "more than 0 bytes", "0 bytes", $"SOLIDWORKS wrote {path} empty");
+        var file = new ExportFile { Bytes = info.Length };
+        file.Checks.Add($"{Path.GetFileName(path)} written by this call, {info.Length} bytes");
         return file;
     }
 
@@ -177,13 +184,13 @@ public static class ExportFileCheck
         return Encoding.ASCII.GetString(buffer, 0, read);
     }
 
-    static string Snippet(string text)
+    internal static string Snippet(string text)
     {
         string line = text.Split('\n')[0].TrimEnd('\r');
         return line.Length > 60 ? line.Substring(0, 60) + "…" : line;
     }
 
-    static SwAgentException Failed(string check, string path, string expected, string measured, string message) =>
+    internal static SwAgentException Failed(string check, string path, string expected, string measured, string message) =>
         new SwAgentException(ErrorCode.VerificationFailed, message,
             new JsonObject { ["check"] = check, ["path"] = path, ["expected"] = expected, ["measured"] = measured });
 }
