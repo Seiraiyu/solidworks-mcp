@@ -1,0 +1,182 @@
+{
+  "type": "object",
+  "description": "The flat pattern export.flat_pattern wrote, as read back from disk.",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "False for a document SOLIDWORKS loaded only because an open assembly uses it: it has no window of its own."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty",
+        "visible"
+      ],
+      "additionalProperties": false,
+      "description": "The part, as it is after the export: same path, same unsaved-changes flag."
+    },
+    "path": {
+      "type": "string",
+      "description": "The file written."
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "dxf",
+        "dwg"
+      ],
+      "description": "Its format."
+    },
+    "bytes": {
+      "type": "integer",
+      "description": "Its size in bytes."
+    },
+    "header": {
+      "type": "string",
+      "description": "What it starts with: DXF, or the DWG's version, such as AC1032."
+    },
+    "method": {
+      "type": "string",
+      "description": "The SOLIDWORKS call that wrote it: ExportFlatPatternView or ExportToDWG2."
+    },
+    "attempts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Each call tried, in order, with what SOLIDWORKS answered and whether it wrote the file."
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "folded",
+        "flattened"
+      ],
+      "description": "folded or flattened: the part's state, the same before and after."
+    },
+    "flat": {
+      "type": "object",
+      "properties": {
+        "length_mm": {
+          "type": "number",
+          "description": "The rectangle's length (its longer side), mm."
+        },
+        "width_mm": {
+          "type": "number",
+          "description": "The rectangle's width, mm."
+        },
+        "bends": {
+          "type": "integer",
+          "description": "How many bends the cut list counts."
+        }
+      },
+      "required": [
+        "length_mm",
+        "width_mm",
+        "bends"
+      ],
+      "additionalProperties": false,
+      "description": "The flat size from the cut list the drawing was checked against; absent when the cut list does not give it (a DWG is still written)."
+    },
+    "extents": {
+      "type": "object",
+      "properties": {
+        "min_x_mm": {
+          "type": "number",
+          "description": "Its smallest x, mm."
+        },
+        "min_y_mm": {
+          "type": "number",
+          "description": "Its smallest y, mm."
+        },
+        "max_x_mm": {
+          "type": "number",
+          "description": "Its largest x, mm."
+        },
+        "max_y_mm": {
+          "type": "number",
+          "description": "Its largest y, mm."
+        },
+        "length_mm": {
+          "type": "number",
+          "description": "Its longer side, mm."
+        },
+        "width_mm": {
+          "type": "number",
+          "description": "Its shorter side, mm."
+        },
+        "from": {
+          "type": "string",
+          "description": "Where they were read: $EXTMIN/$EXTMAX in the header, or its entities when the header does not give them."
+        }
+      },
+      "required": [
+        "min_x_mm",
+        "min_y_mm",
+        "max_x_mm",
+        "max_y_mm",
+        "length_mm",
+        "width_mm",
+        "from"
+      ],
+      "additionalProperties": false,
+      "description": "A DXF's drawing extents; absent for a DWG."
+    },
+    "bend_lines": {
+      "type": "integer",
+      "description": "A DXF's bend-line entities (on a layer or linetype named for bends); absent for a DWG."
+    },
+    "layers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "A DXF's layers, each as name = entities on it; empty for a DWG."
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Each check made on the file and the part, and what it found."
+    }
+  },
+  "required": [
+    "document",
+    "path",
+    "format",
+    "bytes",
+    "header",
+    "method",
+    "attempts",
+    "state",
+    "layers",
+    "checks"
+  ],
+  "additionalProperties": false
+}

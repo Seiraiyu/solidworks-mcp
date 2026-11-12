@@ -92,6 +92,18 @@ public class McpServerTests
     }
 
     [Fact]
+    public async Task The_flat_pattern_export_tool_is_listed_with_its_contract()
+    {
+        await using var server = await InProcessServer.StartAsync(NoSolidWorks());
+        var tools = (await server.Client.ListToolsAsync()).ToDictionary(t => t.Name);
+        var tool = tools["sw_export_flat_pattern"];
+        Assert.Equal(Json.Write(SwTool.WithDeadline(JsonSchema.For(typeof(ExportFlatPatternRequest)))), Json.Write(Json.Parse(tool.JsonSchema.GetRawText())));
+        Assert.False(tool.ProtocolTool.Annotations!.ReadOnlyHint);
+        Assert.StartsWith("Writes a sheet-metal part's flat pattern as DXF or DWG", tool.Description);
+        Assert.Contains("sw_document_save_as", tool.Description);
+    }
+
+    [Fact]
     public async Task Sw_status_composes_the_state_the_addin_state_and_the_session()
     {
         using var addin = new FakeAddin();

@@ -81,6 +81,106 @@ public sealed class ExportOptions
     public MeshResolution? Resolution { get; set; }
 }
 
+[Operation("export.flat_pattern", typeof(ExportFlatPatternResult))]
+[Description("Writes a sheet-metal part's flat pattern as DXF or DWG, the file a cutting machine takes, in the part's units. The part must be saved to disk: a part never saved is refused before SOLIDWORKS is called (save it with sw_document_save_as first), because SOLIDWORKS then opens a Save As box that waits for the user. A part with unsaved changes is exported as it is now. The part need not be flattened: it keeps its state (folded or flattened), its path and its unsaved-changes flag, and the part that was active is made active again. Bend lines are drawn unless bend_lines is false; the part's visible sketches only when sketches is true. Checked on disk: the file was written by this call and is not empty; a DXF parses, its drawing extents match the flat size from the cut list (sw_sheetmetal_read's flat) within 0.01 mm beyond the cut list's own rounding, turned or not, and it holds bend lines exactly when they were asked for and the part has bends; a DWG starts with its AC10xx version and is at least 1 KB (its extents are not read). Otherwise verification_failed, naming the check; the file is left where it was written. A SOLIDWORKS call that writes nothing is followed by the next (ExportFlatPatternView, then ExportToDWG2), and operation_failed lists every attempt when none writes.")]
+public sealed class ExportFlatPatternRequest
+{
+    [Description("The sheet-metal part: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("Full path of the file to write, in an existing folder, ending .dxf or .dwg as format says.")]
+    public string Path { get; set; } = "";
+
+    [Description("dxf or dwg.")]
+    public FlatPatternFormat Format { get; set; }
+
+    [Description("Draw the bend lines. Default true.")]
+    public bool? BendLines { get; set; }
+
+    [Description("Draw the part's visible sketches too. Default false.")]
+    public bool? Sketches { get; set; }
+
+    [Description("Replace the file if it exists. Default false.")]
+    public bool? Overwrite { get; set; }
+}
+
+[Description("The flat pattern export.flat_pattern wrote, as read back from disk.")]
+public sealed class ExportFlatPatternResult
+{
+    [Required]
+    [Description("The part, as it is after the export: same path, same unsaved-changes flag.")]
+    public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Required]
+    [Description("The file written.")]
+    public string Path { get; set; } = "";
+
+    [Description("Its format.")]
+    public FlatPatternFormat Format { get; set; }
+
+    [Description("Its size in bytes.")]
+    public long Bytes { get; set; }
+
+    [Required]
+    [Description("What it starts with: DXF, or the DWG's version, such as AC1032.")]
+    public string Header { get; set; } = "";
+
+    [Required]
+    [Description("The SOLIDWORKS call that wrote it: ExportFlatPatternView or ExportToDWG2.")]
+    public string Method { get; set; } = "";
+
+    [Required]
+    [Description("Each call tried, in order, with what SOLIDWORKS answered and whether it wrote the file.")]
+    public List<string> Attempts { get; set; } = new List<string>();
+
+    [Description("folded or flattened: the part's state, the same before and after.")]
+    public SheetState State { get; set; }
+
+    [Description("The flat size from the cut list the drawing was checked against; absent when the cut list does not give it (a DWG is still written).")]
+    public FlatSize? Flat { get; set; }
+
+    [Description("A DXF's drawing extents; absent for a DWG.")]
+    public DrawingExtents? Extents { get; set; }
+
+    [Description("A DXF's bend-line entities (on a layer or linetype named for bends); absent for a DWG.")]
+    public int? BendLines { get; set; }
+
+    [Required]
+    [Description("A DXF's layers, each as name = entities on it; empty for a DWG.")]
+    public List<string> Layers { get; set; } = new List<string>();
+
+    [Required]
+    [Description("Each check made on the file and the part, and what it found.")]
+    public List<string> Checks { get; set; } = new List<string>();
+}
+
+[Description("A drawing's extents: the rectangle its entities fill, mm.")]
+public sealed class DrawingExtents
+{
+    [Description("Its smallest x, mm.")]
+    public double MinXMm { get; set; }
+
+    [Description("Its smallest y, mm.")]
+    public double MinYMm { get; set; }
+
+    [Description("Its largest x, mm.")]
+    public double MaxXMm { get; set; }
+
+    [Description("Its largest y, mm.")]
+    public double MaxYMm { get; set; }
+
+    [Description("Its longer side, mm.")]
+    public double LengthMm { get; set; }
+
+    [Description("Its shorter side, mm.")]
+    public double WidthMm { get; set; }
+
+    [Required]
+    [Description("Where they were read: $EXTMIN/$EXTMAX in the header, or its entities when the header does not give them.")]
+    public string From { get; set; } = "";
+}
+
 [Description("The file export.part wrote, as read back from disk.")]
 public sealed class ExportPartResult
 {
