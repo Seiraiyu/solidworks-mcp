@@ -76,6 +76,27 @@ public sealed class AgentRuntime
     /// <summary>The armed message box, once: null when none is armed, and null again after it is taken.</summary>
     public DiagDialogRequest? TakeArmedDialog() => System.Threading.Interlocked.Exchange(ref _armed, null);
 
+    int _interferenceDelayMs;
+    long _interferenceOpened, _interferenceClosed;
+
+    /// <summary>diag.interference: the next interference session is held open this long before it is read.</summary>
+    public void ArmInterferenceDelay(int ms) => System.Threading.Interlocked.Exchange(ref _interferenceDelayMs, ms);
+
+    /// <summary>The armed delay, once: 0 when none, and 0 again after it is taken.</summary>
+    public int TakeInterferenceDelay() => System.Threading.Interlocked.Exchange(ref _interferenceDelayMs, 0);
+
+    public int ArmedInterferenceDelay => System.Threading.Volatile.Read(ref _interferenceDelayMs);
+
+    /// <summary>assembly.interference opened a session (IAssemblyDoc.InterferenceDetectionManager).</summary>
+    public void InterferenceOpened() => System.Threading.Interlocked.Increment(ref _interferenceOpened);
+
+    /// <summary>assembly.interference called Done on a session.</summary>
+    public void InterferenceClosed() => System.Threading.Interlocked.Increment(ref _interferenceClosed);
+
+    public long InterferenceSessionsOpened => System.Threading.Interlocked.Read(ref _interferenceOpened);
+
+    public long InterferenceSessionsClosed => System.Threading.Interlocked.Read(ref _interferenceClosed);
+
     /// <summary>Set by the host when <see cref="MainWindow"/> is known; null otherwise.</summary>
     public DialogWatch? Dialogs { get; set; }
 
