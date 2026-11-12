@@ -151,3 +151,24 @@ public sealed class DiagEditSketchRequest
     [Description("true to open the sketch for editing, false to exit the sketch being edited.")]
     public bool Open { get; set; }
 }
+
+[Operation("diag.interference", typeof(DiagInterferenceResult), Internal = true)]
+[Description("Fault testing only: with delay_ms, the next assembly.interference holds SOLIDWORKS' UI thread that long inside its interference session, after opening it and before reading it, so a deadline can pass while the session is open. Always reports how many interference sessions the add-in has opened and closed (Done called). Refused unless diagnostics are on.")]
+public sealed class DiagInterferenceRequest
+{
+    [Description("Hold the next interference session this long, 1 to 600000 ms. Nothing is armed when absent.")]
+    public int? DelayMs { get; set; }
+}
+
+[Description("The add-in's interference sessions.")]
+public sealed class DiagInterferenceResult
+{
+    [Description("How many interference sessions the add-in has opened since it loaded.")]
+    public long Opened { get; set; }
+
+    [Description("How many of them it has closed (IInterferenceDetectionMgr.Done).")]
+    public long Closed { get; set; }
+
+    [Description("The delay armed for the next session, ms; 0 when none.")]
+    public int ArmedMs { get; set; }
+}

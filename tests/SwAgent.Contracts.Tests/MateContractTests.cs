@@ -81,9 +81,9 @@ public class MateContractTests
     }
 
     [Fact]
-    public void Protocol_9_speaks_mates()
+    public void Protocol_9_and_later_speak_mates()
     {
-        Assert.Equal(9, Protocol.Version);
+        Assert.True(Protocol.Version >= 9, $"protocol {Protocol.Version} speaks mates from 9 on");
         Assert.Equal(ReferenceKind.Mate, References.KindOf(References.Encode(new ReferenceData(ReferenceKind.Mate, "a.SLDASM", new byte[] { 1 }, "Coincident1"))));
     }
 }

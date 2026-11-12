@@ -11,7 +11,8 @@ public static class Protocol
     /// 7: assembly-context references (payload versions 3 and 4, EntityInfo.component), model, selection and configuration operations on assemblies.
     /// 8: sheet-metal bends and flattening: sheetmetal.sketched_bend, sheetmetal.flatten, sheetmetal.unfold, sheetmetal.fold, sheetmetal.convert.
     /// 9: mates and degrees of freedom: mate.add, mate.edit, mate.delete, mate.list, assembly.dof; r1.mate references.
-    public const int Version = 9;
+    /// 10: component patterns and interference: component.linear_pattern, component.circular_pattern, component.feature_pattern, assembly.interference; component.delete deletes patterns.
+    public const int Version = 10;
 
     public const string PipeNamePrefix = "solidworks-mcp-";
 
