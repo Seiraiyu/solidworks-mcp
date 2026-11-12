@@ -87,6 +87,9 @@ public class MateAddTests : MateTestBase
         var r = Add(MateType.Lock, Side("pin-1"), Side("plate-1"));
         Assert.Equal(new[] { "relative_offset_mm", "relative_turn_deg" }, r.Measured.Select(m => m.Condition));
         Assert.Null(r.Mate.Alignment);
+        // Nothing moved, but the mate changed how far both are defined (live 4.C case 17).
+        Assert.Empty(r.Change.Moved);
+        Assert.Equal(new[] { "pin-1", "plate-1" }, r.Change.Constraints.Select(c => c.Name).OrderBy(n => n));
         var e = Fails(() => Add(MateType.Lock, Side("block-1"), Side("plate-1"), alignment: MateAlignment.Aligned));
         Assert.Equal("/alignment", e.Error.Details!["field"]);
     }

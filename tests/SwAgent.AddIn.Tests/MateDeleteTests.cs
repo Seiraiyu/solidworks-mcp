@@ -1,3 +1,4 @@
+using System.Linq;
 using SwAgent.AddIn.Operations;
 using SwAgent.Contracts;
 using Xunit;
@@ -26,6 +27,7 @@ public class MateDeleteTests : MateTestBase
         Assert.Equal(new[] { "block-1", "plate-1" }, r.Stayed);
         Assert.Equal(0, r.Change.MatesAfter);
         Assert.Empty(r.Change.Moved);
+        Assert.Equal(new[] { "block-1", "plate-1" }, r.Change.Constraints.Select(c => c.Name).OrderBy(n => n));
         Assert.Equal(10, Block.Info.Transform.Origin.Z, 9);
     }
 

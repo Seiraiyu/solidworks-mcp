@@ -91,6 +91,10 @@ public sealed class MateAddOperation : AssemblyChangeOperation<MateAddRequest, M
 
     protected override string? DocumentOf(MateAddRequest request) => request.Document;
 
+    /// <summary>The two components the mate joins: its constrained state changed even when nothing moved.</summary>
+    protected override IEnumerable<string> Joined(MateAddResult result) =>
+        result.Mate.Entities.Where(e => e.Component != null).Select(e => e.Component!);
+
     protected override MateAddResult Change(ISwDocument doc, ISwAssembly asm, MateAddRequest request, ModelTransaction tx, IOperationContext context)
     {
         MateRequests.Validate(request.Type, request.DistanceMm, request.AngleDeg, request.Alignment, request.Flip);
@@ -163,6 +167,10 @@ public sealed class MateEditOperation : AssemblyChangeOperation<MateEditRequest,
     }
 
     protected override string? DocumentOf(MateEditRequest request) => request.Document;
+
+    /// <summary>The two components the mate joins: its constrained state changed even when nothing moved.</summary>
+    protected override IEnumerable<string> Joined(MateEditResult result) =>
+        result.Mate.Entities.Where(e => e.Component != null).Select(e => e.Component!);
 
     protected override MateEditResult Change(ISwDocument doc, ISwAssembly asm, MateEditRequest request, ModelTransaction tx, IOperationContext context)
     {
@@ -257,6 +265,9 @@ public sealed class MateDeleteOperation : AssemblyChangeOperation<MateDeleteRequ
     }
 
     protected override string? DocumentOf(MateDeleteRequest request) => request.Document;
+
+    /// <summary>The components the mates joined, which stay where they are with fewer mates.</summary>
+    protected override IEnumerable<string> Joined(MateDeleteResult result) => result.Stayed;
 
     protected override MateDeleteResult Change(ISwDocument doc, ISwAssembly asm, MateDeleteRequest request, ModelTransaction tx, IOperationContext context)
     {
