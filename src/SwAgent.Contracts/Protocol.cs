@@ -12,7 +12,8 @@ public static class Protocol
     /// 8: sheet-metal bends and flattening: sheetmetal.sketched_bend, sheetmetal.flatten, sheetmetal.unfold, sheetmetal.fold, sheetmetal.convert.
     /// 9: mates and degrees of freedom: mate.add, mate.edit, mate.delete, mate.list, assembly.dof; r1.mate references.
     /// 10: flat-pattern export: export.flat_pattern.
-    public const int Version = 10;
+    /// 11: component patterns and interference: component.linear_pattern, component.circular_pattern, component.feature_pattern, assembly.interference; component.delete deletes patterns.
+    public const int Version = 11;
 
     public const string PipeNamePrefix = "solidworks-mcp-";
 

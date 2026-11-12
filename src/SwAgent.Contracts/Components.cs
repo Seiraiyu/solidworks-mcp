@@ -130,27 +130,35 @@ public sealed class ComponentSetResult : IAssemblyChangeResult
 }
 
 [Operation("component.delete", typeof(ComponentDeleteResult))]
-[Description("Deletes top-level components from an assembly, and with them the mates that use them (listed in mates_deleted). A component inside a subassembly is deleted in that subassembly's own document. Checked: the components and their mates are gone. A deletion is not rolled back: what SOLIDWORKS deleted stays deleted, and a failed check says what is left.")]
+[Description("Deletes top-level components from an assembly, and with them the mates that use them (listed in mates_deleted). An entry may instead name a component pattern, by its name (LocalLPattern1) or reference (r1.feature.…): the pattern is deleted with every instance it made, and its seeds stay. A pattern's seed is refused unless the pattern is deleted in the same request, and a single pattern instance is refused (delete its pattern). A component inside a subassembly is deleted in that subassembly's own document. Checked: the components, patterns, instances and their mates are gone. A deletion is not rolled back: what SOLIDWORKS deleted stays deleted, and a failed check says what is left.")]
 public sealed class ComponentDeleteRequest
 {
     [Description("The assembly: its title or full path. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
-    [Description("The components: each a reference (r1.component.…) or a name (bracket-1).")]
+    [Description("The components or component patterns: each a reference (r1.component.…, r1.feature.…) or a name (bracket-1, LocalLPattern1).")]
     public List<string> Components { get; set; } = new List<string>();
 }
 
-[Description("The components deleted.")]
+[Description("The components and patterns deleted.")]
 public sealed class ComponentDeleteResult : IAssemblyChangeResult
 {
     [Required]
-    [Description("The names of the components deleted.")]
+    [Description("The names of the components deleted, pattern instances not included.")]
     public List<string> Deleted { get; set; } = new List<string>();
 
     [Required]
     [Description("The names of the mates deleted with them.")]
     public List<string> MatesDeleted { get; set; } = new List<string>();
+
+    [Required]
+    [Description("The names of the component patterns deleted.")]
+    public List<string> PatternsDeleted { get; set; } = new List<string>();
+
+    [Required]
+    [Description("The names of the instances deleted with those patterns.")]
+    public List<string> InstancesDeleted { get; set; } = new List<string>();
 
     [Required]
     [Description("What changed in the assembly.")]
