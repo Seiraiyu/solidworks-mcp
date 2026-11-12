@@ -45,6 +45,12 @@ public abstract class ComponentPatternTestBase : AssemblyTestBase
         return Run(new ComponentLinearPatternOperation(Services), request);
     }
 
+    internal ComponentPatternResult Circular(ComponentCircularPatternRequest request)
+    {
+        request.Document ??= "stand.SLDASM";
+        return Run(new ComponentCircularPatternOperation(Services), request);
+    }
+
     /// <summary>block-1 in a row of three along the plate's front edge, 20 mm apart.</summary>
     internal ComponentPatternResult BlockRow() =>
         Linear(new ComponentLinearPatternRequest { Components = { "block-1" }, Direction = Ref(PlateEdge), SpacingMm = 20, Count = 3 });

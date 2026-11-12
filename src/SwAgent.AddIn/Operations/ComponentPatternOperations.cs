@@ -134,3 +134,45 @@ public sealed class ComponentLinearPatternOperation : ComponentPatternOperation<
         return list;
     }
 }
+
+/// <summary>component.circular_pattern (design 455, Component patterns).</summary>
+public sealed class ComponentCircularPatternOperation : ComponentPatternOperation<ComponentCircularPatternRequest>
+{
+    IReadOnlyList<PatternReading> _readings = Array.Empty<PatternReading>();
+
+    public ComponentCircularPatternOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override ComponentPatternKind Kind => ComponentPatternKind.Circular;
+
+    protected override string? DocumentOf(ComponentCircularPatternRequest request) => request.Document;
+
+    protected override IReadOnlyList<string> SeedsOf(ComponentCircularPatternRequest request) => request.Components;
+
+    protected override object? Make(ISwDocument doc, ISwAssembly asm, ComponentCircularPatternRequest r, IReadOnlyList<object> seeds, out string tried)
+    {
+        int count = PatternRequests.Count(r.Count, "/count");
+        bool equal = r.EqualSpacing ?? true;
+        if (!equal && r.AngleDeg == null)
+            throw PatternRequests.Invalid("/angle_deg", "without equal_spacing, angle_deg is needed: the angle from one instance to the next");
+        double angle = PatternRequests.Angle(r.AngleDeg, "/angle_deg", 360);
+        if (!equal && angle * (count - 1) >= 360 - 1e-9)
+            throw PatternRequests.Invalid("/angle_deg", $"{count} instances {angle} degrees apart go all the way round onto the seed; use fewer, a smaller angle, or equal_spacing");
+        var a = PatternEntities.Resolve(Services.References, doc, r.Axis, r.AxisComponent, "/axis", "/axis_component");
+        var line = PatternGeometry.AxisOf(a.Info) ?? throw PatternRequests.NotAnAxis("/axis", a.Info);
+        _readings = PatternGeometry.Circular(SeedPlaces, line.Through, line.Axis, count, PatternGeometry.CircularStep(count, angle, equal));
+        return asm.CircularPattern(new ComponentCircularSpec
+        {
+            Seeds = seeds, Axis = a.Entity, Count = count, AngleDeg = angle, EqualSpacing = equal, Reverse = r.Reverse == true,
+        }, out tried);
+    }
+
+    protected override List<PatternInstance> Measure(ComponentCircularPatternRequest request, IReadOnlyList<(string Name, Transform At)> instances, ComponentPatternResult result)
+    {
+        var (reading, list) = PatternGeometry.Match(_readings, instances, checkAxes: true);
+        result.Sense = reading.Sense;
+        return list;
+    }
+}
