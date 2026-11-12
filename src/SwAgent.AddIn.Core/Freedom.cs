@@ -85,7 +85,8 @@ public static class Freedom
             f.Note = dofs.Result switch
             {
                 Unrestricted => "it can move in more ways than SOLIDWORKS describes (more than two slides or two turns)",
-                Unavailable => "SOLIDWORKS has no remaining degrees of freedom for it (swRemainingDofs_Unavailable)",
+                // Live 4.C run: every under-defined, mated component answered this.
+                Unavailable => "SOLIDWORKS 2026 SP4's GetRemainingDOFs did not report free motion (swRemainingDofs_Unavailable; plan 4.C live run); constrained state only",
                 Failed => "SOLIDWORKS failed to work out its remaining degrees of freedom (swRemainingDofs_Failed)",
                 RootComponent => "SOLIDWORKS answered as for the root component (swRemainingDofs_RootComponent)",
                 _ => $"SOLIDWORKS answered swRemainingDofs_e {dofs.Result}",

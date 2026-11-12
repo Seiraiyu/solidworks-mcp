@@ -753,9 +753,17 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
         Assert.Equal(Constraint.FullyDefined, dof["mblock-3"].Constraint);
         string Counts(ComponentFreedom f) => $"{f.Constraint} {f.FreeTranslations?.ToString() ?? "?"}+{f.FreeRotations?.ToString() ?? "?"}{(f.Note == null ? "" : $" ({f.Note})")}";
         string report = $"plate-1 {Counts(dof["plate-1"])}; mblock-3 {Counts(dof["mblock-3"])}; {b4} {Counts(dof[b4])}; {p3} {Counts(dof[p3])}; mpin-1 {Counts(dof["mpin-1"])}";
-        Assert.True(dof[b4].FreeTranslations == 2 && dof[b4].FreeRotations == 1, "one coincident face: " + report);
-        Assert.True(dof[p3].FreeTranslations == 1 && dof[p3].FreeRotations == 1, "a concentric pin: " + report);
-        Assert.True(dof["mpin-1"].FreeTranslations == 0 && dof["mpin-1"].FreeRotations == 1, "the flush pin: " + report);
+        // The gap branch (plan 4.C, Task 14): SOLIDWORKS 2026 SP4 answered GetRemainingDOFs Unavailable for mated
+        // components, so the constrained state is asserted always, and the counts only where SOLIDWORKS gave them.
+        void Free(ComponentFreedom f, int translations, int rotations, string what)
+        {
+            Assert.True(f.Constraint == Constraint.UnderDefined, $"{what}: {report}");
+            if (f.FreeTranslations == null || f.FreeRotations == null) Assert.False(string.IsNullOrEmpty(f.Note), $"{what}: no counts and no note: {report}");
+            else Assert.True(f.FreeTranslations == translations && f.FreeRotations == rotations, $"{what}: {report}");
+        }
+        Free(dof[b4], 2, 1, "one coincident face");
+        Free(dof[p3], 1, 1, "a concentric pin");
+        Free(dof["mpin-1"], 0, 1, "the flush pin");
         var pinMates = await Call<MateListRequest, MateListResult>(new MateListRequest { Document = asm, Component = "mpin-1" });
         Assert.Equal(2, pinMates.Mates.Count);
         Assert.All(pinMates.Mates, m => Assert.Contains(m.Entities, e => e.Component == "mpin-1"));

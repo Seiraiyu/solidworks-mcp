@@ -56,7 +56,7 @@ public class FreedomTests
 
     [Theory]
     [InlineData(Freedom.Unrestricted, "more ways")]
-    [InlineData(Freedom.Unavailable, "swRemainingDofs_Unavailable")]
+    [InlineData(Freedom.Unavailable, "constrained state only")]
     [InlineData(Freedom.Failed, "swRemainingDofs_Failed")]
     public void Answers_other_than_restricted_leave_the_counts_absent(int result, string note)
     {
