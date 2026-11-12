@@ -22,7 +22,7 @@ public sealed class AssembliesSuiteRun : LiveRun
 
 /// <summary>
 /// The assemblies live suite (design 455, Testing; plan 4.A covers assembly documents, components and the in-context
-/// precondition, cases 1 to 9; plan 4.B assembly references and inspection, cases 10 to 15; plan 4.C mates and degrees of freedom, cases 16 to 20): every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve does, in
+/// precondition, cases 1 to 9; plan 4.B assembly references and inspection, cases 10 to 15; plan 4.C mates and degrees of freedom, cases 16 to 20; plan 4.D component patterns and interference, cases 21 to 26): every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve does, in
 /// [Step] order, and checks positions and states against exact values. It builds its own parts (diag.scratch_block) and
 /// assemblies in its scratch directory, records each before creating it, never ends SOLIDWORKS, stops the run if a
 /// document it did not create is open, and closes everything it made at the end. Skipped unless SWMCP_LIVE=1.
@@ -810,8 +810,201 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
         return $"{mate.Name} went with mblock-4; its reference: {stale.Error.Details?["reason"]}";
     });
 
+    // Plan 4.D. patterns.SLDASM: pplate-1 (80 x 80 x 10, a Ø10 hole at its centre (40, 40), and its circular pattern of
+    // four Ø10 holes at (60, 40), (40, 60), (20, 40) and (40, 20)) fixed at the origin; lcube-1 (10 x 10 x 10) the linear
+    // seed; mpin (case 16's Ø10 x 30 pin, axis z, z 0 to 30) the circular and feature-driven seeds.
+
+    /// <summary>The pattern plate: a centre hole, a hole at (60, 40), and that hole patterned 4 times round the centre hole; saved in scratch and closed.</summary>
+    async Task<string> ClosedPatternPlate(string name)
+    {
+        var block = await Call<DiagScratchBlockRequest, DocumentInfo>(new DiagScratchBlockRequest { Path = New(name, ".SLDPRT"), XMm = 80, YMm = 80, ZMm = 10 });
+        string cut = "";
+        foreach (var (id, x) in new[] { ("c", 40.0), ("h", 60.0) })
+        {
+            var sketch = await Call<SketchCreateRequest, SketchCreateResult>(new SketchCreateRequest
+            {
+                Document = block.Path, On = "front", Circles = new List<SketchCircle> { new SketchCircle { Id = id, Center = new Point2(x, 40), RadiusMm = 5 } },
+            });
+            cut = (await Call<FeatureExtrudeRequest, FeatureResult>(new FeatureExtrudeRequest { Document = block.Path, Sketch = sketch.Sketch.Name, Mode = FeatureMode.Cut, End = ExtrudeEnd.ThroughAll })).Feature.Name!;
+        }
+        var centre = (await Call<ModelFindRequest, ModelFindResult>(new ModelFindRequest
+        {
+            Document = block.Path, Kind = TopologyKind.Face, Geometry = GeometryType.Cylinder, Near = new Point3(40, 40, 5), MaxDistanceMm = 6, Limit = 1,
+        })).Entities.Single();
+        await Call<FeatureCircularPatternRequest, FeatureResult>(new FeatureCircularPatternRequest { Document = block.Path, Features = new List<string> { cut }, Axis = centre.Reference!, Count = 4 });
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = block.Path });
+        await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = block.Path });
+        return block.Path!;
+    }
+
+    async Task<EntityInfo> HoleAt(string asm, string component, double x, double y) =>
+        (await Call<ModelFindRequest, ModelFindResult>(new ModelFindRequest
+        {
+            Document = asm, Component = component, Kind = TopologyKind.Face, Geometry = GeometryType.Cylinder, Near = new Point3(x, y, 5), MaxDistanceMm = 6, Limit = 1,
+        })).Entities.Single();
+
+    static bool At(Point3 p, double x, double y, double z) => Math.Abs(p.X - x) <= Tol && Math.Abs(p.Y - y) <= Tol && Math.Abs(p.Z - z) <= Tol;
+
+    /// <summary>Every instance of the pattern sits on one of the places, each place taken once (the suite's own check, independent of the add-in's).</summary>
+    static void Lands(ComponentPatternResult r, Dictionary<string, Transform> placements, IReadOnlyList<Point3> places)
+    {
+        Assert.Equal(places.Count, r.Pattern.Instances.Count);
+        var free = places.ToList();
+        foreach (var name in r.Pattern.Instances)
+        {
+            var o = placements[name].Origin;
+            var hit = free.FirstOrDefault(p => At(o, p.X, p.Y, p.Z));
+            Assert.True(hit != null, $"{name} at {o} is on none of the places left: {string.Join(" ", free)}");
+            free.Remove(hit!);
+        }
+    }
+
+    Task<AssemblyInterferenceResult> Interference(string asm, bool coincident = false, params string[] components) =>
+        Call<AssemblyInterferenceRequest, AssemblyInterferenceResult>(new AssemblyInterferenceRequest
+        {
+            Document = asm, CoincidentIsInterference = coincident, Components = components.Length == 0 ? null : components.ToList(),
+        });
+
     [SkippableFact, Step(21)]
-    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(21, "the suite's documents closed", async () =>
+    public Task A_linear_component_pattern_lands_every_instance() => _run.CaseAsync(21, "component.linear_pattern: a 3 x 2 grid of cubes, each where the spacing puts it", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string plate = await ClosedPatternPlate("pplate");
+        string cube = await ClosedBlock("lcube", 10, 10, 10);
+        string asm = await NewAssembly("patterns");
+        await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = plate });
+        string seed = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = cube, At = new Point3(0, -40, 0) })).Component.Name;
+        var right = await PlaneFace(asm, "pplate-1", new Vector3(1, 0, 0));
+        var front = await PlaneFace(asm, "pplate-1", Front);
+        var made = await Call<ComponentLinearPatternRequest, ComponentPatternResult>(new ComponentLinearPatternRequest
+        {
+            Document = asm, Components = { seed }, Direction = right.Reference!, SpacingMm = 20, Count = 3,
+            Direction2 = new ComponentPatternDirection { Direction = front.Reference!, SpacingMm = 15, Count = 2 },
+        });
+        Assert.All(made.Instances, i => Assert.True(i.OffsetMm <= Tol, $"{i.Name} {i.OffsetMm} mm off"));
+        int sx = made.Sense!.StartsWith("along", StringComparison.Ordinal) ? 1 : -1, sy = made.Sense.EndsWith("/along", StringComparison.Ordinal) ? 1 : -1;
+        var places = new List<Point3>();
+        for (int i = 0; i < 3; i++)
+        {
+            for (int j = 0; j < 2; j++)
+            {
+                if (i + j > 0) places.Add(new Point3(sx * 20 * i, -40 - sy * 15 * j, 0));
+            }
+        }
+        Lands(made, await Placements(asm), places);
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        return $"{made.Pattern.Name}: {made.Instances.Count} instances, sense {made.Sense}, worst offset {made.Instances.Max(i => i.OffsetMm)} mm; created {made.Change.Created.Single().Name}";
+    });
+
+    [SkippableFact, Step(22)]
+    public Task A_circular_component_pattern_turns_every_instance() => _run.CaseAsync(22, "component.circular_pattern: 4 over 360 and 3 over 180 round the centre hole", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string asm = LiveScratchPath("patterns", ".SLDASM"), pin = LiveScratchPath("mpin", ".SLDPRT");
+        var centre = await HoleAt(asm, "pplate-1", 40, 40);
+        string p1 = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = pin, At = new Point3(70, 40, 20) })).Component.Name;
+        var four = await Call<ComponentCircularPatternRequest, ComponentPatternResult>(new ComponentCircularPatternRequest { Document = asm, Components = { p1 }, Axis = centre.Reference!, Count = 4 });
+        Lands(four, await Placements(asm), new[] { new Point3(40, 70, 20), new Point3(10, 40, 20), new Point3(40, 10, 20) });
+        Assert.All(four.Instances, i => Assert.True((i.TurnDeg ?? 0) <= 0.01, $"{i.Name} turned {i.TurnDeg}° off"));
+        string p2 = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = pin, At = new Point3(70, 40, 50) })).Component.Name;
+        var half = await Call<ComponentCircularPatternRequest, ComponentPatternResult>(new ComponentCircularPatternRequest { Document = asm, Components = { p2 }, Axis = centre.Reference!, Count = 3, AngleDeg = 180 });
+        double y = half.Sense == "along" ? 70 : 10;
+        Lands(half, await Placements(asm), new[] { new Point3(40, y, 50), new Point3(10, 40, 50) });
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        return $"{four.Pattern.Name}: 3 instances at 90° steps, sense {four.Sense}; {half.Pattern.Name}: 180° over 3 is 90° steps, sense {half.Sense}";
+    });
+
+    [SkippableFact, Step(23)]
+    public Task A_feature_driven_pattern_puts_a_pin_in_every_hole() => _run.CaseAsync(23, "component.feature_pattern: one pin becomes one in each of the plate's four pattern holes", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string asm = LiveScratchPath("patterns", ".SLDASM"), pin = LiveScratchPath("mpin", ".SLDPRT"), plate = LiveScratchPath("pplate", ".SLDPRT");
+        string pattern = (await Call<ModelTreeRequest, ModelTreeResult>(new ModelTreeRequest { Document = plate })).Features.Single(f => f.Type == "CirPattern").Name;
+        string seed = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = pin, At = new Point3(60, 40, 0) })).Component.Name;
+        var driven = await Call<ComponentFeaturePatternRequest, ComponentPatternResult>(new ComponentFeaturePatternRequest { Document = asm, Components = { seed }, DrivingFeature = $"{pattern}@pplate-1" });
+        Assert.Equal(4, driven.Holes);
+        Lands(driven, await Placements(asm), new[] { new Point3(40, 60, 0), new Point3(20, 40, 0), new Point3(40, 20, 0) });
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        return $"{driven.Pattern.Name} driven by {pattern}@pplate-1: {driven.Holes} holes, instances {string.Join(", ", driven.Pattern.Instances)}";
+    });
+
+    [SkippableFact, Step(24)]
+    public Task A_pattern_is_deleted_by_its_feature_and_its_seed_only_with_it() => _run.CaseAsync(24, "component.delete: a lone seed and a lone instance refused; the pattern and its seed deleted together", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string asm = LiveScratchPath("patterns", ".SLDASM");
+        var at = await Placements(asm);
+        string seed = at.Single(p => At(p.Value.Origin, 60, 40, 0)).Key, instance = at.Single(p => At(p.Value.Origin, 40, 60, 0)).Key;
+        var lone = await Refused(() => Call<ComponentDeleteRequest, ComponentDeleteResult>(new ComponentDeleteRequest { Document = asm, Components = { seed } }));
+        Assert.Equal(ErrorCode.InvalidArgument, lone.Code);
+        string pattern = (string)Assert.Single((List<object?>)lone.Error.Details!["patterns"]!)!;
+        var one = await Refused(() => Call<ComponentDeleteRequest, ComponentDeleteResult>(new ComponentDeleteRequest { Document = asm, Components = { instance } }));
+        Assert.Equal(pattern, one.Error.Details!["pattern"]);
+        var gone = await Call<ComponentDeleteRequest, ComponentDeleteResult>(new ComponentDeleteRequest { Document = asm, Components = { pattern, seed } });
+        Assert.Equal(new[] { pattern }, gone.PatternsDeleted);
+        Assert.Equal(3, gone.InstancesDeleted.Count);
+        Assert.Equal(new[] { seed }, gone.Deleted);
+        var after = await Placements(asm);
+        Assert.DoesNotContain(after, p => At(p.Value.Origin, 40, 60, 0) || At(p.Value.Origin, 60, 40, 0));
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        return $"lone seed refused naming {pattern}; lone instance refused; deleted {pattern} with {string.Join(", ", gone.InstancesDeleted)} and its seed {seed}";
+    });
+
+    [SkippableFact, Step(25)]
+    public Task Interference_is_the_overlap_volume_and_touching_counts_only_when_asked() => _run.CaseAsync(25, "assembly.interference: blocks overlapping 10 x 20 x 10 report 2000 mm³; touching faces none unless asked", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string block = await ClosedBlock("iblock", 40, 20, 10);
+        string asm = await NewAssembly("clash");
+        string b1 = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = block })).Component.Name;
+        string b2 = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = block, At = new Point3(30, 0, 0) })).Component.Name;
+        string b3 = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = block, At = new Point3(0, 20, 0) })).Component.Name;
+        var plain = await Interference(asm);
+        var overlap = Assert.Single(plain.Interferences);
+        Assert.Equal(new[] { b1, b2 }.OrderBy(n => n), overlap.Components.OrderBy(n => n));
+        Assert.True(Math.Abs(overlap.VolumeMm3 - 2000) <= 0.01, $"volume {overlap.VolumeMm3} mm³");
+        Assert.NotNull(overlap.Box);
+        Near(30, overlap.Box!.Min.X, "box min x");
+        Near(40, overlap.Box.Max.X, "box max x");
+        Near(20, overlap.Box.Max.Y, "box max y");
+        Near(10, overlap.Box.Max.Z, "box max z");
+        var touching = await Interference(asm, coincident: true);
+        Assert.Contains(touching.Interferences, i => i.Components.Contains(b3));
+        var onlyB2 = await Interference(asm, false, b2);
+        Assert.Equal(2000, Math.Round(Assert.Single(onlyB2.Interferences).VolumeMm3, 2));
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        var t = touching.Interferences.First(i => i.Components.Contains(b3));
+        return $"{b1}/{b2}: {overlap.VolumeMm3} mm³, box {overlap.Box.Min} to {overlap.Box.Max}; touching {b3}: not reported by default, with coincident {t.VolumeMm3} mm³ touching={t.Touching}; components=[{b2}] keeps 1";
+    });
+
+    [SkippableFact, Step(26)]
+    public Task The_interference_session_is_closed_after_a_timeout() => _run.CaseAsync(26, "assembly.interference held past its deadline: timeout, then operation.completed, the session closed (Done)", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string asm = LiveScratchPath("clash", ".SLDASM");
+        var before = await Call<DiagInterferenceRequest, DiagInterferenceResult>(new DiagInterferenceRequest { DelayMs = 3000 });
+        Assert.Equal(3000, before.ArmedMs);
+        long cursor = Sw.Events.LastSeq;
+        var late = await Refused(() => Sw.CallAsync<AssemblyInterferenceRequest, AssemblyInterferenceResult>(new AssemblyInterferenceRequest { Document = asm }, TimeSpan.FromMilliseconds(1000)));
+        Assert.Equal(ErrorCode.Timeout, late.Code);
+        EventEnvelope? completed = null;
+        await LiveRun.WaitForAsync(() =>
+        {
+            completed = Sw.ReadEvents(new SwEventsRequest { AfterSeq = cursor, Kinds = new List<string> { "operation.completed" } })
+                .Events.FirstOrDefault(e => (string?)e.Data["method"] == "assembly.interference" && (string?)e.Data["answered_as"] == "timeout");
+            return Task.FromResult(completed != null);
+        }, TimeSpan.FromSeconds(15), "operation.completed for the assembly.interference answered timeout");
+        Assert.Equal(true, completed!.Data["ok"]);
+        var after = await Call<DiagInterferenceRequest, DiagInterferenceResult>(new DiagInterferenceRequest());
+        Assert.Equal(before.Opened + 1, after.Opened);
+        Assert.Equal(after.Opened, after.Closed);
+        Assert.Equal(0, after.ArmedMs);
+        Assert.Single((await Interference(asm)).Interferences);
+        return $"timeout after 1000 ms with the session held 3000 ms; operation.completed ok after {completed.Data["duration_ms"]} ms; sessions opened {after.Opened}, closed {after.Closed}; the next call answered normally";
+    });
+
+    [SkippableFact, Step(27)]
+    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(27, "the suite's documents closed", async () =>
     {
         var state = await _run.RequireOnlyOwnDocumentsAsync();
         int closed = 0;
