@@ -451,28 +451,16 @@ internal sealed class SolidWorksAssembly : ISwAssembly
     }
 
     /// <summary>IComponent2.GetRemainingDOFs: two rotations (point and direction each), then two translations; points in metres.</summary>
+    /// <remarks>
+    /// Live 4.C run (SOLIDWORKS 2026 SP4): every under-defined, mated component answered swRemainingDofs_Unavailable,
+    /// and selecting it first (as Move Component has it) changed nothing, so it is not selected: a read must not clear
+    /// the user's selection.
+    /// </remarks>
     public RemainingDofs? RemainingDofs(object component)
     {
-        var dofs = AskRemainingDofs((IComponent2)component);
-        if (dofs?.Result != Freedom.Unavailable) return dofs;
-        // Live 4.C run: unselected, every mated component answered swRemainingDofs_Unavailable. Ask once more with it
-        // selected, as Move Component has it, and leave nothing selected.
-        _doc.ClearSelection2(true);
         try
         {
-            return ((IComponent2)component).Select4(false, null, false) ? AskRemainingDofs((IComponent2)component) ?? dofs : dofs;
-        }
-        finally
-        {
-            _doc.ClearSelection2(true);
-        }
-    }
-
-    static RemainingDofs? AskRemainingDofs(IComponent2 component)
-    {
-        try
-        {
-            int result = component.GetRemainingDOFs(
+            int result = ((IComponent2)component).GetRemainingDOFs(
                 out int r1PointStatus, out MathPoint r1Point, out int r1Status, out MathVector r1Dir,
                 out int r2PointStatus, out MathPoint r2Point, out int r2Status, out MathVector r2Dir,
                 out int t1Status, out MathVector t1Dir, out int t2Status, out MathVector t2Dir);

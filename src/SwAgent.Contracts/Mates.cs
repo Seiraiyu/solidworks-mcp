@@ -254,7 +254,7 @@ public sealed class MateListResult
 }
 
 [Operation("assembly.dof", typeof(AssemblyDofResult), ReadOnly = true)]
-[Description("How far each component's position is defined (fixed, fully_defined, under_defined, over_defined) and, when under defined, how it can still move: free translations and rotations as counts, with their directions (and each rotation's axis point) in the assembly's coordinates, mm. An unmated floating component is free in all six. Free motion is read from SOLIDWORKS (IComponent2.GetRemainingDOFs), never probed by moving anything; when SOLIDWORKS cannot describe it the counts are absent and note says why. The top-level components, or the ones named.")]
+[Description("How far each component's position is defined (fixed, fully_defined, under_defined, over_defined) and, when under defined, how it can still move: free translations and rotations as counts, with their directions (and each rotation's axis point) in the assembly's coordinates, mm. An unmated floating component is free in all six. Free motion is read from SOLIDWORKS (IComponent2.GetRemainingDOFs), never probed by moving anything; when SOLIDWORKS cannot describe it the counts are absent and note says why. SOLIDWORKS 2026 SP4 does not describe it for a component with mates (it answers unavailable), so there only the constrained state is given: counts come for fixed, fully defined and unmated components. The top-level components, or the ones named.")]
 public sealed class AssemblyDofRequest
 {
     [Description("The assembly: its title or full path. The active document when absent.")]

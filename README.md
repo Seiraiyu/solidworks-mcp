@@ -23,6 +23,7 @@ It offers these tools:
 - Reference geometry: `sw_refgeom_plane` (offset, angle, three points, parallel through a point, normal to a curve), `sw_refgeom_axis` and `sw_refgeom_point`.
 - `sw_model_measure` gives the distance, closest points, centre distance and angle between two faces, edges, vertices, planes, axes or points.
 - `sw_export_part` writes a copy of a part as STEP (AP214 or AP242), Parasolid (`.x_t`), binary STL or 3MF.
+- Mates: `sw_mate_add` (coincident, parallel, perpendicular, tangent, concentric, lock, distance and angle), `sw_mate_edit`, `sw_mate_delete` and `sw_mate_list`. Each new or edited mate is checked by measuring the geometry it constrains, and rolled back with every moved component put back when it does not hold. `sw_assembly_dof` gives each component's constrained state (fixed, fully, under or over defined). **Known gap:** it does not report free motion for a component with mates, because SOLIDWORKS 2026 SP4's `GetRemainingDOFs` answers `unavailable` for every mated component. Counts are given only for fixed, fully defined and unmated components, and `note` says so otherwise.
 - `sw_api_call`, the escape hatch, calls any member of SOLIDWORKS' API the other tools do not cover yet. It can be turned off (see **The escape hatch**).
 
 There is one tool per add-in operation, named `sw_` and the operation with underscores (`document.save_as` is `sw_document_save_as`).
