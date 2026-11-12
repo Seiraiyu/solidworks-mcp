@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "description": "Puts one instance of the components on every hole of a part's pattern or Hole Wizard feature (a pattern driven component pattern), so one fastener becomes one in every hole. driving_feature names the feature in the assembly: name@component (CirPattern1@plate-1, CSK for M5 Flat Head Machine Screw1@plate-1) or a reference issued in the assembly. Each seed must already sit on one of the feature's holes (place or mate it there first); the feature must make at least two holes (cylindrical faces), since they are what the check measures. Checked: every other hole gets exactly one instance of each seed, at the seed's distance from its hole's axis and the seed's height along it, within 0.001 mm. Otherwise the pattern is deleted and every moved component put back (rolled back). Delete it later with component.delete. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The components to repeat (the seeds), each sitting on one of the driving feature's holes: a reference (r1.component.…) or a name (screw-1)."
+    },
+    "driving_feature": {
+      "type": "string",
+      "description": "The part's pattern or Hole Wizard feature, in the assembly: name@component (CirPattern1@plate-1) or a reference issued in the assembly."
+    }
+  },
+  "required": [
+    "components",
+    "driving_feature"
+  ],
+  "additionalProperties": false
+}
