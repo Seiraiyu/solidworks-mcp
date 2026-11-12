@@ -116,4 +116,17 @@ public class TranscriptTests
         Assert.Equal("bracket", transcript.Name);
         Assert.All(transcript.Steps, s => Assert.Contains((string)s["tool"]!, offered));
     }
+
+    [Fact]
+    public void The_enclosure_transcript_calls_only_tools_the_server_offers_and_ends_with_the_DXF()
+    {
+        var transcript = Transcript.Load(System.IO.Path.Combine(AppContext.BaseDirectory, "Scenarios", "enclosure.transcript.json"));
+        var offered = Mcp.Server.ToolCatalog.All.Select(t => t.Name).ToHashSet();
+        Assert.Equal("enclosure", transcript.Name);
+        Assert.All(transcript.Steps, s => Assert.Contains((string)s["tool"]!, offered));
+        Assert.Equal("sw_export_flat_pattern", (string)transcript.Steps[transcript.Steps.Count - 1]["tool"]!);
+        // Teardrop and rolled hems are refused (6.B), so the scenario's hem is closed.
+        var hem = (JsonObject)transcript.Steps.Single(s => (string)s["tool"]! == "sw_sheetmetal_hem")["arguments"]!;
+        Assert.Equal("closed", hem["kind"]);
+    }
 }
