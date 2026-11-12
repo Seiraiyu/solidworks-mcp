@@ -120,6 +120,39 @@ public interface ISwAssembly
     /// <summary>What IComponent2.GetRemainingDOFs gives for a component (mm); null when SOLIDWORKS throws or gives nothing.</summary>
     RemainingDofs? RemainingDofs(object component);
 
+    /// <summary>The assembly's component patterns (linear, circular, pattern driven), in tree order.</summary>
+    IReadOnlyList<object> Patterns();
+
+    /// <summary>The component pattern with this name, or null.</summary>
+    object? PatternByName(string name);
+
+    /// <summary>A component pattern as SOLIDWORKS holds it: kind, seeds, the instances it made, its error.</summary>
+    ComponentPatternFacts ReadPattern(object pattern);
+
+    /// <summary>
+    /// Makes a linear component pattern by selection (never SeedComponentArray, a SAFEARRAY-of-dispatch setter); null
+    /// when SOLIDWORKS made none. <paramref name="tried"/> says how each way of asking went.
+    /// </summary>
+    object? LinearPattern(ComponentLinearSpec spec, out string tried);
+
+    /// <summary>Makes a circular component pattern by selection; null when SOLIDWORKS made none.</summary>
+    object? CircularPattern(ComponentCircularSpec spec, out string tried);
+
+    /// <summary>Makes a pattern driven component pattern: <paramref name="seeds"/> onto <paramref name="drivingFeature"/> (a component's feature, in the assembly); null when SOLIDWORKS made none.</summary>
+    object? FeaturePattern(IReadOnlyList<object> seeds, object drivingFeature, out string tried);
+
+    /// <summary>Deletes component patterns and the instances they made; their seeds stay.</summary>
+    void DeletePatterns(IReadOnlyList<object> patterns);
+
+    /// <summary>The faces a component's feature made, read in the component's own document and described in the assembly's coordinates.</summary>
+    IReadOnlyList<EntityInfo> FeatureFaces(object component, object feature);
+
+    /// <summary>
+    /// Opens SOLIDWORKS' interference detection (IAssemblyDoc.InterferenceDetectionManager) with these options. The
+    /// caller must call <see cref="IInterferenceSession.Done"/> in a finally.
+    /// </summary>
+    IInterferenceSession OpenInterference(InterferenceOptions options);
+
     /// <summary>Fault testing only (diag.edit_component): starts editing a component in context as the user would; false when SOLIDWORKS refused.</summary>
     bool EditInContext(object component);
 
@@ -189,4 +222,88 @@ public sealed class MateFacts
 
     /// <summary>Each side: its component (null for the assembly's own plane, axis or point) and the entity (for lock, the component).</summary>
     public List<(object? Component, object Entity)> Entities { get; } = new List<(object? Component, object Entity)>();
+}
+
+/// <summary>A linear component pattern to make: the seeds and directions as resolved in the assembly.</summary>
+public sealed class ComponentLinearSpec
+{
+    public IReadOnlyList<object> Seeds { get; set; } = System.Array.Empty<object>();
+
+    public object Direction { get; set; } = new object();
+
+    public double SpacingMm { get; set; }
+
+    public int Count { get; set; }
+
+    public bool Reverse { get; set; }
+
+    public object? Direction2 { get; set; }
+
+    public double SpacingMm2 { get; set; }
+
+    public int Count2 { get; set; } = 1;
+
+    public bool Reverse2 { get; set; }
+}
+
+/// <summary>A circular component pattern to make.</summary>
+public sealed class ComponentCircularSpec
+{
+    public IReadOnlyList<object> Seeds { get; set; } = System.Array.Empty<object>();
+
+    public object Axis { get; set; } = new object();
+
+    public int Count { get; set; }
+
+    /// <summary>With equal spacing the angle shared; otherwise the angle between neighbours.</summary>
+    public double AngleDeg { get; set; }
+
+    public bool EqualSpacing { get; set; }
+
+    public bool Reverse { get; set; }
+}
+
+/// <summary>A component pattern as SOLIDWORKS holds it.</summary>
+public sealed class ComponentPatternFacts
+{
+    public string Name { get; set; } = "";
+
+    public ComponentPatternKind Kind { get; set; }
+
+    /// <summary>The components it repeats.</summary>
+    public List<object> Seeds { get; } = new List<object>();
+
+    /// <summary>The components it made, the seeds not included.</summary>
+    public List<object> Instances { get; } = new List<object>();
+
+    /// <summary>Its swFeatureError_e name, or null.</summary>
+    public string? Error { get; set; }
+}
+
+/// <summary>How interference detection runs (design 455, Interference).</summary>
+public sealed class InterferenceOptions
+{
+    public bool CoincidentIsInterference { get; set; }
+
+    public bool IncludeHidden { get; set; }
+}
+
+/// <summary>An open interference detection session. Done closes it and must always be called.</summary>
+public interface IInterferenceSession
+{
+    /// <summary>Every interference SOLIDWORKS found.</summary>
+    IReadOnlyList<InterferenceFacts> Read();
+
+    /// <summary>Puts back what opening it set, then IInterferenceDetectionMgr.Done.</summary>
+    void Done();
+}
+
+/// <summary>One interference: the components (SOLIDWORKS' objects), the volume and box in mm.</summary>
+public sealed class InterferenceFacts
+{
+    public List<object> Components { get; } = new List<object>();
+
+    public double VolumeMm3 { get; set; }
+
+    public Box3? Box { get; set; }
 }
