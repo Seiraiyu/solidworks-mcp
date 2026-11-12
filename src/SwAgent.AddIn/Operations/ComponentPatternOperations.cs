@@ -176,3 +176,63 @@ public sealed class ComponentCircularPatternOperation : ComponentPatternOperatio
         return list;
     }
 }
+
+/// <summary>
+/// component.feature_pattern (design 455, Component patterns): the seeds onto every hole of a part's pattern or Hole
+/// Wizard feature. The holes are the driving feature's cylinders, merged per axis; each seed must sit on one, and every
+/// other hole must get one instance of it at the same distance from the axis and height along it.
+/// </summary>
+public sealed class ComponentFeaturePatternOperation : ComponentPatternOperation<ComponentFeaturePatternRequest>
+{
+    IReadOnlyList<HoleAxis> _holes = Array.Empty<HoleAxis>();
+
+    public ComponentFeaturePatternOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override ComponentPatternKind Kind => ComponentPatternKind.Feature;
+
+    protected override string? DocumentOf(ComponentFeaturePatternRequest request) => request.Document;
+
+    protected override IReadOnlyList<string> SeedsOf(ComponentFeaturePatternRequest request) => request.Components;
+
+    protected override object? Make(ISwDocument doc, ISwAssembly asm, ComponentFeaturePatternRequest r, IReadOnlyList<object> seeds, out string tried)
+    {
+        const string field = "/driving_feature";
+        if (string.IsNullOrWhiteSpace(r.DrivingFeature))
+            throw PatternRequests.Invalid(field, "driving_feature is empty; name a part's pattern or Hole Wizard feature in a component, such as CirPattern1@plate-1");
+        var feature = Services.References.Resolve(doc, r.DrivingFeature, field, ReferenceKind.Feature).Entity;
+        var owner = Services.References.ComponentOf(doc, feature)
+            ?? throw PatternRequests.Invalid(field, $"{r.DrivingFeature} is the assembly's own feature; name a part's pattern or Hole Wizard feature in a component, such as CirPattern1@plate-1");
+        string ownerName = asm.Identify(owner).Name;
+        if (SeedPlaces.Exists(s => string.Equals(s.Name, ownerName, StringComparison.OrdinalIgnoreCase)))
+            throw PatternRequests.Invalid(field, $"{r.DrivingFeature} belongs to {ownerName}, which is also a seed; a component cannot be repeated onto its own holes");
+        _holes = PatternGeometry.HoleAxes(asm.FeatureFaces(owner, feature));
+        if (_holes.Count < 2)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{r.DrivingFeature} makes {_holes.Count} hole(s) (cylindrical faces); component.feature_pattern needs a pattern or Hole Wizard feature with at least two holes, since each instance is checked against one. Use component.linear_pattern or component.circular_pattern instead",
+                new JsonObject { ["field"] = field, ["holes"] = _holes.Count });
+        }
+        for (int i = 0; i < SeedPlaces.Count; i++)
+        {
+            var (name, at) = SeedPlaces[i];
+            var nearest = _holes.OrderBy(h => PatternGeometry.LineOffset(h.Point, h.Axis, at.Origin)).First();
+            double off = PatternGeometry.LineOffset(nearest.Point, nearest.Axis, at.Origin);
+            if (off > Math.Max(nearest.RadiusMm, PatternGeometry.OriginToleranceMm))
+            {
+                throw new SwAgentException(ErrorCode.InvalidArgument,
+                    $"{name} is {off:0.###} mm from the axis of the nearest hole of {r.DrivingFeature}; put it on one of its holes first (component.place, or mate.add concentric), then pattern it",
+                    new JsonObject { ["field"] = $"/components/{i}", ["component"] = name, ["offset_mm"] = off });
+            }
+        }
+        return asm.FeaturePattern(seeds, feature, out tried);
+    }
+
+    protected override List<PatternInstance> Measure(ComponentFeaturePatternRequest request, IReadOnlyList<(string Name, Transform At)> instances, ComponentPatternResult result)
+    {
+        result.Holes = _holes.Count;
+        return PatternGeometry.MatchHoles(SeedPlaces, _holes, instances);
+    }
+}
