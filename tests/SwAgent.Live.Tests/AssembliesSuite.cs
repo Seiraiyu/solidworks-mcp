@@ -22,7 +22,7 @@ public sealed class AssembliesSuiteRun : LiveRun
 
 /// <summary>
 /// The assemblies live suite (design 455, Testing; plan 4.A covers assembly documents, components and the in-context
-/// precondition, cases 1 to 9; plan 4.B assembly references and inspection, cases 10 to 15): every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve does, in
+/// precondition, cases 1 to 9; plan 4.B assembly references and inspection, cases 10 to 15; plan 4.C mates and degrees of freedom, cases 16 to 20): every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve does, in
 /// [Step] order, and checks positions and states against exact values. It builds its own parts (diag.scratch_block) and
 /// assemblies in its scratch directory, records each before creating it, never ends SOLIDWORKS, stops the run if a
 /// document it did not create is open, and closes everything it made at the end. Skipped unless SWMCP_LIVE=1.
@@ -356,6 +356,69 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
         Assert.True(Math.Abs(expected.X - actual.X) <= 1e-6 && Math.Abs(expected.Y - actual.Y) <= 1e-6 && Math.Abs(expected.Z - actual.Z) <= 1e-6,
             $"{what}: expected {expected}, got {actual}");
 
+    /// <summary>A Ø10 x 30 mm pin (mpin: case 5 already made pin.SLDPRT) standing on the front plane (axis z, z 0 to 30), saved in scratch and closed.</summary>
+    async Task<string> ClosedPin(string name)
+    {
+        string path = New(name, ".SLDPRT");
+        await Call<DocumentNewRequest, DocumentNewResult>(new DocumentNewRequest { Type = DocumentType.Part, Path = path });
+        var sketch = await Call<SketchCreateRequest, SketchCreateResult>(new SketchCreateRequest
+        {
+            Document = path, On = "front", Circles = new List<SketchCircle> { new SketchCircle { Id = "c", Center = new Point2(0, 0), RadiusMm = 5 } },
+        });
+        await Call<FeatureExtrudeRequest, FeatureResult>(new FeatureExtrudeRequest { Document = path, Sketch = sketch.Sketch.Name, DepthMm = 30 });
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = path });
+        await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = path });
+        return path;
+    }
+
+    /// <summary>A 40 x 20 x 10 mm block with a Ø10 hole through it at (20, 10), saved in scratch and closed.</summary>
+    async Task<string> ClosedPlate(string name)
+    {
+        var block = await Call<DiagScratchBlockRequest, DocumentInfo>(new DiagScratchBlockRequest { Path = New(name, ".SLDPRT"), XMm = 40, YMm = 20, ZMm = 10 });
+        var sketch = await Call<SketchCreateRequest, SketchCreateResult>(new SketchCreateRequest
+        {
+            Document = block.Path, On = "front", Circles = new List<SketchCircle> { new SketchCircle { Id = "h", Center = new Point2(20, 10), RadiusMm = 5 } },
+        });
+        await Call<FeatureExtrudeRequest, FeatureResult>(new FeatureExtrudeRequest { Document = block.Path, Sketch = sketch.Sketch.Name, Mode = FeatureMode.Cut, End = ExtrudeEnd.ThroughAll });
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = block.Path });
+        await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = block.Path });
+        return block.Path!;
+    }
+
+    async Task<EntityInfo> PlaneFace(string asm, string component, Vector3 direction) =>
+        Assert.Single((await Call<ModelFindRequest, ModelFindResult>(new ModelFindRequest
+        {
+            Document = asm, Component = component, Kind = TopologyKind.Face, Geometry = GeometryType.Plane, Direction = direction,
+        })).Entities);
+
+    async Task<EntityInfo> CylinderFace(string asm, string component) =>
+        Assert.Single((await Call<ModelFindRequest, ModelFindResult>(new ModelFindRequest
+        {
+            Document = asm, Component = component, Kind = TopologyKind.Face, Geometry = GeometryType.Cylinder,
+        })).Entities);
+
+    Task<MateAddResult> Mate(string asm, MateType type, string a, string b, double? distance = null, double? angle = null) =>
+        Call<MateAddRequest, MateAddResult>(new MateAddRequest
+        {
+            Document = asm, Type = type, Entities = { new MateEntity { Entity = a }, new MateEntity { Entity = b } }, DistanceMm = distance, AngleDeg = angle,
+        });
+
+    static void Holds(MateAddResult r) =>
+        Assert.All(r.Measured, m => Assert.True(Math.Abs(m.Measured - m.Expected) <= m.Tolerance, $"{r.Mate.Name} {m.Condition}: {m.Measured}, expected {m.Expected}"));
+
+    static readonly Vector3 Up = new Vector3(0, 0, 1), Down = new Vector3(0, 0, -1), Front = new Vector3(0, -1, 0), Left = new Vector3(-1, 0, 0);
+
+    /// <summary>The distance from a point to the line through origin along axis, mm (the suite's own arithmetic, independent of the add-in's).</summary>
+    static double LineOffset(Point3 origin, Vector3 axis, Point3 point)
+    {
+        double dx = point.X - origin.X, dy = point.Y - origin.Y, dz = point.Z - origin.Z;
+        double cx = dy * axis.Z - dz * axis.Y, cy = dz * axis.X - dx * axis.Z, cz = dx * axis.Y - dy * axis.X;
+        return Math.Sqrt(cx * cx + cy * cy + cz * cz) / Math.Sqrt(axis.X * axis.X + axis.Y * axis.Y + axis.Z * axis.Z);
+    }
+
+    async Task<Dictionary<string, Transform>> Placements(string asm) =>
+        (await Components(asm, recursive: true)).Components.ToDictionary(c => c.Name, c => c.Transform);
+
     [SkippableFact, Step(10)]
     public Task A_components_face_is_named_three_ways_in_the_assembly() => _run.CaseAsync(10, "a component's face by assembly reference and by {component, entity}; its planes by name@component; all in assembly coordinates", async () =>
     {
@@ -602,7 +665,153 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
     });
 
     [SkippableFact, Step(16)]
-    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(16, "the suite's documents closed", async () =>
+    public Task Concentric_coincident_parallel_and_distance_hold_as_measured() => _run.CaseAsync(16, "mate.add concentric, coincident, parallel, distance: each measured, the solve's moves reported", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string plate = await ClosedPlate("plate");
+        string pin = await ClosedPin("mpin");
+        string block = await ClosedBlock("mblock", 40, 20, 10);
+        string asm = await NewAssembly("mates");
+        await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = plate });
+        await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = pin, At = new Point3(60, 0, 0) });
+        await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = block, At = new Point3(0, 40, 0) });
+        string plateC = Path.GetFileNameWithoutExtension(plate) + "-1", pinC = Path.GetFileNameWithoutExtension(pin) + "-1", blockC = Path.GetFileNameWithoutExtension(block) + "-1";
+
+        var hole = await CylinderFace(asm, plateC);
+        var concentric = await Mate(asm, MateType.Concentric, (await CylinderFace(asm, pinC)).Reference!, hole.Reference!);
+        Holds(concentric);
+        Assert.Contains(concentric.Change.Moved, m => m.Name == pinC);
+        var side = await CylinderFace(asm, pinC);
+        Near(0, LineOffset(hole.Origin!, hole.Axis!, side.Origin!), "the pin's axis from the hole's, read again");
+
+        var flush = await Mate(asm, MateType.Coincident, (await PlaneFace(asm, pinC, Up)).Reference!, (await PlaneFace(asm, plateC, Up)).Reference!);
+        Holds(flush);
+        Near(10, (await PlaneFace(asm, pinC, Up)).Origin!.Z, "the pin's top, flush with the plate's");
+
+        var seat = await Mate(asm, MateType.Coincident, (await PlaneFace(asm, blockC, Down)).Reference!, (await PlaneFace(asm, plateC, Up)).Reference!);
+        Holds(seat);
+        var square = await Mate(asm, MateType.Parallel, (await PlaneFace(asm, blockC, Front)).Reference!, (await PlaneFace(asm, plateC, Front)).Reference!);
+        Holds(square);
+        var gap = await Mate(asm, MateType.Distance, (await PlaneFace(asm, blockC, Left)).Reference!, (await PlaneFace(asm, plateC, Left)).Reference!, distance: 15);
+        Holds(gap);
+        Near(15, Math.Abs((await PlaneFace(asm, blockC, Left)).Origin!.X), "the block's left face, read again");
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        return $"{concentric.Mate.Name} {concentric.Mate.Alignment} moved {string.Join(", ", concentric.Change.Moved.Select(m => m.Name))}; " +
+               $"{flush.Mate.Name} {flush.Mate.Alignment}; {seat.Mate.Name}; {square.Mate.Name}; {gap.Mate.Name} {gap.Measured[0].Measured} mm";
+    });
+
+    [SkippableFact, Step(17)]
+    public Task Perpendicular_angle_tangent_and_lock_with_edit_and_delete() => _run.CaseAsync(17, "perpendicular then deleted; angle 30 edited to 45, suppressed and back; tangent; lock fully defines", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string asm = LiveScratchPath("mates", ".SLDASM");
+        string block = LiveScratchPath("mblock", ".SLDPRT"), pin = LiveScratchPath("mpin", ".SLDPRT");
+        var b2 = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = block, At = new Point3(0, -60, 0) })).Component.Name;
+        var p2 = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = pin, At = new Point3(80, 0, 20) })).Component.Name;
+        var b3 = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = block, At = new Point3(0, 100, 0) })).Component.Name;
+        string plateC = "plate-1";
+
+        var perpendicular = await Mate(asm, MateType.Perpendicular, (await PlaneFace(asm, b2, Up)).Reference!, (await PlaneFace(asm, plateC, Front)).Reference!);
+        Holds(perpendicular);
+        var before = await Placements(asm);
+        var deleted = await Call<MateDeleteRequest, MateDeleteResult>(new MateDeleteRequest { Document = asm, Mates = { perpendicular.Mate.Reference! } });
+        Assert.Contains(b2, deleted.Stayed);
+        Assert.Empty(deleted.Change.Moved);
+        var after = await Placements(asm);
+        Near(before[b2].Origin.Y, after[b2].Origin.Y, "the block stays where the deleted mate left it");
+
+        var angle = await Mate(asm, MateType.Angle, (await PlaneFace(asm, b2, Front)).Reference!, (await PlaneFace(asm, plateC, Front)).Reference!, angle: 30);
+        Holds(angle);
+        var edited = await Call<MateEditRequest, MateEditResult>(new MateEditRequest { Document = asm, Mate = angle.Mate.Reference!, AngleDeg = 45 });
+        Assert.All(edited.Measured, m => Assert.True(Math.Abs(m.Measured - m.Expected) <= m.Tolerance, $"{m.Condition} {m.Measured}"));
+        Near(45, edited.Mate.AngleDeg!.Value, "the angle read back");
+        Assert.True((await Call<MateEditRequest, MateEditResult>(new MateEditRequest { Document = asm, Mate = angle.Mate.Name, Suppressed = true })).Mate.Suppressed);
+        Assert.False((await Call<MateEditRequest, MateEditResult>(new MateEditRequest { Document = asm, Mate = angle.Mate.Name, Suppressed = false })).Mate.Suppressed);
+
+        var tangent = await Mate(asm, MateType.Tangent, (await CylinderFace(asm, p2)).Reference!, (await PlaneFace(asm, plateC, Up)).Reference!);
+        Holds(tangent);
+        var locked = await Mate(asm, MateType.Lock, b3, plateC);
+        Holds(locked);
+        Assert.Equal(Constraint.FullyDefined, locked.Change.Constraints.Single(c => c.Name == b3).Constraint);
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        return $"{perpendicular.Mate.Name} 90° then deleted ({b2} stayed); {angle.Mate.Name} {angle.Measured[0].Measured}° then {edited.Measured[0].Measured}°, suppressed and back; " +
+               $"{tangent.Mate.Name} {tangent.Measured[0].Measured} mm; {locked.Mate.Name} {b3} fully defined";
+    });
+
+    [SkippableFact, Step(18)]
+    public Task Degrees_of_freedom_are_what_the_mates_leave() => _run.CaseAsync(18, "assembly.dof: fixed, fully defined, one coincident face (2 + 1), a concentric pin (1 + 1), the flush pin (0 + 1); mate.list by component", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string asm = LiveScratchPath("mates", ".SLDASM");
+        string block = LiveScratchPath("mblock", ".SLDPRT"), pin = LiveScratchPath("mpin", ".SLDPRT");
+        var b4 = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = block, At = new Point3(0, 140, 0) })).Component.Name;
+        var p3 = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = pin, At = new Point3(100, 0, 0) })).Component.Name;
+        Holds(await Mate(asm, MateType.Coincident, (await PlaneFace(asm, b4, Down)).Reference!, (await PlaneFace(asm, "plate-1", Up)).Reference!));
+        Holds(await Mate(asm, MateType.Concentric, (await CylinderFace(asm, p3)).Reference!, (await CylinderFace(asm, "plate-1")).Reference!));
+        var dof = (await Call<AssemblyDofRequest, AssemblyDofResult>(new AssemblyDofRequest { Document = asm })).Components.ToDictionary(c => c.Name);
+        Assert.Equal(Constraint.Fixed, dof["plate-1"].Constraint);
+        Assert.Equal(Constraint.FullyDefined, dof["mblock-3"].Constraint);
+        string Counts(ComponentFreedom f) => $"{f.Constraint} {f.FreeTranslations?.ToString() ?? "?"}+{f.FreeRotations?.ToString() ?? "?"}{(f.Note == null ? "" : $" ({f.Note})")}";
+        string report = $"plate-1 {Counts(dof["plate-1"])}; mblock-3 {Counts(dof["mblock-3"])}; {b4} {Counts(dof[b4])}; {p3} {Counts(dof[p3])}; mpin-1 {Counts(dof["mpin-1"])}";
+        // The gap branch (plan 4.C, Task 14): SOLIDWORKS 2026 SP4 answered GetRemainingDOFs Unavailable for mated
+        // components, so the constrained state is asserted always, and the counts only where SOLIDWORKS gave them.
+        void Free(ComponentFreedom f, int translations, int rotations, string what)
+        {
+            Assert.True(f.Constraint == Constraint.UnderDefined, $"{what}: {report}");
+            if (f.FreeTranslations == null || f.FreeRotations == null) Assert.False(string.IsNullOrEmpty(f.Note), $"{what}: no counts and no note: {report}");
+            else Assert.True(f.FreeTranslations == translations && f.FreeRotations == rotations, $"{what}: {report}");
+        }
+        Free(dof[b4], 2, 1, "one coincident face");
+        Free(dof[p3], 1, 1, "a concentric pin");
+        Free(dof["mpin-1"], 0, 1, "the flush pin");
+        var pinMates = await Call<MateListRequest, MateListResult>(new MateListRequest { Document = asm, Component = "mpin-1" });
+        Assert.Equal(2, pinMates.Mates.Count);
+        Assert.All(pinMates.Mates, m => Assert.Contains(m.Entities, e => e.Component == "mpin-1"));
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        return report + $"; mpin-1's mates {string.Join(", ", pinMates.Mates.Select(m => $"{m.Name} ({m.Type})"))}";
+    });
+
+    [SkippableFact, Step(19)]
+    public Task An_over_defining_mate_is_rolled_back_with_every_component_back() => _run.CaseAsync(19, "a distance mate fighting the flush coincident: refused, the mate gone, every component where it was", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string asm = LiveScratchPath("mates", ".SLDASM");
+        var before = await Placements(asm);
+        int mates = (await Call<MateListRequest, MateListResult>(new MateListRequest { Document = asm })).Mates.Count;
+        string pinTop = (await PlaneFace(asm, "mpin-1", Up)).Reference!, plateTop = (await PlaneFace(asm, "plate-1", Up)).Reference!;
+        var refused = await Refused(() => Mate(asm, MateType.Distance, pinTop, plateTop, distance: 5));
+        Assert.True(refused.Code == ErrorCode.OperationFailed || refused.Code == ErrorCode.VerificationFailed, $"{refused.Code}: {refused.Message}");
+        Assert.False(refused.Error.Details != null && refused.Error.Details.TryGetValue("rollback_failed", out var rf) && rf is true, "the rollback itself failed: " + refused.Message);
+        Assert.Equal(mates, (await Call<MateListRequest, MateListResult>(new MateListRequest { Document = asm })).Mates.Count);
+        var after = await Placements(asm);
+        foreach (var (name, was) in before)
+        {
+            Near(was.Origin.X, after[name].Origin.X, $"{name} x after the rollback");
+            Near(was.Origin.Y, after[name].Origin.Y, $"{name} y after the rollback");
+            Near(was.Origin.Z, after[name].Origin.Z, $"{name} z after the rollback");
+            Along(was.ZAxis, after[name].ZAxis, $"{name} z axis after the rollback");
+        }
+        string restored = "none needed";
+        if (refused.Error.Details != null && refused.Error.Details.TryGetValue("positions_restored", out var p) && p is List<object?> put) restored = string.Join(", ", put);
+        return $"{WireNames.ForEnum(refused.Code)}: {refused.Message}; components put back: {restored}; all {before.Count} where they were";
+    });
+
+    [SkippableFact, Step(20)]
+    public Task A_mates_reference_goes_stale_with_its_component() => _run.CaseAsync(20, "component.delete takes a component's mates; their references are reference_unresolved", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string asm = LiveScratchPath("mates", ".SLDASM");
+        var mate = Assert.Single((await Call<MateListRequest, MateListResult>(new MateListRequest { Document = asm, Component = "mblock-4" })).Mates);
+        var gone = await Call<ComponentDeleteRequest, ComponentDeleteResult>(new ComponentDeleteRequest { Document = asm, Components = { "mblock-4" } });
+        Assert.Contains(mate.Name, gone.MatesDeleted);
+        var stale = await Refused(() => Call<MateEditRequest, MateEditResult>(new MateEditRequest { Document = asm, Mate = mate.Reference!, Suppressed = true }));
+        Assert.Equal(ErrorCode.ReferenceUnresolved, stale.Code);
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        return $"{mate.Name} went with mblock-4; its reference: {stale.Error.Details?["reason"]}";
+    });
+
+    [SkippableFact, Step(21)]
+    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(21, "the suite's documents closed", async () =>
     {
         var state = await _run.RequireOnlyOwnDocumentsAsync();
         int closed = 0;

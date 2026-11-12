@@ -277,12 +277,16 @@ sealed partial class FakeDocument
 
     int _measures;
 
+    /// <summary>When set, ClosestDistance answers this instead of the distance between origins (a tangent cylinder's surface, not its axis).</summary>
+    public Func<object, object, double>? Closest { get; set; }
+
     /// <summary>The distance between the two entities' origins, which are the closest points.</summary>
     public double ClosestDistance(object a, object b, out Point3 onA, out Point3 onB)
     {
         if (MeasureFails) throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS could not measure between them");
         onA = ((FakeEntity)a).Info.Origin ?? new Point3(0, 0, 0);
         onB = ((FakeEntity)b).Info.Origin ?? new Point3(0, 0, 0);
+        if (Closest != null) return Closest(a, b);
         return Math.Sqrt(Math.Pow(onA.X - onB.X, 2) + Math.Pow(onA.Y - onB.Y, 2) + Math.Pow(onA.Z - onB.Z, 2)) + MeasureDrift * _measures++;
     }
 

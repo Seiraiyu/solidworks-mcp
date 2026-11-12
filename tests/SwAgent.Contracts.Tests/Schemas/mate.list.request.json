@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "description": "Lists an assembly's mates in tree order, all of them or those of one component: name, reference, type (and SOLIDWORKS' own type name for advanced and mechanical mates), the two things each joins (each naming its component, in the assembly's coordinates), alignment, distance or angle, whether it is suppressed, and its error. The assembly's own mates only; a subassembly's are in its own document. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "component": {
+      "type": "string",
+      "description": "Only the mates of this component: its reference or name (bracket-1)."
+    }
+  },
+  "additionalProperties": false
+}

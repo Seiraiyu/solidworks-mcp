@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using SolidWorks.Interop.sldworks;
 using SolidWorks.Interop.swconst;
 using SwAgent.AddIn.Core;
@@ -299,6 +300,185 @@ internal sealed class SolidWorksAssembly : ISwAssembly
         int count = 0;
         for (var f = group?.GetFirstSubFeature() as IFeature; f != null; f = f.GetNextSubFeature() as IFeature) count++;
         return count;
+    }
+
+    public IReadOnlyList<object> Mates()
+    {
+        var list = new List<object>();
+        for (var f = MateGroup()?.GetFirstSubFeature() as IFeature; f != null; f = f.GetNextSubFeature() as IFeature)
+        {
+            if (f.GetSpecificFeature2() is IMate2) list.Add(f);
+        }
+        return list;
+    }
+
+    public object? MateByName(string name) =>
+        Mates().Cast<IFeature>().FirstOrDefault(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    public MateFacts ReadMate(object mate)
+    {
+        var f = (IFeature)mate;
+        var m = (IMate2)f.GetSpecificFeature2();
+        int type = m.Type;
+        int error = f.GetErrorCode2(out bool _);
+        var facts = new MateFacts
+        {
+            Name = f.Name,
+            Type = SolidWorksCodes.MateTypeOf(type),
+            SolidWorksType = SolidWorksCodes.MateTypeName(type),
+            Alignment = type == (int)swMateType_e.swMateLOCK || type == (int)swMateType_e.swMatePERPENDICULAR ? (MateAlignment?)null : SolidWorksCodes.AlignmentOf(m.Alignment),
+            Flipped = m.Flipped,
+            Suppressed = f.IsSuppressed2((int)swInConfigurationOpts_e.swThisConfiguration, null) is bool[] s && s.Length > 0 && s[0],
+            Error = error == 0 ? null : SolidWorksCodes.FeatureError(error),
+        };
+        switch (f.GetDefinition())
+        {
+            case IDistanceMateFeatureData d:
+                facts.DistanceMm = d.Distance * Mm;
+                break;
+            case IAngleMateFeatureData a:
+                facts.AngleDeg = a.Angle * 180 / Math.PI;
+                break;
+        }
+        string own = _doc.GetPathName() ?? "";
+        for (int i = 0; i < m.GetMateEntityCount(); i++)
+        {
+            var side = m.MateEntity(i);
+            // The assembly's own planes come back with the root component, which is no component of ours.
+            var component = side.ReferenceComponent is IComponent2 c && !string.IsNullOrEmpty(c.Name2) && !string.Equals(c.GetPathName(), own, StringComparison.OrdinalIgnoreCase) ? c : null;
+            object? entity = type == (int)swMateType_e.swMateLOCK ? component : side.Reference;
+            if (entity != null) facts.Entities.Add((component, entity));
+        }
+        return facts;
+    }
+
+    /// <summary>
+    /// Selects the two sides (IEntity.Select4, IFeature.Select2, IComponent2.Select4), then IAssemblyDoc.AddMate5 on the
+    /// selection. Not CreateMate: its EntitiesToMate is a SAFEARRAY of dispatch, the kind of setter that crashed
+    /// SOLIDWORKS 2026 SP4 in plan 4.B (IMassProperty2.SelectedItems); selecting is how SetFixed and Delete work, proven live.
+    /// </summary>
+    public object? AddMate(MateSpec spec, out string? error)
+    {
+        error = null;
+        int before = Mates().Count;
+        _doc.ClearSelection2(true);
+        try
+        {
+            foreach (var entity in spec.Entities)
+            {
+                bool selected = entity switch
+                {
+                    IComponent2 c => c.Select4(true, null, false),
+                    IFeature f => f.Select2(true, 0),
+                    IEntity e => e.Select4(true, null),
+                    _ => false,
+                };
+                if (!selected) throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS would not select a {entity.GetType().Name} to mate it");
+            }
+            double distance = (spec.DistanceMm ?? 0) / Mm, angle = (spec.AngleDeg ?? 0) * Math.PI / 180;
+            _asm.AddMate5(SolidWorksCodes.MateType(spec.Type), SolidWorksCodes.Align(spec.Alignment ?? MateAlignment.Closest), spec.Flip,
+                distance, distance, distance, 1, 1, angle, angle, angle, false, false, 0, out int status);
+            if (status != (int)swAddMateError_e.swAddMateError_NoError) error = SolidWorksCodes.AddMateError(status);
+        }
+        finally
+        {
+            _doc.ClearSelection2(true);
+        }
+        var all = Mates();
+        if (all.Count <= before) return null;
+        // SOLIDWORKS appends a new mate to the end of the MateGroup.
+        var made = (IFeature)all[all.Count - 1];
+        if (spec.Name != null) made.Name = spec.Name;
+        return made;
+    }
+
+    public bool EditMate(object mate, MateSpec spec)
+    {
+        var f = (IFeature)mate;
+        object data = f.GetDefinition();
+        int? align = spec.Alignment is MateAlignment a ? SolidWorksCodes.Align(a) : (int?)null;
+        switch (data)
+        {
+            case IDistanceMateFeatureData d:
+                if (spec.DistanceMm is double mm) d.Distance = mm / Mm;
+                if (align != null) d.MateAlignment = align.Value;
+                d.FlipDimension = spec.Flip;
+                break;
+            case IAngleMateFeatureData g:
+                if (spec.AngleDeg is double deg) g.Angle = deg * Math.PI / 180;
+                if (align != null) g.MateAlignment = align.Value;
+                g.FlipDimension = spec.Flip;
+                break;
+            case ICoincidentMateFeatureData c when align != null:
+                c.MateAlignment = align.Value;
+                break;
+            case IConcentricMateFeatureData c when align != null:
+                c.MateAlignment = align.Value;
+                break;
+            case IParallelMateFeatureData c when align != null:
+                c.MateAlignment = align.Value;
+                break;
+            case ITangentMateFeatureData c when align != null:
+                c.MateAlignment = align.Value;
+                break;
+        }
+        bool ok = f.ModifyDefinition(data, _doc, null);
+        _doc.EditRebuild3();
+        return ok;
+    }
+
+    public bool SetMateSuppressed(object mate, bool suppressed) =>
+        ((IFeature)mate).SetSuppression2(
+            suppressed ? (int)swFeatureSuppressionAction_e.swSuppressFeature : (int)swFeatureSuppressionAction_e.swUnSuppressFeature,
+            (int)swInConfigurationOpts_e.swThisConfiguration, null);
+
+    public void DeleteMates(IReadOnlyList<object> mates)
+    {
+        _doc.ClearSelection2(true);
+        try
+        {
+            foreach (IFeature f in mates)
+            {
+                if (!f.Select2(true, 0)) throw new SwAgentException(ErrorCode.ApiError, $"the mate {f.Name} could not be selected to delete it");
+            }
+            if (!_doc.Extension.DeleteSelection2((int)swDeleteSelectionOptions_e.swDelete_Absorbed))
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not delete {string.Join(", ", mates.Cast<IFeature>().Select(f => f.Name))}");
+        }
+        finally
+        {
+            _doc.ClearSelection2(true);
+        }
+    }
+
+    /// <summary>IComponent2.GetRemainingDOFs: two rotations (point and direction each), then two translations; points in metres.</summary>
+    /// <remarks>
+    /// Live 4.C run (SOLIDWORKS 2026 SP4): every under-defined, mated component answered swRemainingDofs_Unavailable,
+    /// and selecting it first (as Move Component has it) changed nothing, so it is not selected: a read must not clear
+    /// the user's selection.
+    /// </remarks>
+    public RemainingDofs? RemainingDofs(object component)
+    {
+        try
+        {
+            int result = ((IComponent2)component).GetRemainingDOFs(
+                out int r1PointStatus, out MathPoint r1Point, out int r1Status, out MathVector r1Dir,
+                out int r2PointStatus, out MathPoint r2Point, out int r2Status, out MathVector r2Dir,
+                out int t1Status, out MathVector t1Dir, out int t2Status, out MathVector t2Dir);
+            var dofs = new RemainingDofs { Result = result };
+            dofs.Rotations.Add(new DofSlot(r1Status, Direction(r1Dir), Point(r1Point)));
+            dofs.Rotations.Add(new DofSlot(r2Status, Direction(r2Dir), Point(r2Point)));
+            dofs.Translations.Add(new DofSlot(t1Status, Direction(t1Dir)));
+            dofs.Translations.Add(new DofSlot(t2Status, Direction(t2Dir)));
+            return dofs;
+        }
+        catch (COMException)
+        {
+            return null;
+        }
+
+        static Vector3? Direction(MathVector? v) => v?.ArrayData is double[] a && a.Length >= 3 ? new Vector3(a[0], a[1], a[2]) : null;
+
+        static Point3? Point(MathPoint? p) => p?.ArrayData is double[] a && a.Length >= 3 ? new Point3(a[0] * Mm, a[1] * Mm, a[2] * Mm) : null;
     }
 
     IFeature? MateGroup()

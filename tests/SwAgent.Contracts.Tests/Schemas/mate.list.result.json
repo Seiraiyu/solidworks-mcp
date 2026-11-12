@@ -1,0 +1,343 @@
+{
+  "type": "object",
+  "description": "An assembly's mates.",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "False for a document SOLIDWORKS loaded only because an open assembly uses it: it has no window of its own."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty",
+        "visible"
+      ],
+      "additionalProperties": false,
+      "description": "The assembly."
+    },
+    "mates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A mate of an assembly.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Its name as SOLIDWORKS shows it, for example Coincident1."
+          },
+          "reference": {
+            "type": "string",
+            "description": "Its persistent reference (r1.mate.…). References are opaque: pass one back exactly as it was given, and never build or change one."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "coincident",
+              "parallel",
+              "perpendicular",
+              "tangent",
+              "concentric",
+              "lock",
+              "distance",
+              "angle"
+            ],
+            "description": "Its type, for the standard mates; absent for an advanced or mechanical mate (solid_works_type says which)."
+          },
+          "solid_works_type": {
+            "type": "string",
+            "description": "SOLIDWORKS' own name for its type (swMateType_e), for example swMateCOINCIDENT."
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "A face, edge, vertex, feature, plane, axis or point, with its reference and a short geometric description. Lengths in mm, areas in mm².",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "face",
+                    "edge",
+                    "vertex",
+                    "feature",
+                    "sketch",
+                    "sketch_entity",
+                    "sketch_point",
+                    "plane",
+                    "axis",
+                    "point",
+                    "dimension",
+                    "component",
+                    "mate"
+                  ],
+                  "description": "What it is."
+                },
+                "reference": {
+                  "type": "string",
+                  "description": "Its persistent reference (r1.<kind>.…), to pass to other operations; absent when SOLIDWORKS cannot give one. References are opaque: pass one back exactly as it was given, and never build or change one."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Its name, for features, planes, axes and points."
+                },
+                "component": {
+                  "type": "string",
+                  "description": "In an assembly, the component it belongs to (bracket-1; sub-1/pin-1 inside a subassembly); absent for the assembly's own planes, axes and origin, and in a part. Its position, direction and box are in the assembly's coordinates."
+                },
+                "feature": {
+                  "type": "string",
+                  "description": "The feature that made it, for faces, edges and vertices. An edge or vertex where several features meet names the first; see features."
+                },
+                "features": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "For edges and vertices, every feature that made a face it lies on: the circular edge of a hole cut in a boss belongs to both."
+                },
+                "geometry": {
+                  "type": "string",
+                  "enum": [
+                    "plane",
+                    "cylinder",
+                    "cone",
+                    "sphere",
+                    "torus",
+                    "line",
+                    "circle",
+                    "ellipse",
+                    "spline",
+                    "point",
+                    "other"
+                  ],
+                  "description": "Its shape: plane, cylinder, cone, sphere, torus, line, circle, ellipse, spline, point or other."
+                },
+                "area_mm2": {
+                  "type": "number",
+                  "description": "Area of a face, mm²."
+                },
+                "length_mm": {
+                  "type": "number",
+                  "description": "Length of an edge, mm."
+                },
+                "normal": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "description": "X component."
+                    },
+                    "y": {
+                      "type": "number",
+                      "description": "Y component."
+                    },
+                    "z": {
+                      "type": "number",
+                      "description": "Z component."
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y",
+                    "z"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Outward normal of a planar face, or the normal of a plane."
+                },
+                "axis": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "description": "X component."
+                    },
+                    "y": {
+                      "type": "number",
+                      "description": "Y component."
+                    },
+                    "z": {
+                      "type": "number",
+                      "description": "Z component."
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y",
+                    "z"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Axis of a cylinder, cone, circle or axis; direction of a line."
+                },
+                "origin": {
+                  "type": "object",
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "description": "X, mm."
+                    },
+                    "y": {
+                      "type": "number",
+                      "description": "Y, mm."
+                    },
+                    "z": {
+                      "type": "number",
+                      "description": "Z, mm."
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y",
+                    "z"
+                  ],
+                  "additionalProperties": false,
+                  "description": "A point on it: a planar face's or edge's centre, a circle's or cylinder's centre on its axis, a vertex or point itself."
+                },
+                "radius_mm": {
+                  "type": "number",
+                  "description": "Radius of a cylinder, cone base, sphere, torus or circle, mm."
+                },
+                "box": {
+                  "type": "object",
+                  "properties": {
+                    "min": {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "type": "number",
+                          "description": "X, mm."
+                        },
+                        "y": {
+                          "type": "number",
+                          "description": "Y, mm."
+                        },
+                        "z": {
+                          "type": "number",
+                          "description": "Z, mm."
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y",
+                        "z"
+                      ],
+                      "additionalProperties": false,
+                      "description": "The corner with the smallest coordinates."
+                    },
+                    "max": {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "type": "number",
+                          "description": "X, mm."
+                        },
+                        "y": {
+                          "type": "number",
+                          "description": "Y, mm."
+                        },
+                        "z": {
+                          "type": "number",
+                          "description": "Z, mm."
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y",
+                        "z"
+                      ],
+                      "additionalProperties": false,
+                      "description": "The corner with the largest coordinates."
+                    }
+                  },
+                  "required": [
+                    "min",
+                    "max"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Its axis-aligned bounding box, for faces only."
+                },
+                "distance_mm": {
+                  "type": "number",
+                  "description": "Distance from the point model.find was asked to be near, mm."
+                }
+              },
+              "required": [
+                "kind",
+                "geometry"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The two things it joins, each in the assembly's coordinates and naming its component."
+          },
+          "alignment": {
+            "type": "string",
+            "enum": [
+              "aligned",
+              "anti_aligned",
+              "closest"
+            ],
+            "description": "Which way its sides face, as SOLIDWORKS holds it."
+          },
+          "flipped": {
+            "type": "boolean",
+            "description": "True when its dimension is flipped to the other side."
+          },
+          "distance_mm": {
+            "type": "number",
+            "description": "A distance mate's distance, mm."
+          },
+          "angle_deg": {
+            "type": "number",
+            "description": "An angle mate's angle, degrees."
+          },
+          "suppressed": {
+            "type": "boolean",
+            "description": "True when it is suppressed in the active configuration."
+          },
+          "error": {
+            "type": "string",
+            "description": "SOLIDWORKS' error for it (swFeatureError_e), absent when it has none."
+          }
+        },
+        "required": [
+          "name",
+          "solid_works_type",
+          "entities",
+          "flipped",
+          "suppressed"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Its mates in tree order."
+    }
+  },
+  "required": [
+    "document",
+    "mates"
+  ],
+  "additionalProperties": false
+}

@@ -50,7 +50,7 @@ sealed partial class FakeDocument
 }
 
 /// <summary>An assembly for operation tests: components, mates by name, and the user's in-context edit.</summary>
-sealed class FakeAssembly : ISwAssembly
+sealed partial class FakeAssembly : ISwAssembly
 {
     readonly FakeDocument _doc;
     int _instances;
@@ -295,6 +295,11 @@ sealed class FakeAssembly : ISwAssembly
 
     void Remove(FakeComponent c)
     {
+        foreach (var m in MateItems.Where(m => c.Mates.Contains(m.Facts.Name)).ToList())
+        {
+            MateItems.Remove(m);
+            m.Entity.State = PersistState.Deleted;
+        }
         Items.Remove(c);
         c.Entity.State = PersistState.Deleted;
         foreach (var mate in c.Mates)

@@ -371,7 +371,10 @@ internal sealed partial class SolidWorksDocument : ISwDocument
         "OriginProfileFeature" => ReferenceKind.Point,
         "ProfileFeature" => ReferenceKind.Sketch,
         "3DProfileFeature" => ReferenceKind.Sketch,
-        _ => ReferenceKind.Feature,
+        // Mates are features of the assembly's MateGroup: MateCoincident, MateDistanceDim, MatePlanarAngleDim, MateLock, ...
+        _ => typeName.StartsWith("Mate", StringComparison.Ordinal) && typeName != "MateGroup" && !typeName.StartsWith("MateReference", StringComparison.Ordinal)
+            ? ReferenceKind.Mate
+            : ReferenceKind.Feature,
     };
 
     public EntityInfo Describe(object entity) => entity switch

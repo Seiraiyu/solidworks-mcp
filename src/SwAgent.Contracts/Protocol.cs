@@ -10,7 +10,8 @@ public static class Protocol
     /// 6: sheet-metal flanges and hems: sheetmetal.edge_flange, sheetmetal.miter_flange, sheetmetal.hem.
     /// 7: assembly-context references (payload versions 3 and 4, EntityInfo.component), model, selection and configuration operations on assemblies.
     /// 8: sheet-metal bends and flattening: sheetmetal.sketched_bend, sheetmetal.flatten, sheetmetal.unfold, sheetmetal.fold, sheetmetal.convert.
-    public const int Version = 8;
+    /// 9: mates and degrees of freedom: mate.add, mate.edit, mate.delete, mate.list, assembly.dof; r1.mate references.
+    public const int Version = 9;
 
     public const string PipeNamePrefix = "solidworks-mcp-";
 

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using SwAgent.AddIn.Core;
 using SwAgent.Contracts;
 
 namespace SwAgent.AddIn;
@@ -91,6 +92,34 @@ public interface ISwAssembly
     /// <summary>Rebuilds the assembly, solving its mates.</summary>
     void Rebuild();
 
+    /// <summary>The assembly's own mates (its MateGroup's) in tree order; a subassembly's mates are in its own document.</summary>
+    IReadOnlyList<object> Mates();
+
+    /// <summary>The mate with this name, or null.</summary>
+    object? MateByName(string name);
+
+    /// <summary>A mate as SOLIDWORKS holds it: type, alignment, value, state, error, and the two things it joins.</summary>
+    MateFacts ReadMate(object mate);
+
+    /// <summary>
+    /// Makes a standard mate between <see cref="MateSpec.Entities"/> (two entities in the assembly's context, or two
+    /// components for lock). Returns the mate, or null when SOLIDWORKS made none; <paramref name="error"/> is
+    /// SOLIDWORKS' swAddMateError_e name whenever it reported one, also when it made the mate anyway (over defined).
+    /// </summary>
+    object? AddMate(MateSpec spec, out string? error);
+
+    /// <summary>Gives a mate the alignment, flip and value of <paramref name="spec"/>, in place; false when SOLIDWORKS refused.</summary>
+    bool EditMate(object mate, MateSpec spec);
+
+    /// <summary>Suppresses or unsuppresses a mate in the active configuration; false when SOLIDWORKS refused.</summary>
+    bool SetMateSuppressed(object mate, bool suppressed);
+
+    /// <summary>Deletes mates; the components stay where they are.</summary>
+    void DeleteMates(IReadOnlyList<object> mates);
+
+    /// <summary>What IComponent2.GetRemainingDOFs gives for a component (mm); null when SOLIDWORKS throws or gives nothing.</summary>
+    RemainingDofs? RemainingDofs(object component);
+
     /// <summary>Fault testing only (diag.edit_component): starts editing a component in context as the user would; false when SOLIDWORKS refused.</summary>
     bool EditInContext(object component);
 
@@ -113,4 +142,51 @@ public sealed class ComponentIdentity
     public string? Path { get; }
 
     public ComponentState State { get; }
+}
+
+/// <summary>A mate to make, or the values to give one.</summary>
+public sealed class MateSpec
+{
+    public MateType Type { get; set; }
+
+    /// <summary>The two sides, as resolved in the assembly; empty for an edit.</summary>
+    public IReadOnlyList<object> Entities { get; set; } = System.Array.Empty<object>();
+
+    public MateAlignment? Alignment { get; set; }
+
+    public bool Flip { get; set; }
+
+    public double? DistanceMm { get; set; }
+
+    public double? AngleDeg { get; set; }
+
+    public string? Name { get; set; }
+}
+
+/// <summary>A mate as SOLIDWORKS holds it.</summary>
+public sealed class MateFacts
+{
+    public string Name { get; set; } = "";
+
+    /// <summary>Null for an advanced or mechanical mate.</summary>
+    public MateType? Type { get; set; }
+
+    /// <summary>Its swMateType_e name.</summary>
+    public string SolidWorksType { get; set; } = "";
+
+    public MateAlignment? Alignment { get; set; }
+
+    public bool Flipped { get; set; }
+
+    public double? DistanceMm { get; set; }
+
+    public double? AngleDeg { get; set; }
+
+    public bool Suppressed { get; set; }
+
+    /// <summary>Its swFeatureError_e name, or null.</summary>
+    public string? Error { get; set; }
+
+    /// <summary>Each side: its component (null for the assembly's own plane, axis or point) and the entity (for lock, the component).</summary>
+    public List<(object? Component, object Entity)> Entities { get; } = new List<(object? Component, object Entity)>();
 }

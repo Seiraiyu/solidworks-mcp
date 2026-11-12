@@ -37,6 +37,12 @@ public abstract class AssemblyChangeOperation<TRequest, TResult> : Operation<TRe
     /// <summary>The operation's own exact checks, re-reading SOLIDWORKS rather than trusting what Change returned; throws when one fails.</summary>
     protected abstract void Check(ISwDocument doc, ISwAssembly asm, TRequest request, TResult result);
 
+    /// <summary>
+    /// Components whose constrained state the change set without moving, making or editing them (the two a mate joins):
+    /// listed in change.constraints with the ones it moved.
+    /// </summary>
+    protected virtual IEnumerable<string> Joined(TResult result) => Array.Empty<string>();
+
     /// <summary>The component <paramref name="text"/> names, by reference or name.</summary>
     protected object Component(ISwDocument doc, ISwAssembly asm, string text, string field) =>
         ComponentLookup.Find(Services.References, doc, asm, text, field);
@@ -69,7 +75,7 @@ public abstract class AssemblyChangeOperation<TRequest, TResult> : Operation<TRe
         try
         {
             Check(doc, asm, request, result);
-            result.Change = Evidence(doc, asm, tx, before);
+            result.Change = Evidence(doc, asm, tx, before, Joined(result));
         }
         catch (Exception e)
         {
@@ -135,7 +141,7 @@ public abstract class AssemblyChangeOperation<TRequest, TResult> : Operation<TRe
             details));
     }
 
-    static AssemblyChange Evidence(ISwDocument doc, ISwAssembly asm, ModelTransaction tx, Snapshot before)
+    static AssemblyChange Evidence(ISwDocument doc, ISwAssembly asm, ModelTransaction tx, Snapshot before, IEnumerable<string> joined)
     {
         var after = Snapshot.Take(asm);
         var moved = after.Components.Where(a => before.Components.TryGetValue(a.Key, out var b) && Placement.Moved(b.Transform, a.Value.Transform))
@@ -150,6 +156,7 @@ public abstract class AssemblyChangeOperation<TRequest, TResult> : Operation<TRe
         var touched = moved.Select(m => m.Name)
             .Concat(tx.Created.Where(c => c.Kind == ReferenceKind.Component).Select(c => c.Name))
             .Concat(tx.Changed.Select(c => c.Name))
+            .Concat(joined)
             .Where(after.Components.ContainsKey)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();

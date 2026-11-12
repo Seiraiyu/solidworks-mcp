@@ -21,6 +21,52 @@ public static class SolidWorksCodes
 
     public static IReadOnlyList<string> LoadWarnings(int flags) => Names<swFileLoadWarning_e>(flags);
 
+    /// <summary>The swMateType_e of a standard mate type.</summary>
+    public static int MateType(SwAgent.Contracts.MateType type) => (int)(type switch
+    {
+        SwAgent.Contracts.MateType.Coincident => swMateType_e.swMateCOINCIDENT,
+        SwAgent.Contracts.MateType.Parallel => swMateType_e.swMatePARALLEL,
+        SwAgent.Contracts.MateType.Perpendicular => swMateType_e.swMatePERPENDICULAR,
+        SwAgent.Contracts.MateType.Tangent => swMateType_e.swMateTANGENT,
+        SwAgent.Contracts.MateType.Concentric => swMateType_e.swMateCONCENTRIC,
+        SwAgent.Contracts.MateType.Lock => swMateType_e.swMateLOCK,
+        SwAgent.Contracts.MateType.Distance => swMateType_e.swMateDISTANCE,
+        _ => swMateType_e.swMateANGLE,
+    });
+
+    /// <summary>The standard mate type of an swMateType_e, or null for an advanced or mechanical mate.</summary>
+    public static SwAgent.Contracts.MateType? MateTypeOf(int swType) => (swMateType_e)swType switch
+    {
+        swMateType_e.swMateCOINCIDENT => SwAgent.Contracts.MateType.Coincident,
+        swMateType_e.swMatePARALLEL => SwAgent.Contracts.MateType.Parallel,
+        swMateType_e.swMatePERPENDICULAR => SwAgent.Contracts.MateType.Perpendicular,
+        swMateType_e.swMateTANGENT => SwAgent.Contracts.MateType.Tangent,
+        swMateType_e.swMateCONCENTRIC => SwAgent.Contracts.MateType.Concentric,
+        swMateType_e.swMateLOCK => SwAgent.Contracts.MateType.Lock,
+        swMateType_e.swMateDISTANCE => SwAgent.Contracts.MateType.Distance,
+        swMateType_e.swMateANGLE => SwAgent.Contracts.MateType.Angle,
+        _ => null,
+    };
+
+    public static string MateTypeName(int swType) => Enum.GetName(typeof(swMateType_e), swType) ?? $"unknown_{swType}";
+
+    public static string AddMateError(int code) => Enum.GetName(typeof(swAddMateError_e), code) ?? $"unknown_{code}";
+
+    /// <summary>swMateAlign_e: aligned 0, anti-aligned 1, closest 2.</summary>
+    public static int Align(SwAgent.Contracts.MateAlignment alignment) => alignment switch
+    {
+        SwAgent.Contracts.MateAlignment.AntiAligned => (int)swMateAlign_e.swMateAlignANTI_ALIGNED,
+        SwAgent.Contracts.MateAlignment.Closest => (int)swMateAlign_e.swMateAlignCLOSEST,
+        _ => (int)swMateAlign_e.swMateAlignALIGNED,
+    };
+
+    public static SwAgent.Contracts.MateAlignment AlignmentOf(int swAlign) => swAlign switch
+    {
+        1 => SwAgent.Contracts.MateAlignment.AntiAligned,
+        2 => SwAgent.Contracts.MateAlignment.Closest,
+        _ => SwAgent.Contracts.MateAlignment.Aligned,
+    };
+
     /// <summary>A feature's rebuild error code (IFeature.GetErrorCode2, What's Wrong) as its swFeatureError_e name.</summary>
     public static string FeatureError(int code) => Enum.GetName(typeof(swFeatureError_e), code) ?? $"unknown_{code}";
 

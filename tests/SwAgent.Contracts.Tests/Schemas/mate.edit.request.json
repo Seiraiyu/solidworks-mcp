@@ -1,0 +1,43 @@
+{
+  "type": "object",
+  "description": "Changes a standard mate in place, in the active configuration: a distance mate's distance_mm, an angle mate's angle_deg, the alignment, the flip, or whether it is suppressed. Give at least one. Checked by measuring as mate.add is (a suppressed mate imposes nothing, so only its state is checked); otherwise the old values are put back, and so is every component the solve moved. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "mate": {
+      "type": "string",
+      "description": "The mate: its reference (r1.mate.…) or its name (Distance1)."
+    },
+    "distance_mm": {
+      "type": "number",
+      "description": "A distance mate's new distance, mm, 0 or more."
+    },
+    "angle_deg": {
+      "type": "number",
+      "description": "An angle mate's new angle, degrees, 0 to 180."
+    },
+    "alignment": {
+      "type": "string",
+      "enum": [
+        "aligned",
+        "anti_aligned",
+        "closest"
+      ],
+      "description": "aligned, anti_aligned or closest. Not for lock or perpendicular."
+    },
+    "flip": {
+      "type": "boolean",
+      "description": "For distance and angle mates: the value on the other side (true) or not (false)."
+    },
+    "suppressed": {
+      "type": "boolean",
+      "description": "Suppress (true) or unsuppress (false) the mate in the active configuration."
+    }
+  },
+  "required": [
+    "mate"
+  ],
+  "additionalProperties": false
+}

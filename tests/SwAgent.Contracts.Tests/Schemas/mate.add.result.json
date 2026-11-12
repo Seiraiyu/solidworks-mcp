@@ -1,0 +1,634 @@
+{
+  "type": "object",
+  "description": "The mate added.",
+  "properties": {
+    "mate": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Its name as SOLIDWORKS shows it, for example Coincident1."
+        },
+        "reference": {
+          "type": "string",
+          "description": "Its persistent reference (r1.mate.…). References are opaque: pass one back exactly as it was given, and never build or change one."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "coincident",
+            "parallel",
+            "perpendicular",
+            "tangent",
+            "concentric",
+            "lock",
+            "distance",
+            "angle"
+          ],
+          "description": "Its type, for the standard mates; absent for an advanced or mechanical mate (solid_works_type says which)."
+        },
+        "solid_works_type": {
+          "type": "string",
+          "description": "SOLIDWORKS' own name for its type (swMateType_e), for example swMateCOINCIDENT."
+        },
+        "entities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A face, edge, vertex, feature, plane, axis or point, with its reference and a short geometric description. Lengths in mm, areas in mm².",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "face",
+                  "edge",
+                  "vertex",
+                  "feature",
+                  "sketch",
+                  "sketch_entity",
+                  "sketch_point",
+                  "plane",
+                  "axis",
+                  "point",
+                  "dimension",
+                  "component",
+                  "mate"
+                ],
+                "description": "What it is."
+              },
+              "reference": {
+                "type": "string",
+                "description": "Its persistent reference (r1.<kind>.…), to pass to other operations; absent when SOLIDWORKS cannot give one. References are opaque: pass one back exactly as it was given, and never build or change one."
+              },
+              "name": {
+                "type": "string",
+                "description": "Its name, for features, planes, axes and points."
+              },
+              "component": {
+                "type": "string",
+                "description": "In an assembly, the component it belongs to (bracket-1; sub-1/pin-1 inside a subassembly); absent for the assembly's own planes, axes and origin, and in a part. Its position, direction and box are in the assembly's coordinates."
+              },
+              "feature": {
+                "type": "string",
+                "description": "The feature that made it, for faces, edges and vertices. An edge or vertex where several features meet names the first; see features."
+              },
+              "features": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "For edges and vertices, every feature that made a face it lies on: the circular edge of a hole cut in a boss belongs to both."
+              },
+              "geometry": {
+                "type": "string",
+                "enum": [
+                  "plane",
+                  "cylinder",
+                  "cone",
+                  "sphere",
+                  "torus",
+                  "line",
+                  "circle",
+                  "ellipse",
+                  "spline",
+                  "point",
+                  "other"
+                ],
+                "description": "Its shape: plane, cylinder, cone, sphere, torus, line, circle, ellipse, spline, point or other."
+              },
+              "area_mm2": {
+                "type": "number",
+                "description": "Area of a face, mm²."
+              },
+              "length_mm": {
+                "type": "number",
+                "description": "Length of an edge, mm."
+              },
+              "normal": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "X component."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Y component."
+                  },
+                  "z": {
+                    "type": "number",
+                    "description": "Z component."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "additionalProperties": false,
+                "description": "Outward normal of a planar face, or the normal of a plane."
+              },
+              "axis": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "X component."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Y component."
+                  },
+                  "z": {
+                    "type": "number",
+                    "description": "Z component."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "additionalProperties": false,
+                "description": "Axis of a cylinder, cone, circle or axis; direction of a line."
+              },
+              "origin": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "X, mm."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Y, mm."
+                  },
+                  "z": {
+                    "type": "number",
+                    "description": "Z, mm."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "additionalProperties": false,
+                "description": "A point on it: a planar face's or edge's centre, a circle's or cylinder's centre on its axis, a vertex or point itself."
+              },
+              "radius_mm": {
+                "type": "number",
+                "description": "Radius of a cylinder, cone base, sphere, torus or circle, mm."
+              },
+              "box": {
+                "type": "object",
+                "properties": {
+                  "min": {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "number",
+                        "description": "X, mm."
+                      },
+                      "y": {
+                        "type": "number",
+                        "description": "Y, mm."
+                      },
+                      "z": {
+                        "type": "number",
+                        "description": "Z, mm."
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y",
+                      "z"
+                    ],
+                    "additionalProperties": false,
+                    "description": "The corner with the smallest coordinates."
+                  },
+                  "max": {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "number",
+                        "description": "X, mm."
+                      },
+                      "y": {
+                        "type": "number",
+                        "description": "Y, mm."
+                      },
+                      "z": {
+                        "type": "number",
+                        "description": "Z, mm."
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y",
+                      "z"
+                    ],
+                    "additionalProperties": false,
+                    "description": "The corner with the largest coordinates."
+                  }
+                },
+                "required": [
+                  "min",
+                  "max"
+                ],
+                "additionalProperties": false,
+                "description": "Its axis-aligned bounding box, for faces only."
+              },
+              "distance_mm": {
+                "type": "number",
+                "description": "Distance from the point model.find was asked to be near, mm."
+              }
+            },
+            "required": [
+              "kind",
+              "geometry"
+            ],
+            "additionalProperties": false
+          },
+          "description": "The two things it joins, each in the assembly's coordinates and naming its component."
+        },
+        "alignment": {
+          "type": "string",
+          "enum": [
+            "aligned",
+            "anti_aligned",
+            "closest"
+          ],
+          "description": "Which way its sides face, as SOLIDWORKS holds it."
+        },
+        "flipped": {
+          "type": "boolean",
+          "description": "True when its dimension is flipped to the other side."
+        },
+        "distance_mm": {
+          "type": "number",
+          "description": "A distance mate's distance, mm."
+        },
+        "angle_deg": {
+          "type": "number",
+          "description": "An angle mate's angle, degrees."
+        },
+        "suppressed": {
+          "type": "boolean",
+          "description": "True when it is suppressed in the active configuration."
+        },
+        "error": {
+          "type": "string",
+          "description": "SOLIDWORKS' error for it (swFeatureError_e), absent when it has none."
+        }
+      },
+      "required": [
+        "name",
+        "solid_works_type",
+        "entities",
+        "flipped",
+        "suppressed"
+      ],
+      "additionalProperties": false,
+      "description": "The new mate, with the alignment SOLIDWORKS chose."
+    },
+    "measured": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A condition a mate imposes, measured between its two sides after the assembly was solved.",
+        "properties": {
+          "condition": {
+            "type": "string",
+            "description": "What was measured: distance_mm (between the two; between parallel planes, their offset), angle_deg (between their directions), axis_offset_mm (between two axes), relative_offset_mm and relative_turn_deg (how far a locked component moved and turned relative to the other)."
+          },
+          "expected": {
+            "type": "number",
+            "description": "What the mate requires."
+          },
+          "measured": {
+            "type": "number",
+            "description": "What was measured."
+          },
+          "tolerance": {
+            "type": "number",
+            "description": "How far from expected still holds: 0.001 mm, or 0.01 degrees."
+          }
+        },
+        "required": [
+          "condition",
+          "expected",
+          "measured",
+          "tolerance"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Each condition the mate imposes, as measured after the solve."
+    },
+    "change": {
+      "type": "object",
+      "properties": {
+        "document": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "The document's title as SOLIDWORKS shows it."
+            },
+            "path": {
+              "type": "string",
+              "description": "The full path, absent while the document has never been saved."
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "part",
+                "assembly",
+                "drawing"
+              ],
+              "description": "Part, assembly or drawing."
+            },
+            "dirty": {
+              "type": "boolean",
+              "description": "True when the document has unsaved changes."
+            },
+            "visible": {
+              "type": "boolean",
+              "description": "False for a document SOLIDWORKS loaded only because an open assembly uses it: it has no window of its own."
+            }
+          },
+          "required": [
+            "title",
+            "type",
+            "dirty",
+            "visible"
+          ],
+          "additionalProperties": false,
+          "description": "The assembly it acted on."
+        },
+        "created": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "Something a model-changing operation made.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Its name, for example Sketch3 or Line2."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "face",
+                  "edge",
+                  "vertex",
+                  "feature",
+                  "sketch",
+                  "sketch_entity",
+                  "sketch_point",
+                  "plane",
+                  "axis",
+                  "point",
+                  "dimension",
+                  "component",
+                  "mate"
+                ],
+                "description": "What it is: feature, sketch, sketch_entity, sketch_point, dimension, plane, axis or point."
+              },
+              "reference": {
+                "type": "string",
+                "description": "Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one."
+              }
+            },
+            "required": [
+              "name",
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          "description": "What it made (components, mates, patterns), in the order it made them."
+        },
+        "changed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A value a model-changing operation edited.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "What was edited, for example D1@Sketch1."
+              },
+              "property": {
+                "type": "string",
+                "description": "Which of its properties: value, or suppressed."
+              },
+              "before": {
+                "type": "string",
+                "description": "Its value before, with its unit, for example 40 mm."
+              },
+              "after": {
+                "type": "string",
+                "description": "Its value after, with its unit."
+              }
+            },
+            "required": [
+              "name",
+              "property",
+              "before",
+              "after"
+            ],
+            "additionalProperties": false
+          },
+          "description": "What it edited, each with its value before and after."
+        },
+        "rebuild": {
+          "type": "object",
+          "properties": {
+            "errors": {
+              "type": "integer",
+              "description": "How many features have a rebuild error."
+            },
+            "warnings": {
+              "type": "integer",
+              "description": "How many features have a rebuild warning."
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "description": "A feature with a rebuild error or warning.",
+                "properties": {
+                  "feature": {
+                    "type": "string",
+                    "description": "The feature's name."
+                  },
+                  "code": {
+                    "type": "string",
+                    "description": "SOLIDWORKS' error code name (swFeatureError_e), for example swFeatureErrorFilletNoEdge."
+                  },
+                  "warning": {
+                    "type": "boolean",
+                    "description": "True for a warning, false for an error."
+                  }
+                },
+                "required": [
+                  "feature",
+                  "code",
+                  "warning"
+                ],
+                "additionalProperties": false
+              },
+              "description": "Each feature with an error or warning."
+            }
+          },
+          "required": [
+            "errors",
+            "warnings",
+            "items"
+          ],
+          "additionalProperties": false,
+          "description": "The assembly's rebuild errors and warnings after the change (mate errors included), by feature."
+        },
+        "components_before": {
+          "type": "integer",
+          "description": "Components before the change, nested ones included."
+        },
+        "components_after": {
+          "type": "integer",
+          "description": "Components after the change, nested ones included."
+        },
+        "mates_before": {
+          "type": "integer",
+          "description": "Mates before the change."
+        },
+        "mates_after": {
+          "type": "integer",
+          "description": "Mates after the change."
+        },
+        "moved": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A component whose position a change moved.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The component's name."
+              },
+              "before": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "X, mm."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Y, mm."
+                  },
+                  "z": {
+                    "type": "number",
+                    "description": "Z, mm."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "additionalProperties": false,
+                "description": "Its origin before, mm in the assembly."
+              },
+              "after": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "X, mm."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Y, mm."
+                  },
+                  "z": {
+                    "type": "number",
+                    "description": "Z, mm."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "additionalProperties": false,
+                "description": "Its origin after, mm in the assembly."
+              },
+              "rotated": {
+                "type": "boolean",
+                "description": "True when its axes turned as well as (or instead of) its origin moving."
+              }
+            },
+            "required": [
+              "name",
+              "before",
+              "after",
+              "rotated"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Every component whose position changed, the ones the request named and the ones a solve moved."
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "How far a component's position is defined.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The component's name."
+              },
+              "constraint": {
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "fully_defined",
+                  "under_defined",
+                  "over_defined",
+                  "unknown"
+                ],
+                "description": "Fixed, fully defined, under defined, over defined or unknown."
+              }
+            },
+            "required": [
+              "name",
+              "constraint"
+            ],
+            "additionalProperties": false
+          },
+          "description": "How far the position of each component the change made, edited or moved is defined now."
+        }
+      },
+      "required": [
+        "document",
+        "created",
+        "changed",
+        "rebuild",
+        "components_before",
+        "components_after",
+        "mates_before",
+        "mates_after",
+        "moved",
+        "constraints"
+      ],
+      "additionalProperties": false,
+      "description": "What changed in the assembly; moved lists the components the solve moved."
+    }
+  },
+  "required": [
+    "mate",
+    "measured",
+    "change"
+  ],
+  "additionalProperties": false
+}
