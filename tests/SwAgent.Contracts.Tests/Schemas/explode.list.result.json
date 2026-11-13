@@ -1,0 +1,126 @@
+{
+  "type": "object",
+  "description": "The exploded views of an assembly.",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "False for a document SOLIDWORKS loaded only because an open assembly uses it: it has no window of its own."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty",
+        "visible"
+      ],
+      "additionalProperties": false,
+      "description": "The assembly."
+    },
+    "configuration": {
+      "type": "string",
+      "description": "The active configuration."
+    },
+    "views": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "An exploded view of an assembly.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Its name, for example ExplView1."
+          },
+          "configuration": {
+            "type": "string",
+            "description": "The configuration it belongs to."
+          },
+          "exploded": {
+            "type": "boolean",
+            "description": "True when the assembly shows it exploded now."
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "A step of an exploded view, as SOLIDWORKS holds it.",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Its name, for example Explode Step1."
+                },
+                "components": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "The names of the components it moves."
+                },
+                "distance_mm": {
+                  "type": "number",
+                  "description": "How far it moves them, mm."
+                },
+                "angle_deg": {
+                  "type": "number",
+                  "description": "How far it turns them, degrees; absent when it does not turn them."
+                },
+                "reversed": {
+                  "type": "boolean",
+                  "description": "True when it goes against the direction it was given."
+                }
+              },
+              "required": [
+                "name",
+                "components",
+                "distance_mm",
+                "reversed"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Its steps, in order; absent for a view of a configuration that is not active, whose steps SOLIDWORKS gives only while it is shown."
+          }
+        },
+        "required": [
+          "name",
+          "configuration",
+          "exploded"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Every view, configuration by configuration."
+    },
+    "exploded": {
+      "type": "string",
+      "description": "The view shown exploded now; absent when the assembly is collapsed."
+    }
+  },
+  "required": [
+    "document",
+    "configuration",
+    "views"
+  ],
+  "additionalProperties": false
+}

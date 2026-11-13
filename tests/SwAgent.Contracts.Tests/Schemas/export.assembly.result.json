@@ -1,0 +1,115 @@
+{
+  "type": "object",
+  "description": "The file export.assembly wrote, as read back from disk.",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "False for a document SOLIDWORKS loaded only because an open assembly uses it: it has no window of its own."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty",
+        "visible"
+      ],
+      "additionalProperties": false,
+      "description": "The assembly exported, as it is after the export: same path, same unsaved-changes flag."
+    },
+    "path": {
+      "type": "string",
+      "description": "The file written."
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "step",
+        "parasolid",
+        "stl",
+        "threemf"
+      ],
+      "description": "Its format."
+    },
+    "bytes": {
+      "type": "integer",
+      "description": "Its size in bytes."
+    },
+    "header": {
+      "type": "string",
+      "description": "The header found: ISO-10303-21;, the Parasolid transmit header, binary STL, or zip."
+    },
+    "components": {
+      "type": "integer",
+      "description": "How many resolved components the assembly has, nested ones included: what the export covers."
+    },
+    "step_occurrences": {
+      "type": "integer",
+      "description": "STEP: the NEXT_ASSEMBLY_USAGE_OCCURRENCE entities it holds, one per component."
+    },
+    "triangles": {
+      "type": "integer",
+      "description": "STL: the triangles it holds."
+    },
+    "step_schema": {
+      "type": "string",
+      "description": "STEP: its FILE_SCHEMA, for example AUTOMOTIVE_DESIGN { 1 0 10303 214 3 1 1 }."
+    },
+    "preferences": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The SOLIDWORKS export preferences set for the call and put back afterwards, each as name = value."
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What SOLIDWORKS warned about while exporting (swFileSaveWarning_e names)."
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Each check made on the file and the assembly, and what it found."
+    }
+  },
+  "required": [
+    "document",
+    "path",
+    "format",
+    "bytes",
+    "header",
+    "components",
+    "preferences",
+    "warnings",
+    "checks"
+  ],
+  "additionalProperties": false
+}

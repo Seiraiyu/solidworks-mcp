@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "description": "Deletes an exploded view of the active configuration and its steps; a view shown exploded is collapsed first. Components stay where they are collapsed. Checked: the view is gone. A deletion is not rolled back: a failed check says what is left.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "view": {
+      "type": "string",
+      "description": "The view's name, for example ExplView1 (explode.list lists them)."
+    }
+  },
+  "required": [
+    "view"
+  ],
+  "additionalProperties": false
+}
