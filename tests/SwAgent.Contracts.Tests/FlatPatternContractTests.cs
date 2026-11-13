@@ -7,9 +7,9 @@ namespace SwAgent.Contracts.Tests;
 public class FlatPatternContractTests
 {
     [Fact]
-    public void Protocol_10_speaks_flat_pattern_export()
+    public void Protocol_10_and_later_speak_flat_pattern_export()
     {
-        Assert.Equal(10, Protocol.Version);
+        Assert.True(Protocol.Version >= 10, $"protocol {Protocol.Version} speaks flat-pattern export from 10 on");
     }
 
     [Fact]

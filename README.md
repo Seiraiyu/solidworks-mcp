@@ -245,7 +245,7 @@ Logs are in `%LOCALAPPDATA%\solidworks-mcp\logs\` and are kept 14 days:
 
 ## Upgrading and uninstalling
 
-To upgrade, install the new release the same way. Its `swmcp.exe` is in a new version folder, so run `claude mcp remove --scope user solidworks` and then the `claude_code` line it prints. The add-in speaks protocol version 10, and a SOLIDWORKS that still has an older add-in loaded answers `addin_incompatible`. Close SOLIDWORKS and start it again from the 3DEXPERIENCE dashboard, and the next call loads the new add-in. The earlier version's folder stays until you uninstall.
+To upgrade, install the new release the same way. Its `swmcp.exe` is in a new version folder, so run `claude mcp remove --scope user solidworks` and then the `claude_code` line it prints. The add-in speaks protocol version 11, and a SOLIDWORKS that still has an older add-in loaded answers `addin_incompatible`. Close SOLIDWORKS and start it again from the 3DEXPERIENCE dashboard, and the next call loads the new add-in. The earlier version's folder stays until you uninstall.
 
 ```powershell
 & "$app\swmcp.exe" uninstall
