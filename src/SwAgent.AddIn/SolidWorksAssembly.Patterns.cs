@@ -88,19 +88,26 @@ internal sealed partial class SolidWorksAssembly
                 Access(definition, false);
             }
         }
+        var made = new List<IComponent2>();
+        for (var sub = f.GetFirstSubFeature() as IFeature; sub != null; sub = sub.GetNextSubFeature() as IFeature)
+        {
+            if (sub.GetSpecificFeature2() is IComponent2 c) made.Add(c);
+        }
         if (seeds.Count == 0)
         {
-            // The definition gave none: take the components among the feature's parents.
+            // The definition gave none (measured on 2026 SP4, plan 4.D live run): take the components among the feature's
+            // parents that some instance is a copy of. The parents also hold the component whose face or axis gave the
+            // direction (a linear or circular pattern's plate), which is not a seed.
             facts.SeedsFrom = "GetParents";
             seeds = (f.GetParents() as object[] ?? Array.Empty<object>()).OfType<IFeature>()
-                .Select(p => p.GetSpecificFeature2() as IComponent2).Where(c => c != null).Cast<IComponent2>().ToList();
+                .Select(p => p.GetSpecificFeature2() as IComponent2).Where(c => c != null).Cast<IComponent2>()
+                .Where(p => made.Any(m => !string.Equals(m.Name2, p.Name2, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(m.GetPathName(), p.GetPathName(), StringComparison.OrdinalIgnoreCase)))
+                .ToList();
         }
         facts.Seeds.AddRange(seeds);
         var seedNames = new HashSet<string>(seeds.Select(s => s.Name2), StringComparer.OrdinalIgnoreCase);
-        for (var sub = f.GetFirstSubFeature() as IFeature; sub != null; sub = sub.GetNextSubFeature() as IFeature)
-        {
-            if (sub.GetSpecificFeature2() is IComponent2 c && !seedNames.Contains(c.Name2)) facts.Instances.Add(c);
-        }
+        facts.Instances.AddRange(made.Where(c => !seedNames.Contains(c.Name2)));
         return facts;
     }
 

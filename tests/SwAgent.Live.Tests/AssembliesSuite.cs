@@ -882,6 +882,7 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
             Direction2 = new ComponentPatternDirection { Direction = front.Reference!, SpacingMm = 15, Count = 2 },
         });
         Assert.All(made.Instances, i => Assert.True(i.OffsetMm <= Tol, $"{i.Name} {i.OffsetMm} mm off"));
+        Assert.Equal(new[] { seed }, made.Pattern.Seeds);
         int sx = made.Sense!.StartsWith("along", StringComparison.Ordinal) ? 1 : -1, sy = made.Sense.EndsWith("/along", StringComparison.Ordinal) ? 1 : -1;
         var places = new List<Point3>();
         for (int i = 0; i < 3; i++)
@@ -904,10 +905,12 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
         var centre = await HoleAt(asm, "pplate-1", 40, 40);
         string p1 = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = pin, At = new Point3(70, 40, 20) })).Component.Name;
         var four = await Call<ComponentCircularPatternRequest, ComponentPatternResult>(new ComponentCircularPatternRequest { Document = asm, Components = { p1 }, Axis = centre.Reference!, Count = 4 });
+        Assert.Equal(new[] { p1 }, four.Pattern.Seeds);
         Lands(four, await Placements(asm), new[] { new Point3(40, 70, 20), new Point3(10, 40, 20), new Point3(40, 10, 20) });
         Assert.All(four.Instances, i => Assert.True((i.TurnDeg ?? 0) <= 0.01, $"{i.Name} turned {i.TurnDeg}° off"));
         string p2 = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = pin, At = new Point3(70, 40, 50) })).Component.Name;
         var half = await Call<ComponentCircularPatternRequest, ComponentPatternResult>(new ComponentCircularPatternRequest { Document = asm, Components = { p2 }, Axis = centre.Reference!, Count = 3, AngleDeg = 180 });
+        Assert.Equal(new[] { p2 }, half.Pattern.Seeds);
         // The sense is the turn about the centre hole's axis as SOLIDWORKS gives it, which may point down (-Z) as well as up.
         bool up = centre.Axis!.Z > 0;
         double y = (half.Sense == "along") == up ? 70 : 10;
