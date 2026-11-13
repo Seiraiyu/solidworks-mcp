@@ -100,8 +100,10 @@ internal sealed partial class SolidWorksAssembly
                 foreach (var c in s.Components) Pick(c, components);
                 Pick(s.Direction, direction);
                 if (s.RotationAxis != null) Pick(s.RotationAxis, axis);
-                made = config.AddExplodeStep2(s.DistanceMm / Mm, (int)swExplodeDirectionIndex_e.swExplodeDirectionIndex_XAxis, s.Reverse,
-                    s.AngleDeg * Math.PI / 180, (int)swExplodeDirectionIndex_e.swExplodeDirectionIndex_XAxis, false, false, false, out error);
+                // ExplDirIndex Unknown: the step goes along the selected direction (plan 4.E live run: XAxis moved along the
+                // assembly's X whatever was selected; Unknown followed the front, top and right planes' normals).
+                made = config.AddExplodeStep2(s.DistanceMm / Mm, (int)swExplodeDirectionIndex_e.swExplodeDirectionIndex_Unknown, s.Reverse,
+                    s.AngleDeg * Math.PI / 180, (int)swExplodeDirectionIndex_e.swExplodeDirectionIndex_Unknown, false, false, false, out error);
             }
             catch (Exception e) when (e is COMException || e is SwAgentException)
             {
@@ -134,41 +136,142 @@ internal sealed partial class SolidWorksAssembly
     static string ExplodeStepError(int code) =>
         Enum.IsDefined(typeof(swCreateExplodeStepError_e), code) ? ((swCreateExplodeStepError_e)code).ToString() : $"swCreateExplodeStepError {code}";
 
-    public bool RenameExplodedView(string view, string name)
+    /// <summary>The names SelectByID2 might know a view by: its own, then with the configuration and the assembly.</summary>
+    IEnumerable<string> ViewNames(string view)
     {
-        _doc.ClearSelection2(true);
-        try
-        {
-            if (!_doc.Extension.SelectByID2(view, "EXPLODEVIEWS", 0, 0, 0, false, 0, null, 0)) return false;
-            if (!(((ISelectionMgr)_doc.SelectionManager).GetSelectedObject6(1, -1) is IFeature f)) return false;
-            f.Name = name;
-            return true;
-        }
-        catch (COMException)
-        {
-            return false;
-        }
-        finally
-        {
-            _doc.ClearSelection2(true);
-        }
+        string config = ActiveConfig().Name;
+        string title = System.IO.Path.GetFileNameWithoutExtension(_doc.GetTitle());
+        return new[] { view, $"{view}@{config}", $"{view}@{config}@{title}" };
     }
 
-    public bool DeleteExplodedView(string view)
+    bool SelectView(string name)
     {
         _doc.ClearSelection2(true);
+        return _doc.Extension.SelectByID2(name, "EXPLODEVIEWS", 0, 0, 0, false, 0, null, 0);
+    }
+
+    bool HasView(string view) => ExplodedViews(ActiveConfig().Name).Contains(view, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// By selection (SelectByID2 with EXPLODEVIEWS) and the selected feature's Name; tried says how each name went. Plan 4.E
+    /// live run: an exploded view is no feature in the FeatureManager (IFeatureManager.GetFeatures lists none).
+    /// </summary>
+    public bool RenameExplodedView(string view, string name, out string tried)
+    {
+        var attempts = new List<string>();
         try
         {
-            if (!_doc.Extension.SelectByID2(view, "EXPLODEVIEWS", 0, 0, 0, false, 0, null, 0)) return false;
-            return _doc.Extension.DeleteSelection2((int)swDeleteSelectionOptions_e.swDelete_Absorbed);
-        }
-        catch (COMException)
-        {
-            return false;
+            foreach (var n in ViewNames(view))
+            {
+                try
+                {
+                    if (!SelectView(n))
+                    {
+                        attempts.Add($"SelectByID2({n}, EXPLODEVIEWS): not selected");
+                        continue;
+                    }
+                    var selection = (ISelectionMgr)_doc.SelectionManager;
+                    if (!(selection.GetSelectedObject6(1, -1) is IFeature f))
+                    {
+                        attempts.Add($"SelectByID2({n}, EXPLODEVIEWS): selected type {selection.GetSelectedObjectType3(1, -1)}, not a feature");
+                        continue;
+                    }
+                    f.Name = name;
+                    bool renamed = HasView(name);
+                    attempts.Add($"SelectByID2({n}, EXPLODEVIEWS) + IFeature.Name: {(renamed ? "renamed" : "no view by the new name")}");
+                    if (renamed)
+                    {
+                        tried = string.Join("; ", attempts);
+                        return true;
+                    }
+                }
+                catch (COMException e)
+                {
+                    attempts.Add($"{n}: {e.Message}");
+                }
+            }
         }
         finally
         {
             _doc.ClearSelection2(true);
         }
+        tried = string.Join("; ", attempts);
+        return false;
+    }
+
+    /// <summary>
+    /// By selection (SelectByID2 with EXPLODEVIEWS, then DeleteSelection2, then EditDelete), and failing that its steps one by
+    /// one (IConfiguration.DeleteExplodeStep, read while the view is shown). True only when the view is gone; tried says how
+    /// each way went.
+    /// </summary>
+    public bool DeleteExplodedView(string view, out string tried)
+    {
+        var attempts = new List<string>();
+        try
+        {
+            foreach (var n in ViewNames(view))
+            {
+                try
+                {
+                    if (!SelectView(n))
+                    {
+                        attempts.Add($"SelectByID2({n}, EXPLODEVIEWS): not selected");
+                        continue;
+                    }
+                    bool deleted = _doc.Extension.DeleteSelection2((int)swDeleteSelectionOptions_e.swDelete_Absorbed);
+                    attempts.Add($"SelectByID2({n}, EXPLODEVIEWS) + DeleteSelection2: {deleted}");
+                    if (!HasView(view)) return Done(attempts, out tried);
+                    if (SelectView(n))
+                    {
+                        _doc.EditDelete();
+                        attempts.Add("+ EditDelete");
+                        if (!HasView(view)) return Done(attempts, out tried);
+                    }
+                }
+                catch (COMException e)
+                {
+                    attempts.Add($"{n}: {e.Message}");
+                }
+            }
+
+            // Its steps, one by one, read while it is shown.
+            try
+            {
+                if (_asm.ShowExploded2(true, view))
+                {
+                    var config = ActiveConfig();
+                    for (int i = config.GetNumberOfExplodeSteps() - 1; i >= 0; i--)
+                    {
+                        if (!(config.GetExplodeStep(i) is IExplodeStep step)) continue;
+                        string stepName = step.Name;
+                        attempts.Add($"DeleteExplodeStep({stepName}): {config.DeleteExplodeStep(stepName)}");
+                    }
+                    attempts.Add($"{config.GetNumberOfExplodeSteps()} steps left");
+                    _asm.ShowExploded2(false, view);
+                }
+                else
+                {
+                    attempts.Add($"ShowExploded2({view}) refused, so its steps were not read");
+                }
+            }
+            catch (COMException e)
+            {
+                attempts.Add($"steps: {e.Message}");
+            }
+            if (!HasView(view)) return Done(attempts, out tried);
+            attempts.Add($"{view} is still listed");
+        }
+        finally
+        {
+            _doc.ClearSelection2(true);
+        }
+        tried = string.Join("; ", attempts);
+        return false;
+    }
+
+    static bool Done(List<string> attempts, out string tried)
+    {
+        tried = string.Join("; ", attempts);
+        return true;
     }
 }

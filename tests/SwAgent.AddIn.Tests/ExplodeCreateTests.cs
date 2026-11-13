@@ -55,18 +55,16 @@ public class ExplodeCreateTests : ExplodeTestBase
     }
 
     [Fact]
-    public void A_turning_step_moves_then_turns_about_its_axis()
+    public void A_turning_step_is_refused_because_SOLIDWORKS_turns_about_the_components_own_origins()
     {
         var step = Step("z", 20, "bracket-1");
         step.RotateAbout = Ref(PlateHole);
         step.AngleDeg = 90;
-        var r = Explode(step);
-        var bracket = Assert.Single(r.Steps[0].Components);
-        Assert.Equal("along", r.Steps[0].TurnSense);
-        Assert.Equal(30, bracket.Actual.X, 9);
-        Assert.Equal(10, bracket.Actual.Y, 9);
-        Assert.Equal(30, bracket.Actual.Z, 9);
-        Assert.Equal(0, bracket.TurnDeg, 6);
+        var e = Fails(() => Explode(step));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal("/steps/0/rotate_about", e.Error.Details!["field"]);
+        Assert.Contains("component.place", e.Message);
+        Assert.DoesNotContain("explode view", Asm.Calls);
     }
 
     [Fact]
@@ -179,7 +177,7 @@ public class ExplodeCreateTests : ExplodeTestBase
         Refused(Request(angleOnly), "/steps/0/rotate_about");
         var axisOnly = Step("z", 10, "pin-1");
         axisOnly.RotateAbout = Ref(PlateHole);
-        Refused(Request(axisOnly), "/steps/0/angle_deg");
+        Refused(Request(axisOnly), "/steps/0/rotate_about");
         var flatAxis = Step("z", 10, "pin-1");
         flatAxis.RotateAbout = Ref(PlateTop);
         flatAxis.AngleDeg = 90;

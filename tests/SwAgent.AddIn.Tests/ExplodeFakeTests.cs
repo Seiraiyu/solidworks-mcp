@@ -39,9 +39,9 @@ public class ExplodeFakeTests : AssemblyTestBase
         Asm.AddExplodeStep(new ExplodeStepSpec { Components = new[] { (object)pin.Entity }, Direction = up, DistanceMm = 10 }, out _);
         Asm.ShowExploded(view, true);
         Assert.Equal(-10, Asm.Read(pin.Entity).Transform.Origin.Z, 9);
-        Assert.True(Asm.RenameExplodedView(view, "Pin out"));
+        Assert.True(Asm.RenameExplodedView(view, "Pin out", out _));
         Assert.Equal("Pin out", Asm.ShownExploded());
-        Assert.True(Asm.DeleteExplodedView("Pin out"));
+        Assert.True(Asm.DeleteExplodedView("Pin out", out _));
         Assert.Empty(Asm.ExplodedViews("Default"));
         Assert.Null(Asm.ShownExploded());
         Assert.Equal(0, Asm.Read(pin.Entity).Transform.Origin.Z, 9);

@@ -131,7 +131,8 @@ public sealed class ExplodeCreateOperation : AssemblyChangeOperation<ExplodeCrea
         tx.Made(created, () =>
         {
             if (string.Equals(asm.ShownExploded(), view, StringComparison.OrdinalIgnoreCase)) asm.ShowExploded(view, false);
-            if (!asm.DeleteExplodedView(view)) throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not delete the exploded view {view}");
+            if (!asm.DeleteExplodedView(view, out string deleted))
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not delete the exploded view {view}; tried {deleted}", new JsonObject { ["view"] = view, ["tried"] = deleted });
             if (shownBefore != null) asm.ShowExploded(shownBefore, true);
         });
 
@@ -147,6 +148,7 @@ public sealed class ExplodeCreateOperation : AssemblyChangeOperation<ExplodeCrea
                 RotationAxis = s.Axis, AngleDeg = s.AngleDeg,
             }, out string how);
             tried.Add($"step {i + 1}: {how}");
+            context.Log.Info($"{Name}: step {i + 1} of {view}: {how}");
             if (step == null)
             {
                 throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS made no step {i + 1} of {view}. Tried: {how}",
@@ -163,8 +165,8 @@ public sealed class ExplodeCreateOperation : AssemblyChangeOperation<ExplodeCrea
 
         if (name != null && !string.Equals(name, view, StringComparison.Ordinal))
         {
-            if (!asm.RenameExplodedView(view, name))
-                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not rename {view} to {name}", new JsonObject { ["field"] = "/name" });
+            if (!asm.RenameExplodedView(view, name, out string renamed))
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not rename {view} to {name}; tried {renamed}", new JsonObject { ["field"] = "/name", ["tried"] = renamed });
             view = name;
             created.Name = name;
         }
@@ -251,21 +253,17 @@ public sealed class ExplodeCreateOperation : AssemblyChangeOperation<ExplodeCrea
             if (!(step.DistanceMm > 0 && step.DistanceMm <= 10_000)) throw PatternRequests.Invalid($"{at}/distance_mm", $"{at}/distance_mm must be more than 0 and at most 10000 mm, not {step.DistanceMm}");
             r.DistanceMm = step.DistanceMm.Value;
             r.Reverse = step.Reverse == true;
-            if (step.RotateAbout == null && step.AngleDeg != null)
-                throw PatternRequests.Invalid($"{at}/rotate_about", $"{at}/angle_deg needs rotate_about: the axis to turn the components about");
-            if (step.RotateAbout != null)
-            {
-                if (step.AngleDeg == null) throw PatternRequests.Invalid($"{at}/angle_deg", $"{at}/angle_deg is needed with rotate_about: how far to turn, degrees");
-                r.AngleDeg = PatternRequests.Angle(step.AngleDeg, $"{at}/angle_deg", 0);
-                var axis = PatternEntities.Resolve(Services.References, doc, step.RotateAbout, step.RotateAboutComponent, $"{at}/rotate_about", $"{at}/rotate_about_component");
-                r.Line = PatternGeometry.AxisOf(axis.Info) ?? throw PatternRequests.Invalid($"{at}/rotate_about",
-                    $"{at}/rotate_about names a {WireNames.ForEnum(axis.Info.Geometry)} {WireNames.ForEnum(axis.Info.Kind)}; a step turns about an axis, a straight or circular edge, or a cylindrical or conical face");
-                r.Axis = axis.Entity;
-            }
+            // Plan 4.E live run: on SOLIDWORKS 2026 SP4, AddExplodeStep2 with an angle makes two steps and turns the components
+            // about their own origins or the assembly's, whichever axis is selected, never about the axis asked; so a turn is refused.
+            if (step.RotateAbout != null || step.AngleDeg != null)
+                throw PatternRequests.Invalid($"{at}/rotate_about", RotateRefused);
             list.Add(r);
         }
         return list;
     }
+
+    /// <summary>Why rotate_about and angle_deg are refused (plan 4.E live run).</summary>
+    public const string RotateRefused = "SOLIDWORKS 2026 SP4 does not turn explode steps about a chosen axis through its API (it turns them about their own origins, and makes two steps); leave out rotate_about and angle_deg, and turn components with component.place";
 
     /// <summary>The name asked for, unless it is blank or another view of the configuration has it; null when none is asked.</summary>
     static string? NameOf(ISwAssembly asm, string configuration, string? name)
@@ -386,9 +384,9 @@ public sealed class ExplodeDeleteOperation : AssemblyChangeOperation<ExplodeDele
             if (!asm.ShowExploded(view, false)) throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not collapse {view} to delete it");
             tx.Edited(new ChangedItem { Name = view, Property = "exploded", Before = "true", After = "false" }, () => asm.ShowExploded(view, true));
         }
-        if (!asm.DeleteExplodedView(view))
-            throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not delete the exploded view {view}", new JsonObject { ["view"] = view });
-        context.Log.Info($"{Name}: {view} of {configuration}, {steps} steps");
+        if (!asm.DeleteExplodedView(view, out string how))
+            throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not delete the exploded view {view}; tried {how}", new JsonObject { ["view"] = view, ["tried"] = how });
+        context.Log.Info($"{Name}: {view} of {configuration}, {steps} steps; {how}");
         return new ExplodeDeleteResult { Deleted = view, Configuration = configuration, Steps = steps };
     }
 

@@ -1034,7 +1034,7 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
     Task<ExplodeListResult> Views(string asm) => Call<ExplodeListRequest, ExplodeListResult>(new ExplodeListRequest { Document = asm });
 
     [SkippableFact, Step(27)]
-    public Task An_exploded_view_moves_each_step_where_it_says_and_leaves_the_assembly_collapsed() => _run.CaseAsync(27, "explode.create: three steps (z 40, along a face normal 25, x 10 turned 90 about a hole), each checked, the assembly collapsed after; explode.list", async () =>
+    public Task An_exploded_view_moves_each_step_where_it_says_and_leaves_the_assembly_collapsed() => _run.CaseAsync(27, "explode.create: three steps (z 40, along a face normal 25, x 10), each checked, the assembly collapsed after; a turn about a hole refused; explode.list", async () =>
     {
         await _run.RequireOnlyOwnDocumentsAsync();
         string plate = await ClosedPlate("eplate");
@@ -1051,7 +1051,14 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
         var request = new ExplodeCreateRequest { Document = asm };
         request.Steps.Add(new ExplodeStep { Components = { p }, Direction = "z", DistanceMm = 40 });
         request.Steps.Add(new ExplodeStep { Components = { b, p }, Direction = front.Reference!, DistanceMm = 25 });
-        request.Steps.Add(new ExplodeStep { Components = { b }, Direction = "x", DistanceMm = 10, RotateAbout = hole.Reference!, AngleDeg = 90 });
+        request.Steps.Add(new ExplodeStep { Components = { b }, Direction = "x", DistanceMm = 10 });
+        // SOLIDWORKS 2026 SP4 turns a step's components about their own origins, not the axis asked (plan 4.E live run), so a turn is refused.
+        var turn = new ExplodeCreateRequest { Document = asm };
+        turn.Steps.Add(new ExplodeStep { Components = { b }, Direction = "x", DistanceMm = 10, RotateAbout = hole.Reference!, AngleDeg = 90 });
+        var turnRefused = await Refused(() => Call<ExplodeCreateRequest, ExplodeCreateResult>(turn));
+        Assert.Equal(ErrorCode.InvalidArgument, turnRefused.Code);
+        Assert.Equal("/steps/0/rotate_about", turnRefused.Error.Details!["field"]);
+        Assert.Empty((await Views(asm)).Views);
         var made = await Call<ExplodeCreateRequest, ExplodeCreateResult>(request);
         Assert.Equal(3, made.Steps.Count);
         Assert.False(made.View.Exploded);
@@ -1063,8 +1070,7 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
         var block2 = Stepped(collapsed[b].Origin, front.Normal!, 25 * Sign(made.Steps[1].Sense));
         Lands(made.Steps[1].Components.Single(c => c.Name == p), pin2);
         Lands(made.Steps[1].Components.Single(c => c.Name == b), block2);
-        double turn = 90 * Sign(made.Steps[2].TurnSense!) * (hole.Axis!.Z > 0 ? 1 : -1);
-        var block3 = Stepped(block2, new Vector3(1, 0, 0), 10 * Sign(made.Steps[2].Sense), hole.Origin!.X, hole.Origin.Y, turn);
+        var block3 = Stepped(block2, new Vector3(1, 0, 0), 10 * Sign(made.Steps[2].Sense));
         Lands(made.Steps[2].Components.Single(), block3);
 
         SamePlaces(collapsed, await Placements(asm), "collapsed again");
@@ -1073,7 +1079,7 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
         Assert.Equal(3, listed.Steps!.Count);
         Assert.Equal(new[] { b, p }.OrderBy(n => n), listed.Steps[1].Components.OrderBy(n => n));
         await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
-        return $"{made.View.Name}: senses {string.Join(", ", made.Steps.Select(s => s.Sense + (s.TurnSense == null ? "" : "/" + s.TurnSense)))}; pin {pin1} then {pin2}; block {block2} then {block3}; collapsed after; {made.Tried}";
+        return $"{made.View.Name}: senses {string.Join(", ", made.Steps.Select(s => s.Sense + (s.TurnSense == null ? "" : "/" + s.TurnSense)))}; pin {pin1} then {pin2}; block {block2} then {block3}; collapsed after; a turn refused at {turnRefused.Error.Details["field"]}; {made.Tried}";
     });
 
     [SkippableFact, Step(28)]

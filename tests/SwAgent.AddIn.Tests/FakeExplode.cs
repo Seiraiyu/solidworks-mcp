@@ -164,8 +164,9 @@ sealed partial class FakeAssembly
         return step.Name;
     }
 
-    public bool RenameExplodedView(string view, string name)
+    public bool RenameExplodedView(string view, string name, out string tried)
     {
+        tried = RenameRefused ? "fake: refused" : "fake: renamed";
         Calls.Add($"rename view {view}");
         var v = ViewNamed(view);
         if (RenameRefused || v == null) return false;
@@ -175,8 +176,9 @@ sealed partial class FakeAssembly
         return true;
     }
 
-    public bool DeleteExplodedView(string view)
+    public bool DeleteExplodedView(string view, out string tried)
     {
+        tried = DeleteRefused ? "fake: refused" : "fake: deleted";
         Calls.Add($"delete view {view}");
         var v = ViewNamed(view);
         if (DeleteRefused || v == null) return false;
