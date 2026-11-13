@@ -223,3 +223,70 @@ public sealed class ExportPartResult
     [Description("Each check made on the file and the part, and what it found.")]
     public List<string> Checks { get; set; } = new List<string>();
 }
+
+[Operation("export.assembly", typeof(ExportAssemblyResult))]
+[Description("Writes a copy of an assembly as STEP, Parasolid (.x_t), binary STL or 3MF, in mm; the assembly keeps its own path and unsaved changes, and so do its components. STEP and Parasolid keep the assembly's structure (one occurrence per component); STL and 3MF are one file of the whole assembly. An assembly that is not the active document is made active for the export, and the document that was active is made active again afterwards. The export options it needs (STEP schema, STL units, format and one file for all components, and the mesh resolution when one is asked) are set for the call and put back afterwards; without a resolution, STL and 3MF use the user's own mesh settings untouched. A resolution is refused when the user's is custom. A lightweight component is refused: its geometry is not loaded (component.set suppression resolved loads it). Checked on disk: the file was written by this call, is not empty, and has its format's header (ISO-10303-21; and the schema asked, the Parasolid transmit header, a binary STL whose size matches its triangle count, a 3MF zip holding 3D/3dmodel.model); a STEP file holds one NEXT_ASSEMBLY_USAGE_OCCURRENCE per resolved component, nested ones included. A part is refused (export.part writes parts).")]
+public sealed class ExportAssemblyRequest
+{
+    [Description("The assembly: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("Full path of the file to write, in an existing folder, with the format's extension: .step or .stp, .x_t, .stl, .3mf.")]
+    public string Path { get; set; } = "";
+
+    [Description("The format to write.")]
+    public ExportFormat Format { get; set; }
+
+    [Description("Replace the file if it exists. Default false.")]
+    public bool? Overwrite { get; set; }
+
+    [Description("The format's options; its defaults when absent.")]
+    public ExportOptions? Options { get; set; }
+}
+
+[Description("The file export.assembly wrote, as read back from disk.")]
+public sealed class ExportAssemblyResult
+{
+    [Required]
+    [Description("The assembly exported, as it is after the export: same path, same unsaved-changes flag.")]
+    public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Required]
+    [Description("The file written.")]
+    public string Path { get; set; } = "";
+
+    [Description("Its format.")]
+    public ExportFormat Format { get; set; }
+
+    [Description("Its size in bytes.")]
+    public long Bytes { get; set; }
+
+    [Required]
+    [Description("The header found: ISO-10303-21;, the Parasolid transmit header, binary STL, or zip.")]
+    public string Header { get; set; } = "";
+
+    [Description("How many resolved components the assembly has, nested ones included: what the export covers.")]
+    public int Components { get; set; }
+
+    [Description("STEP: the NEXT_ASSEMBLY_USAGE_OCCURRENCE entities it holds, one per component.")]
+    public int? StepOccurrences { get; set; }
+
+    [Description("STL: the triangles it holds.")]
+    public int? Triangles { get; set; }
+
+    [Description("STEP: its FILE_SCHEMA, for example AUTOMOTIVE_DESIGN { 1 0 10303 214 3 1 1 }.")]
+    public string? StepSchema { get; set; }
+
+    [Required]
+    [Description("The SOLIDWORKS export preferences set for the call and put back afterwards, each as name = value.")]
+    public List<string> Preferences { get; set; } = new List<string>();
+
+    [Required]
+    [Description("What SOLIDWORKS warned about while exporting (swFileSaveWarning_e names).")]
+    public List<string> Warnings { get; set; } = new List<string>();
+
+    [Required]
+    [Description("Each check made on the file and the assembly, and what it found.")]
+    public List<string> Checks { get; set; } = new List<string>();
+}

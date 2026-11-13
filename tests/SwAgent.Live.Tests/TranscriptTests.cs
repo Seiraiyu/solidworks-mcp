@@ -129,4 +129,23 @@ public class TranscriptTests
         var hem = (JsonObject)transcript.Steps.Single(s => (string)s["tool"]! == "sw_sheetmetal_hem")["arguments"]!;
         Assert.Equal("closed", hem["kind"]);
     }
+
+    [Fact]
+    public void The_stand_transcript_calls_only_tools_the_server_offers_and_ends_with_a_STEP_export()
+    {
+        var transcript = Transcript.Load(System.IO.Path.Combine(AppContext.BaseDirectory, "Scenarios", "stand.transcript.json"));
+        var offered = Mcp.Server.ToolCatalog.All.Select(t => t.Name).ToHashSet();
+        Assert.Equal("stand", transcript.Name);
+        Assert.All(transcript.Steps, s => Assert.Contains((string)s["tool"]!, offered));
+        var last = transcript.Steps[transcript.Steps.Count - 1];
+        Assert.Equal("sw_export_assembly", (string)last["tool"]!);
+        Assert.Equal("step", ((JsonObject)last["arguments"]!)["format"]);
+        // The design's three reference forms each appear: an assembly reference, {component, entity}, name@component.
+        var sides = transcript.Steps.Where(s => (string)s["tool"]! == "sw_mate_add")
+            .SelectMany(s => (List<object?>)((JsonObject)s["arguments"]!)["entities"]!).Cast<JsonObject>().ToList();
+        Assert.Contains(sides, e => e.ContainsKey("component"));
+        Assert.Contains(sides, e => ((string)e["entity"]!).StartsWith("right@", StringComparison.Ordinal));
+        Assert.Contains(sides, e => ((string)e["entity"]!).StartsWith("${", StringComparison.Ordinal) && !e.ContainsKey("component"));
+        Assert.Contains(transcript.Steps, s => (string)s["tool"]! == "sw_explode_create");
+    }
 }

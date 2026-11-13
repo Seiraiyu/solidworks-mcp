@@ -43,6 +43,16 @@ public static class ExportFileCheck
 
     public const string ThreeMfModel = "3D/3dmodel.model";
 
+    static readonly Regex Occurrence = new Regex(@"=\s*NEXT_ASSEMBLY_USAGE_OCCURRENCE\s*\(", RegexOptions.CultureInvariant);
+
+    /// <summary>How many NEXT_ASSEMBLY_USAGE_OCCURRENCE entities a STEP file holds: one per component placed in an assembly.</summary>
+    public static int StepOccurrences(string path)
+    {
+        int count = 0;
+        foreach (var line in File.ReadLines(path)) count += Occurrence.Matches(line).Count;
+        return count;
+    }
+
     static readonly Regex FileSchema = new Regex(@"FILE_SCHEMA\s*\(\s*\(\s*'([^']*)'", RegexOptions.CultureInvariant);
 
     static readonly Regex FileDescription = new Regex(@"FILE_DESCRIPTION\s*\(\s*\(\s*'([^']*)'", RegexOptions.CultureInvariant);

@@ -1,0 +1,72 @@
+{
+  "type": "object",
+  "description": "Makes an exploded view of an assembly in one call (SOLIDWORKS' Explode): a new view in the active configuration holding every step given, in order, named by SOLIDWORKS (Exploded View1). Lengths in mm. A step's direction is x, y or z (the assembly's axes), a straight edge, an axis, or a plane or planar face's normal: a reference issued in the assembly, name@component (Axis1@plate-1), or with direction_component a reference issued in that component's own part. Checked step by step: after each step the view is shown exploded and every component read; the step's components must have moved distance_mm along the direction from where the previous steps left them, within 0.001 mm and 0.01 degrees, and no other component may have moved. SOLIDWORKS chooses which way along a direction it goes; each step's sense says which, and reverse flips it. Then the assembly is collapsed again (or shows what it showed before) and every component must be back where it was. Otherwise the change is rolled back as far as SOLIDWORKS 2026 SP4 allows: every step is deleted, but its API cannot delete an exploded view, so an empty view is left, and the error says so (rollback_failed, remaining). On SOLIDWORKS 2026 SP4 a step cannot be turned (rotate_about is refused) and the view cannot be named (name is refused). Show it with explode.show, list it with explode.list, empty it with explode.delete. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "configuration": {
+      "type": "string",
+      "description": "The configuration to make the view in; it must be the active one (configuration.activate changes that). The active configuration when absent."
+    },
+    "name": {
+      "type": "string",
+      "description": "Refused on SOLIDWORKS 2026 SP4, whose API cannot select an exploded view to rename it; SOLIDWORKS names it (Exploded View1). Leave it out."
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "One step of an exploded view: components moved along a direction.",
+        "properties": {
+          "components": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The components to move: each a reference (r1.component.…) or a name (pin-1). Top-level, resolved components."
+          },
+          "direction": {
+            "type": "string",
+            "description": "Which way to move them: x, y or z (the assembly's own axes, the normals of its right, top and front planes), or a straight edge, an axis, or a plane or planar face (along its normal), in the assembly: a reference issued in the assembly (model.find), name@component (Axis1@plate-1), or with direction_component a reference issued in that component's own part."
+          },
+          "direction_component": {
+            "type": "string",
+            "description": "Only when direction is a reference issued in a component's own part (or a name there): that component, by reference or name."
+          },
+          "distance_mm": {
+            "type": "number",
+            "description": "How far to move them, mm, more than 0 and at most 10000."
+          },
+          "reverse": {
+            "type": "boolean",
+            "description": "Go the other way along the direction. Default false."
+          },
+          "rotate_about": {
+            "type": "string",
+            "description": "Refused on SOLIDWORKS 2026 SP4: its API turns a step's components about their own origins, never about the axis asked; turn components with component.place. Leave it out."
+          },
+          "rotate_about_component": {
+            "type": "string",
+            "description": "Refused with rotate_about. Leave it out."
+          },
+          "angle_deg": {
+            "type": "number",
+            "description": "Refused with rotate_about (SOLIDWORKS 2026 SP4 turns about the wrong axis). Leave it out."
+          }
+        },
+        "required": [
+          "components",
+          "direction"
+        ],
+        "additionalProperties": false
+      },
+      "description": "The steps, in order: 1 to 20."
+    }
+  },
+  "required": [
+    "steps"
+  ],
+  "additionalProperties": false
+}

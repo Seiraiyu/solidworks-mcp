@@ -12,8 +12,9 @@ It offers these tools:
 - `sw_dialog_respond` presses a button on the modal dialog SOLIDWORKS is showing.
 - `sw_events` returns what happened since a cursor: documents opened, saved, closed and changed, the user's selection, dialogs, and the late outcomes of operations.
 - `sw_reconnect` connects again, to a named SOLIDWORKS when several run.
-- Documents: `sw_document_new` (a part from your default template, saved at once when given a path), `sw_document_open`, `sw_document_save`, `sw_document_save_as`, `sw_document_close` and `sw_document_rebuild`.
+- Documents: `sw_document_new` (a part or an assembly from your default template, saved at once when given a path), `sw_document_open`, `sw_document_save`, `sw_document_save_as`, `sw_document_close` and `sw_document_rebuild`.
 - Inspection of parts: `sw_model_tree`, `sw_model_mass`, `sw_model_bounding_box`, `sw_model_rebuild_status` and `sw_model_find`.
+- Assemblies: `sw_assembly_insert` puts a part or subassembly in as a component, `sw_assembly_components` lists them with their placement and state, `sw_component_place` moves one, `sw_component_set` fixes, floats, suppresses, resolves, hides it or changes its configuration, and `sw_component_delete` deletes components (and component patterns). `sw_model_find`, `sw_model_measure`, `sw_model_mass`, `sw_model_bounding_box`, `sw_model_rebuild_status`, `sw_selection_get` and the configuration tools take assemblies too. See **Assemblies**.
 - `sw_selection_get` reads what is selected in a part.
 - Sketches: `sw_sketch_create` draws a whole sketch in one call (lines, centerlines, arcs, circles, rectangles, polygons, slots, splines and points, then relations, then named driving dimensions), `sw_sketch_read` reads one back and `sw_sketch_modify` adds to or removes from one.
 - Dimensions: `sw_model_dimensions` lists them and `sw_dimension_set` changes a driving one.
@@ -27,6 +28,8 @@ It offers these tools:
 - Mates: `sw_mate_add` (coincident, parallel, perpendicular, tangent, concentric, lock, distance and angle), `sw_mate_edit`, `sw_mate_delete` and `sw_mate_list`. Each new or edited mate is checked by measuring the geometry it constrains, and rolled back with every moved component put back when it does not hold. `sw_assembly_dof` gives each component's constrained state (fixed, fully, under or over defined). **Known gap:** it does not report free motion for a component with mates, because SOLIDWORKS 2026 SP4's `GetRemainingDOFs` answers `unavailable` for every mated component. Counts are given only for fixed, fully defined and unmated components, and `note` says so otherwise.
 - Component patterns: `sw_component_linear_pattern`, `sw_component_circular_pattern` and `sw_component_feature_pattern` (one fastener onto every hole of a part's pattern or Hole Wizard feature). Each instance is checked where it landed, and the pattern is deleted again when one is off. `sw_component_delete` deletes a pattern by its name or reference, and refuses its seed or a single instance on their own.
 - `sw_assembly_interference` lists each pair of components that overlap, with the volume (mm³) and box of the overlap; touching faces count only when asked. SOLIDWORKS' interference session is always closed.
+- Exploded views: `sw_explode_create` makes a whole exploded view in one call, each step checked where it moved its components; `sw_explode_list`, `sw_explode_show` (explode or collapse) and `sw_explode_delete` (which empties a view: see **Assemblies** for what SOLIDWORKS 2026 SP4 allows).
+- `sw_export_assembly` writes a copy of an assembly as STEP, Parasolid, STL (one file) or 3MF.
 - `sw_api_call`, the escape hatch, calls any member of SOLIDWORKS' API the other tools do not cover yet. It can be turned off (see **The escape hatch**).
 
 There is one tool per add-in operation, named `sw_` and the operation with underscores (`document.save_as` is `sw_document_save_as`).
@@ -78,6 +81,31 @@ A sheet-metal part is a part with a `Sheet-Metal` feature: `sw_sheetmetal_base_f
 
 `sw_export_flat_pattern` writes the flat pattern as DXF or DWG, with the bend lines unless `bend_lines: false`, and the part's visible sketches only with `sketches: true`. The part must be saved to disk: a part never saved is refused before SOLIDWORKS is asked (`invalid_argument`; save it with `sw_document_save_as` first), because SOLIDWORKS then opens a Save As box that waits for you. A part with unsaved changes is exported as it is now. The part need not be flattened, and keeps its state and path. On SOLIDWORKS 2026 SP4 every export marks a saved part as having unsaved changes: `ExportToDWG2` writing a DXF, `ExportFlatPatternView` writing a DXF, and either writing a DWG. The API cannot clear that flag, so the result says `marked_dirty: true` and the part is not saved behind you. Since the flag then no longer shows a change, the part's volume, bend count and cut-list flat size are measured before and after the call, and the export fails `document_unchanged` if any of them moved. Save it with `sw_document_save` if you want it clean. A part that already had unsaved changes keeps them and is not marked. On a part with unsaved changes only `ExportToDWG2` is asked: it writes the part as it is now, where `ExportFlatPatternView` wrote the saved base alone. With bend lines or sketches the add-in asks SOLIDWORKS with `ExportToDWG2` first: on SOLIDWORKS 2026 SP4, `ExportFlatPatternView` draws no bend lines even when asked, so it is tried only after `ExportToDWG2` writes nothing, and its file then fails the bend-line check. Without either, `ExportFlatPatternView` is asked first and `ExportToDWG2` after it. The result says which wrote it. The file is then checked on disk: a DXF must parse, the extents of its entities must be the flat size from the cut list within 0.01 mm beyond the cut list's rounding (the header's `$EXTMIN`/`$EXTMAX` is reported, not compared: `ExportFlatPatternView` writes the drawing sheet there), and it must hold a bend line for each bend when bend lines were asked for, and none when they were not. Bend lines are found by their geometry, not their layer (SOLIDWORKS 2026 SP4 draws them on layer 0, like the outline): a line that stands on its own, outside the chain of the outline and its cut-outs. A visible sketch's free lines look the same, so with `sketches: true` and `bend_lines: false` the count is reported, not checked. A DWG must start with its `AC10xx` version and be at least 1 KB; its extents are not read.
 
+### Assemblies
+
+An assembly is changed the way a part is (see **Changing a part**): a change does not start while you edit a sketch, have a command open, or edit a component in the assembly's context (`busy`, `user_editing`); it is checked against the geometry; and a change that does not hold is taken back. Solving moves components a change never named, so every change records where every component was, and taking it back puts back every one that moved. The evidence lists what moved, from where to where, and each touched component's constrained state.
+
+Components are named by reference (`r1.component.…`) or by name (`bracket-1`, and `sub-1/pin-1` inside a subassembly). Faces, edges, planes and axes of a component are named in the assembly three ways, all resolving to the same entity:
+
+- an **assembly reference** from `sw_model_find` with `component` (or from `sw_selection_get`), which resolves only in that assembly;
+- **`{component, entity}`**: a reference issued in the component's own part, with the component it is in, so "the hole I just made" in the part needs no new lookup;
+- **`name@component`**: `front@bracket-1`, `Axis1@sub-1/pin-1`, `Boss-Extrude1@bracket-1`. `front`, `top`, `right` and `origin` alone are the assembly's own.
+
+A suppressed, lightweight or missing component's entity answers `reference_unresolved` with `component_suppressed`, `component_lightweight` or `component_missing`, never a nearby entity.
+
+- **Mates** are checked by measuring what they constrain (0.001 mm, 0.01°), and an over-defining mate is taken back with every component where it was.
+- **Patterns** are checked instance by instance; SOLIDWORKS chooses which way along a direction it goes, and `sense` says which.
+- **Exploded views** are made whole, in one call, like sketches. After each step the add-in shows the view exploded and reads every component: the step's components must have moved `distance_mm` along the direction, and nothing else may have moved. A step's direction can be `x`, `y` or `z` (the assembly's own axes) as well as an edge, axis or face. `sense` says which way SOLIDWORKS went. Then the assembly is collapsed (or shows the view it showed before) with every component back. Views are made, shown and emptied in the active configuration; `sw_explode_list` lists the others' views without their steps, and marks an empty view `empty`.
+
+**Known gaps**, measured on SOLIDWORKS 2026 SP4:
+
+- `sw_assembly_dof` gives free-motion counts only for fixed, fully defined and unmated components (`GetRemainingDOFs` answers `unavailable` for every mated component).
+- `sw_assembly_interference`'s `components` narrows the report, not the detection: the whole assembly is always checked.
+- A component pattern's seeds are read from the pattern's parents, because SOLIDWORKS gives none in its definition. Those parents also hold the components whose entities gave the pattern's direction or axis. For a linear pattern, SOLIDWORKS 2026 SP4 says which components gave its directions, and those are left out. For a circular pattern it does not say which component gave the axis, so nothing is left out: a component that gave the axis is left out only when it is not a copy of a seed's part. When it is another copy of that part, it is read as a seed too, and `sw_component_delete` refuses to delete it unless the pattern is deleted in the same request.
+- Exploded views, measured on 2026 SP4: SOLIDWORKS' API cannot select an exploded view, so it cannot delete or rename one. `sw_explode_delete` deletes every step of a view and leaves the view itself, empty, and says so (`view_left_empty`); a failed `sw_explode_create` likewise leaves an empty view, reported as a partial rollback (`rollback_failed`, `remaining`), never a clean one. Delete an empty view by hand in the ConfigurationManager. `name` is refused, and SOLIDWORKS names each view (Exploded View1).
+- A step cannot be turned: with an angle, SOLIDWORKS 2026 SP4 turns the components about their own origins, never about the axis asked, so `rotate_about` and `angle_deg` are refused. Turn components with `sw_component_place`.
+- Advanced and mechanical mates, mirroring components, forming or dissolving subassemblies, replacing a component's file and Pack and Go are not offered; `sw_api_call` reaches them.
+
 ### Closing documents
 
 `sw_document_close` closes only a document the agent opened or created (with `sw_document_new` or `sw_document_open`) since it connected. Any other document is yours: closing it needs `users_document: true`, which an agent should pass only when you asked. A document with unsaved changes needs `discard: true` as well.
@@ -85,6 +113,8 @@ A sheet-metal part is a part with a `Sheet-Metal` feature: `sw_sheetmetal_base_f
 ### Export
 
 `sw_export_part` writes a copy: the part keeps its own path and its unsaved changes. A part that is not the active document is made active for the export, and the document that was active is made active again afterwards. The path's extension must be the format's (`.step` or `.stp`, `.x_t`, `.stl`, `.3mf`), in a folder that exists, and an existing file is replaced only with `overwrite: true`.
+
+`sw_export_assembly` writes an assembly the same way, through the same code. STEP and Parasolid keep the assembly's structure: a STEP file must hold one `NEXT_ASSEMBLY_USAGE_OCCURRENCE` for each resolved component, nested ones included (a Parasolid file's structure is not read). STL is written as one file of the whole assembly (`swSTLComponentsIntoOneFile`, set for the call and put back); 3MF always is. A lightweight component is refused, because its geometry is not loaded: resolve it with `sw_component_set` first. `sw_export_part` on an assembly answers `wrong_document_type`, naming `sw_export_assembly`.
 
 - STEP is AP214 unless `options.step_schema` is `ap242`.
 - STL and 3MF are written in mm. Without `options.resolution` they use your own mesh settings (Tools > Options > Export, STL/3MF/AMF), untouched; `coarse` or `fine` is set for the call. STL is binary, in the part's own coordinates (not moved to positive space).
@@ -258,19 +288,19 @@ claude mcp remove --scope user solidworks
 
 In your running SOLIDWORKS, an agent can:
 
-- create, open, save and close parts;
+- create, open, save and close parts and assemblies, and insert, place, mate, pattern and explode components;
 - draw fully specified sketches in one call;
 - add and edit the features listed above, each checked against the geometry it made and taken back when it is wrong;
 - name faces, edges and features by references that survive rebuilds and reopening;
 - read the feature tree, dimensions, mass properties, bounding box and rebuild errors, and measure;
-- export STEP, Parasolid, STL and 3MF;
+- export parts and assemblies as STEP, Parasolid, STL and 3MF, and find interference between components;
 - make sheet-metal parts with flanges, hems and bends, change their thickness, radius and allowance, flatten them, cut across bends, and write their flat patterns as DXF or DWG checked against the flat size;
 - see what you have selected;
 - reach the rest of SOLIDWORKS' API through `sw_api_call`.
 
 In this release it cannot:
 
-- work on assemblies or drawings, or check interference;
+- work on drawings, or use advanced or mechanical mates, mirror components, or edit a component in the assembly's context (see **Assemblies**);
 - make teardrop or rolled hems: `sw_sheetmetal_hem` makes closed and open hems and refuses the other two kinds, which SOLIDWORKS does not make through its API as it does by hand;
 - fold a part whose cut reaches past a bend into the side that turns (see **Sheet metal**);
 - make sheet-metal corners, jogs, lofted bends, cross breaks, rips, gussets, tabs and slots, vents or forming tools, use bend or gauge tables, or put more than one sheet-metal body in a part;
@@ -390,5 +420,19 @@ Remove-Item env:SWMCP_LIVE
 Its report is in `%LOCALAPPDATA%\solidworks-mcp\live-runs\<run>-sheet-metal-suite\report.md`.
 
 Its case 23 is the build-an-enclosure scenario. It plays `tests/SwAgent.Live.Tests/Scenarios/enclosure.transcript.json` through the MCP server's own tools: a 100 x 60 mm blank of 2 mm sheet, a 25 mm flange, a 10 mm closed hem, and a 4 mm relief hole cut across the flange's unfolded bend where it meets the base, folded back. Its flat must be 100 mm by 60 + 23.2832 mm plus the hem's share (measured on a tab with that hem alone), and its DXF must be that size. The calls and their answers are kept in the run's `enclosure-transcript.jsonl`.
+
+#### Assemblies suite
+
+`AssembliesSuite` checks assemblies against exact positions: a component inserted at a point must read back there within 0.001 mm; a face named three ways must be one face; a concentric pin must sit on its hole's axis and an over-defining mate must leave every component where it was; a 3 x 2 grid of cubes 20 and 15 mm apart and pins round a hole must land where the spacing puts them; two blocks overlapping 10 x 20 x 10 mm must interfere by 2000 mm³; an exploded view's three steps must move their components by exactly the distance asked, with the assembly collapsed after, and deleting it must leave it empty; a STEP export must hold an occurrence per component; a mate stopped by a dialog and answered Cancel must be taken back with the pin where it was. It never ends SOLIDWORKS. It needs the add-in loaded with diagnostics on, as the parts suite does, and stops if any document it did not create is open:
+
+```powershell
+$env:SWMCP_LIVE = "1"
+dotnet test tests/SwAgent.Live.Tests -c Release --filter "FullyQualifiedName~SwAgent.Live.Tests.AssembliesSuite"
+Remove-Item env:SWMCP_LIVE
+```
+
+Its report is in `%LOCALAPPDATA%\solidworks-mcp\live-runs\<run>-assemblies-suite\report.md`.
+
+Its case 32 is the build-an-assembly scenario. It plays `tests/SwAgent.Live.Tests/Scenarios/stand.transcript.json` through the MCP server's own tools: an 80 x 40 x 10 mm plate, a 40 x 20 x 10 mm bracket and a Ø10 x 20 mm pin, each sketched and extruded, then assembled with the bracket pinned to the plate. The plate must end at (0, 0, 0), the bracket at (10, 10, 10) and the pin at (20, 20, 0), every component fixed or fully defined, with no interference, an exploded view, and a STEP file holding three occurrences. The calls and their answers are kept in the run's `stand-transcript.jsonl`.
 
 The SP4 canary, `Canary`, checks that a sketch call made through COM from outside SOLIDWORKS still crashes it. It is expected to crash SOLIDWORKS. It never runs by default: it needs `SWMCP_CANARY=1` as well, and is run on its own with `--filter "FullyQualifiedName~Canary"`, after a SOLIDWORKS update.

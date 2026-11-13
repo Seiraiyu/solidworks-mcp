@@ -1,0 +1,329 @@
+{
+  "type": "object",
+  "description": "The exploded view emptied (and deleted, where SOLIDWORKS allows).",
+  "properties": {
+    "deleted": {
+      "type": "string",
+      "description": "The view's name: its steps are deleted, and the view too unless view_left_empty."
+    },
+    "configuration": {
+      "type": "string",
+      "description": "The configuration it belonged to."
+    },
+    "steps": {
+      "type": "integer",
+      "description": "How many steps it had."
+    },
+    "view_left_empty": {
+      "type": "boolean",
+      "description": "True when the view itself is still there, with no steps: SOLIDWORKS 2026 SP4's API cannot delete an exploded view."
+    },
+    "change": {
+      "type": "object",
+      "properties": {
+        "document": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "The document's title as SOLIDWORKS shows it."
+            },
+            "path": {
+              "type": "string",
+              "description": "The full path, absent while the document has never been saved."
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "part",
+                "assembly",
+                "drawing"
+              ],
+              "description": "Part, assembly or drawing."
+            },
+            "dirty": {
+              "type": "boolean",
+              "description": "True when the document has unsaved changes."
+            },
+            "visible": {
+              "type": "boolean",
+              "description": "False for a document SOLIDWORKS loaded only because an open assembly uses it: it has no window of its own."
+            }
+          },
+          "required": [
+            "title",
+            "type",
+            "dirty",
+            "visible"
+          ],
+          "additionalProperties": false,
+          "description": "The assembly it acted on."
+        },
+        "created": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "Something a model-changing operation made.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Its name, for example Sketch3 or Line2."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "face",
+                  "edge",
+                  "vertex",
+                  "feature",
+                  "sketch",
+                  "sketch_entity",
+                  "sketch_point",
+                  "plane",
+                  "axis",
+                  "point",
+                  "dimension",
+                  "component",
+                  "mate"
+                ],
+                "description": "What it is: feature, sketch, sketch_entity, sketch_point, dimension, plane, axis or point."
+              },
+              "reference": {
+                "type": "string",
+                "description": "Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one."
+              }
+            },
+            "required": [
+              "name",
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          "description": "What it made (components, mates, patterns), in the order it made them."
+        },
+        "changed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A value a model-changing operation edited.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "What was edited, for example D1@Sketch1."
+              },
+              "property": {
+                "type": "string",
+                "description": "Which of its properties: value, or suppressed."
+              },
+              "before": {
+                "type": "string",
+                "description": "Its value before, with its unit, for example 40 mm."
+              },
+              "after": {
+                "type": "string",
+                "description": "Its value after, with its unit."
+              }
+            },
+            "required": [
+              "name",
+              "property",
+              "before",
+              "after"
+            ],
+            "additionalProperties": false
+          },
+          "description": "What it edited, each with its value before and after."
+        },
+        "rebuild": {
+          "type": "object",
+          "properties": {
+            "errors": {
+              "type": "integer",
+              "description": "How many features have a rebuild error."
+            },
+            "warnings": {
+              "type": "integer",
+              "description": "How many features have a rebuild warning."
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "description": "A feature with a rebuild error or warning.",
+                "properties": {
+                  "feature": {
+                    "type": "string",
+                    "description": "The feature's name."
+                  },
+                  "code": {
+                    "type": "string",
+                    "description": "SOLIDWORKS' error code name (swFeatureError_e), for example swFeatureErrorFilletNoEdge."
+                  },
+                  "warning": {
+                    "type": "boolean",
+                    "description": "True for a warning, false for an error."
+                  }
+                },
+                "required": [
+                  "feature",
+                  "code",
+                  "warning"
+                ],
+                "additionalProperties": false
+              },
+              "description": "Each feature with an error or warning."
+            }
+          },
+          "required": [
+            "errors",
+            "warnings",
+            "items"
+          ],
+          "additionalProperties": false,
+          "description": "The assembly's rebuild errors and warnings after the change (mate errors included), by feature."
+        },
+        "components_before": {
+          "type": "integer",
+          "description": "Components before the change, nested ones included."
+        },
+        "components_after": {
+          "type": "integer",
+          "description": "Components after the change, nested ones included."
+        },
+        "mates_before": {
+          "type": "integer",
+          "description": "Mates before the change."
+        },
+        "mates_after": {
+          "type": "integer",
+          "description": "Mates after the change."
+        },
+        "moved": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A component whose position a change moved.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The component's name."
+              },
+              "before": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "X, mm."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Y, mm."
+                  },
+                  "z": {
+                    "type": "number",
+                    "description": "Z, mm."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "additionalProperties": false,
+                "description": "Its origin before, mm in the assembly."
+              },
+              "after": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "X, mm."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Y, mm."
+                  },
+                  "z": {
+                    "type": "number",
+                    "description": "Z, mm."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "additionalProperties": false,
+                "description": "Its origin after, mm in the assembly."
+              },
+              "rotated": {
+                "type": "boolean",
+                "description": "True when its axes turned as well as (or instead of) its origin moving."
+              }
+            },
+            "required": [
+              "name",
+              "before",
+              "after",
+              "rotated"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Every component whose position changed, the ones the request named and the ones a solve moved."
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "How far a component's position is defined.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The component's name."
+              },
+              "constraint": {
+                "type": "string",
+                "enum": [
+                  "fixed",
+                  "fully_defined",
+                  "under_defined",
+                  "over_defined",
+                  "unknown"
+                ],
+                "description": "Fixed, fully defined, under defined, over defined or unknown."
+              }
+            },
+            "required": [
+              "name",
+              "constraint"
+            ],
+            "additionalProperties": false
+          },
+          "description": "How far the position of each component the change made, edited or moved is defined now."
+        }
+      },
+      "required": [
+        "document",
+        "created",
+        "changed",
+        "rebuild",
+        "components_before",
+        "components_after",
+        "mates_before",
+        "mates_after",
+        "moved",
+        "constraints"
+      ],
+      "additionalProperties": false,
+      "description": "What changed in the assembly."
+    }
+  },
+  "required": [
+    "deleted",
+    "configuration",
+    "steps",
+    "view_left_empty",
+    "change"
+  ],
+  "additionalProperties": false
+}

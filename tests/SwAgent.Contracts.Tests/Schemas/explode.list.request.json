@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "description": "Lists an assembly's exploded views, by configuration, with their steps (the components each moves, its distance in mm and angle in degrees). SOLIDWORKS gives a view's steps only while it is shown, so each view of the active configuration is shown for a moment and the assembly then shows what it showed before; views of other configurations are listed without steps. Changes nothing.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    }
+  },
+  "additionalProperties": false
+}

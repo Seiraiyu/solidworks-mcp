@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "description": "Explodes an assembly to one of its exploded views of the active configuration, or collapses it. Changes what is shown only, not the assembly, so nothing is rolled back. Waits, like a change, while the user edits a sketch, has a command open or edits a component in context. Checked: the assembly shows the view exploded, or no view, as asked.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "view": {
+      "type": "string",
+      "description": "The view's name, for example Exploded View1 (explode.list lists them)."
+    },
+    "exploded": {
+      "type": "boolean",
+      "description": "true to explode, false to collapse. Default true."
+    }
+  },
+  "required": [
+    "view"
+  ],
+  "additionalProperties": false
+}
