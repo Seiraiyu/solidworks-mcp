@@ -256,6 +256,13 @@ public static class SheetMetalParts
     }
 
     /// <summary>
+    /// How far a face's own centre may measure off it and still be on it, mm. SOLIDWORKS' distance from a face to its
+    /// centre is not exactly 0 (the 6.D live run measured a fraction of a micron after an unfold and a cut); an L-shaped
+    /// face or a hole at the centre puts it millimetres off.
+    /// </summary>
+    public const double OnFaceMm = 0.001;
+
+    /// <summary>
     /// A planar face of the sheet that stays put, read for its plane: its normal and its centre, which must lie on it
     /// (an L-shaped face or one with a hole at its centre is refused, naming the field).
     /// </summary>
@@ -265,8 +272,8 @@ public static class SheetMetalParts
         if (info.Geometry != GeometryType.Plane || info.Normal == null || info.Origin == null)
             throw FeatureFacts.Invalid(field, $"{field} is a {WireNames.ForEnum(info.Geometry)} face; the face that stays put is a planar face of the sheet (sheetmetal.read gives the base face)");
         double off = doc.DistanceMm(face, info.Origin);
-        if (off > 1e-6)
-            throw FeatureFacts.Invalid(field, FormattableString.Invariant($"{field}'s centre is {off:0.###} mm off the face (an L-shaped face, or a hole at its centre); name a face whose centre is on it"));
+        if (off > OnFaceMm)
+            throw FeatureFacts.Invalid(field, FormattableString.Invariant($"{field}'s centre is {off:0.######} mm off the face (an L-shaped face, or a hole at its centre); name a face whose centre is on it"));
         return new FixedPlane(face, info.Normal, info.Origin);
     }
 
