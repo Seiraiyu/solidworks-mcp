@@ -149,7 +149,11 @@
     },
     "bend_lines": {
       "type": "integer",
-      "description": "A DXF's bend lines: lines running across the outline, whatever their layer; absent for a DWG."
+      "description": "A DXF's bend lines: lines standing on their own, outside the outline's chain, whatever their layer (a visible sketch's free lines count too); absent for a DWG."
+    },
+    "marked_dirty": {
+      "type": "boolean",
+      "description": "True when the SOLIDWORKS call marked a part that had no unsaved changes as having them: ExportToDWG2 does on SOLIDWORKS 2026 SP4, and the API cannot clear the flag. The part was not saved to clear it; its path, state and geometry are unchanged."
     },
     "layers": {
       "type": "array",
@@ -175,6 +179,7 @@
     "method",
     "attempts",
     "state",
+    "marked_dirty",
     "layers",
     "checks"
   ],

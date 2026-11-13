@@ -217,6 +217,27 @@ public class ExportFlatPatternOperationTests : SheetMetalTestBase
     }
 
     [Fact]
+    public void A_clean_part_the_call_marks_as_changed_is_reported_not_failed()
+    {
+        // The 6.D live run: on SOLIDWORKS 2026 SP4, ExportToDWG2 marks a saved part as having unsaved changes. The
+        // export answers, says so, and leaves the flag as SOLIDWORKS set it: the user's file is not saved behind them.
+        var doc = SavedChannel();
+        doc.FlatExportTogglesDirty = true;
+        var result = ExportFlat(new ExportFlatPatternRequest { Path = PathOf("marked.dxf"), Format = FlatPatternFormat.Dxf });
+        Assert.True(result.MarkedDirty);
+        Assert.True(result.Document.Dirty);
+        Assert.Contains(result.Checks, c => c.Contains("ExportToDWG2 marked") && c.Contains("SOLIDWORKS 2026 SP4") && c.Contains("not saved"));
+        Assert.True(doc.Info().Dirty, "nothing saved the part to clear the flag");
+    }
+
+    [Fact]
+    public void A_part_whose_flag_stays_is_not_marked()
+    {
+        SavedChannel();
+        Assert.False(ExportFlat(new ExportFlatPatternRequest { Path = PathOf("kept.dxf"), Format = FlatPatternFormat.Dxf }).MarkedDirty);
+    }
+
+    [Fact]
     public void A_part_with_unsaved_changes_is_exported_as_it_is_and_stays_unsaved()
     {
         var doc = SavedChannel();

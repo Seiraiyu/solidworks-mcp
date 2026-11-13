@@ -192,15 +192,40 @@ public class DxfFileTests
     }
 
     [Fact]
-    public void Lines_that_do_not_cross_the_outline_are_not_bend_lines()
+    public void A_box_with_corner_reliefs_has_bend_lines_that_end_inside_the_flat()
     {
-        var entities = Rectangle(100, 60).Concat(new[]
+        // The 6.D live run's second box.dxf (ExportToDWG2): CADapter's box, its 12 outline lines and 4 bend lines; the
+        // two side bend lines end where the bend regions meet, inside the flat, not on the outline.
+        double a = 18.2831853072, b = 1.8584073464, c = 58.1415926536, d = 78.2831853072;
+        var entities = new[]
         {
-            Line(20, 20, 40, 20),        // a sketch line inside, touching nothing
-            Line(0, 10, 30, 10),         // from the outline to nowhere
+            Line(100, -c, 0, -c), Line(0, -b, 100, -b), Line(b, -55, b, -5), Line(100 - b, -5, 100 - b, -55),
+            Line(0, a, 100, a), Line(100, -5, 100, a), Line(100 + a, -5, 100, -5), Line(100 + a, -5, 100 + a, -55),
+            Line(100, -55, 100 + a, -55), Line(100, -d, 100, -55), Line(100, -d, 0, -d), Line(0, -55, 0, -d),
+            Line(-a, -55, 0, -55), Line(-a, -55, -a, -5), Line(0, -5, -a, -5), Line(0, a, 0, -5),
+        };
+        var dxf = DxfFile.Parse(Drawing(Array.Empty<object>(), entities));
+        Assert.Equal(4, dxf.BendLines);
+        Assert.Equal(16, dxf.Entities);
+    }
+
+    [Fact]
+    public void Lines_of_a_closed_outline_or_along_it_are_not_bend_lines()
+    {
+        var slot = new[] { Line(20, 20, 40, 20), Line(40, 20, 40, 25), Line(40, 25, 20, 25), Line(20, 25, 20, 20) };
+        var entities = Rectangle(100, 60).Concat(slot).Concat(new[]
+        {
             Line(10, 0, 40, 0),          // along an edge of the outline
         }).ToArray();
         Assert.Equal(0, DxfFile.Parse(Drawing(Array.Empty<object>(), entities)).BendLines);
+    }
+
+    [Fact]
+    public void A_free_line_inside_counts_as_a_bend_line_as_a_sketch_line_would()
+    {
+        // Bend lines and sketch lines cannot be told apart by geometry: with sketches drawn, the count includes them.
+        var entities = Rectangle(100, 60).Concat(new[] { Line(20, 20, 40, 20) }).ToArray();
+        Assert.Equal(1, DxfFile.Parse(Drawing(Array.Empty<object>(), entities)).BendLines);
     }
 
     [Fact]

@@ -76,12 +76,14 @@ public sealed partial class SheetMetalSuite
             .Where(f => Math.Abs((f.RadiusMm ?? 0) - 2) < 1e-6).ToList();
         Assert.NotEmpty(holes);
         var state = (await _run.AddinStateAsync()).Documents.Single(d => string.Equals(d.Path, part, StringComparison.OrdinalIgnoreCase));
-        Assert.False(state.Dirty, "the transcript saved the part before exporting it");
+        // The transcript saved the part before exporting it; ExportToDWG2 may mark it changed (marked_dirty, 6.D live run).
+        bool marked = string.Equals(variables["dxf_marked_dirty"]?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(marked, state.Dirty);
 
         return FormattableString.Invariant($"{calls.Count} tool calls ({string.Join(", ", calls.Select(c => c.Tool))}), longest {calls.Max(c => c.Ms)} ms; ") +
                $"{variables["base"]}, {variables["flange"]} ({variables["flange_bend"]}), {variables["hem"]}, {variables["unfold"]}, {variables["cut"]}, {variables["fold"]}; " +
                FormattableString.Invariant($"flat {read.Flat.LengthMm} × {read.Flat.WidthMm} (expected 100 × {width:0.####}, the hem's share {hem:0.####} from a tab with it alone, {hemFlat.LengthMm} × {hemFlat.WidthMm}); ") +
-               FormattableString.Invariant($"DXF by {variables["dxf_method"]}: {Number("dxf_length"):0.####} × {Number("dxf_width"):0.####}, {variables["dxf_bend_lines"]} bend lines, {new FileInfo(dxf).Length} bytes, {(sides == null ? "no $EXTMIN/$EXTMAX" : headerIsFlat ? "its header the flat" : $"its header {sides.Value.Long:0.####} × {sides.Value.Short:0.####}, not the flat")}; ") +
+               FormattableString.Invariant($"DXF by {variables["dxf_method"]} (marked_dirty {marked}):{Number("dxf_length"):0.####} × {Number("dxf_width"):0.####}, {variables["dxf_bend_lines"]} bend lines, {new FileInfo(dxf).Length} bytes, {(sides == null ? "no $EXTMIN/$EXTMAX" : headerIsFlat ? "its header the flat" : $"its header {sides.Value.Long:0.####} × {sides.Value.Short:0.####}, not the flat")}; ") +
                FormattableString.Invariant($"box {box.Max.X - box.Min.X:0.####} × {box.Max.Y - box.Min.Y:0.####} × {box.Max.Z - box.Min.Z:0.####}; {holes.Count} faces of the 4 mm hole; transcript in {Path.GetFileName(log)}");
     });
 }

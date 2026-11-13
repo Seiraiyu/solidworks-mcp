@@ -120,10 +120,12 @@ public sealed class DxfFile
     public int NamedBendLines { get; private set; }
 
     /// <summary>
-    /// How many LINEs run across the outline: each end lies on another entity (inside one of its edges, or where the
-    /// outline is split into two lines in line with each other and not with it), and its middle lies on none. A
-    /// flat pattern's bend lines are such chords whatever layer they are on; a bend cut by a hole counts once per piece.
-    /// Lines along the outline, and sketch lines that do not reach it at both ends, are not counted.
+    /// How many LINEs stand on their own, outside every chain of entities: no other entity ends at either of its ends
+    /// (an end may lie inside another's edge, or free inside the flat where bend regions meet at a relief), except
+    /// where the outline is split into two lines in line with each other and not with it; and its middle lies on no
+    /// other entity. A flat pattern's bend lines are such lines whatever layer they are on (the 6.D live run: layer 0,
+    /// Continuous, like the outline); a bend cut by a hole counts once per piece. Lines of a closed outline or cut-out,
+    /// and lines along the outline, are not counted. A visible sketch's free lines look the same and are counted.
     /// </summary>
     public int BendLines { get; private set; }
 
@@ -192,16 +194,20 @@ public sealed class DxfFile
             if (Distance(l.X1, l.Y1, l.X2, l.Y2) <= eps) continue;
             double mx = (l.X1 + l.X2) / 2, my = (l.Y1 + l.Y2) / 2;
             if (OnAnother(l.Entity, mx, my, eps, inside: false)) continue;
-            if (EndsOnOutline(l, l.X1, l.Y1, eps) && EndsOnOutline(l, l.X2, l.Y2, eps)) count++;
+            if (EndIsOwn(l, l.X1, l.Y1, eps) && EndIsOwn(l, l.X2, l.Y2, eps)) count++;
         }
         return count;
     }
 
-    /// <summary>The end (x, y) of line <paramref name="l"/> meets the outline: inside another's edge, or at a split of two lines in line.</summary>
-    bool EndsOnOutline(Segment l, double x, double y, double eps)
+    /// <summary>
+    /// The end (x, y) of line <paramref name="l"/> is not a corner of a chain of entities: no other entity ends there
+    /// (it is free, or lies inside another's edge), or two lines in line with each other and not with it end there
+    /// (the outline split where the bend line meets it).
+    /// </summary>
+    bool EndIsOwn(Segment l, double x, double y, double eps)
     {
         var others = _ends.Where(e => e.Entity != l.Entity && Distance(e.X, e.Y, x, y) <= eps).ToList();
-        if (others.Count == 0) return OnAnother(l.Entity, x, y, eps, inside: true);
+        if (others.Count == 0) return true;
         if (others.Count != 2) return false;
         var meeting = _segments.Where(s => s.Entity != l.Entity && (Distance(s.X1, s.Y1, x, y) <= eps || Distance(s.X2, s.Y2, x, y) <= eps)).ToList();
         if (meeting.Count != 2) return false;

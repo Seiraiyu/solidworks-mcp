@@ -162,6 +162,17 @@ public class FlatPatternFileCheckTests
     }
 
     [Fact]
+    public void With_sketches_drawn_lines_left_without_bend_lines_are_reported_not_failed()
+    {
+        // A visible sketch's free lines look like bend lines, so "none" cannot be told when sketches are drawn.
+        var expected = Box(bendLines: false);
+        expected.Sketches = true;
+        string path = Write("sketch-lines.dxf", Drawing(Array.Empty<object>(), BoxOutline(true)));
+        var file = FlatPatternFileCheck.Check(path, FlatPatternFormat.Dxf, _started, expected);
+        Assert.Contains(file.Checks, c => c.Contains("4 free lines") && c.Contains("sketches"));
+    }
+
+    [Fact]
     public void Bend_lines_present_when_left_out_fail()
     {
         string path = Write("bends.dxf", Drawing(Array.Empty<object>(), BoxOutline(true)));

@@ -93,11 +93,18 @@ public sealed partial class SheetMetalSuite
         Within(length, dxf.Extents.LengthMm, 0.01, "the DXF's length");
         Within(width, dxf.Extents.WidthMm, 0.01, "the DXF's width");
         Assert.True(dxf.BendLines >= 4, $"a bend line per bend: {dxf.BendLines} for 4 bends; layers {string.Join(", ", dxf.Layers)}");
-        Assert.False(dxf.Document.Dirty);
+        // ExportToDWG2 may mark the saved part changed (6.D live run); the flag then says so, and nothing saved it.
+        Assert.Equal(dxf.MarkedDirty, dxf.Document.Dirty);
         Assert.Equal(SheetState.Folded, dxf.State);
         string header = HeaderAgrees(dxf);
+        var marked = new List<string> { $"{dxf.Method} {(dxf.MarkedDirty ? "marked it" : "kept it clean")}" };
 
+        // Saved again, so the next call is measured on a clean part: does ExportFlatPatternView mark it too?
+        if (dxf.Document.Dirty) await Save(path);
         var plain = await ExportFlat(new ExportFlatPatternRequest { Document = path, Path = ScratchFile("box-plain.dxf"), Format = FlatPatternFormat.Dxf, BendLines = false });
+        Assert.Equal(plain.MarkedDirty, plain.Document.Dirty);
+        marked.Add($"{plain.Method} {(plain.MarkedDirty ? "marked it" : "kept it clean")}");
+        if (plain.Document.Dirty) await Save(path);
         Assert.Equal(0, plain.BendLines);
         Assert.Equal("ExportFlatPatternView", plain.Method);
         Within(length, plain.Extents!.LengthMm, 0.01, "the DXF without bend lines, its length");
@@ -107,6 +114,8 @@ public sealed partial class SheetMetalSuite
         var dwg = await ExportFlat(new ExportFlatPatternRequest { Document = path, Path = ScratchFile("box.dwg"), Format = FlatPatternFormat.Dwg });
         Assert.Matches("^AC10[0-9][0-9]$", dwg.Header);
         Assert.True(dwg.Bytes >= 1024, $"the DWG holds {dwg.Bytes} bytes");
+        marked.Add($"{dwg.Method} (DWG) {(dwg.MarkedDirty ? "marked it" : "kept it clean")}");
+        if (dwg.Document.Dirty) await Save(path);
 
         await Flatten(path, true);
         var flat = await ExportFlat(new ExportFlatPatternRequest { Document = path, Path = ScratchFile("box-flattened.dxf"), Format = FlatPatternFormat.Dxf });
@@ -117,7 +126,8 @@ public sealed partial class SheetMetalSuite
         Assert.Equal(SheetState.Folded, (await Read(path)).State);
         return FormattableString.Invariant($"DXF by {dxf.Method} in {ms} ms (export deadline 120 s), {dxf.Bytes} bytes: {dxf.Extents.LengthMm:0.####} × {dxf.Extents.WidthMm:0.####} from {dxf.Extents.From} (expected {length:0.####} × {width:0.####}); {header}; ") +
                $"{dxf.BendLines} bend lines; layers {string.Join(", ", dxf.Layers)}; attempts {string.Join("; ", dxf.Attempts)} | without bend lines: by {plain.Method}, {plain.BendLines}, layers {string.Join(", ", plain.Layers)}, {plainHeader} | " +
-               $"DWG by {dwg.Method}: {dwg.Header}, {dwg.Bytes} bytes | flattened: by {flat.Method}, {flat.Extents.LengthMm:0.####} × {flat.Extents.WidthMm:0.####}, left flattened, folded again | checks: {string.Join("; ", dxf.Checks)}";
+               $"DWG by {dwg.Method}: {dwg.Header}, {dwg.Bytes} bytes | flattened: by {flat.Method}, {flat.Extents.LengthMm:0.####} × {flat.Extents.WidthMm:0.####}, left flattened, folded again | " +
+               $"the saved part's flag: {string.Join("; ", marked)} | checks: {string.Join("; ", dxf.Checks)}";
     });
 
     [SkippableFact, Step(21)]
@@ -136,8 +146,9 @@ public sealed partial class SheetMetalSuite
             Assert.True(saved.BendLines >= 1, $"{name}: a bend line for the one bend, {saved.BendLines}");
             Within(100, saved.Extents!.LengthMm, 0.01, $"{name}: its length");
             Within(60 + Across25, saved.Extents.WidthMm, 0.01, $"{name}: its width");
-            Assert.False(saved.Document.Dirty);
-            notes.Add(FormattableString.Invariant($"saved, by {saved.Method}: {saved.Extents.LengthMm:0.####} × {saved.Extents.WidthMm:0.####}, {saved.BendLines} bend lines, layers {string.Join(", ", saved.Layers)}; {HeaderAgrees(saved)}"));
+            Assert.Equal(saved.MarkedDirty, saved.Document.Dirty);
+            notes.Add(FormattableString.Invariant($"saved, by {saved.Method}: {saved.Extents.LengthMm:0.####} × {saved.Extents.WidthMm:0.####}, {saved.BendLines} bend lines, layers {string.Join(", ", saved.Layers)}, marked_dirty {saved.MarkedDirty}; {HeaderAgrees(saved)}"));
+            if (saved.Document.Dirty) await Save(path);
         }
 
         await Call<SheetMetalSetParametersRequest, SheetMetalSetParametersResult>(new SheetMetalSetParametersRequest { Document = path, Allowance = new BendAllowance { KFactor = 0.1 } });
@@ -148,7 +159,8 @@ public sealed partial class SheetMetalSuite
             Assert.Equal(method, unsaved.Method);
             Within(60 + Across25AtK01, unsaved.Extents!.WidthMm, 0.01, $"{name}: its width at K 0.1, as the part is now");
             Assert.True(unsaved.Document.Dirty, "the part keeps its unsaved changes");
-            notes.Add(FormattableString.Invariant($"unsaved at K 0.1, by {unsaved.Method}: {unsaved.Extents.LengthMm:0.####} × {unsaved.Extents.WidthMm:0.####} (expected 100 × {60 + Across25AtK01:0.####}); {HeaderAgrees(unsaved)}"));
+            Assert.False(unsaved.MarkedDirty, "a part already changed is not marked by the export");
+            notes.Add(FormattableString.Invariant($"unsaved at K 0.1, by {unsaved.Method}:{unsaved.Extents.LengthMm:0.####} × {unsaved.Extents.WidthMm:0.####} (expected 100 × {60 + Across25AtK01:0.####}); {HeaderAgrees(unsaved)}"));
         }
         var state = (await _run.AddinStateAsync()).Documents.Single(d => string.Equals(d.Path, path, StringComparison.OrdinalIgnoreCase));
         Assert.True(state.Dirty, "still unsaved after both exports");

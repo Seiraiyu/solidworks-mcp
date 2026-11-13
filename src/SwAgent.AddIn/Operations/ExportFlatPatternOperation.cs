@@ -57,6 +57,7 @@ public sealed class ExportFlatPatternOperation : Operation<ExportFlatPatternRequ
             ToleranceMm = FlatPatternExports.ToleranceMm(cutList, unit),
             MmPerUnit = unit,
             BendLines = bendLines,
+            Sketches = sketches,
             Bends = bends,
         };
 
@@ -100,9 +101,15 @@ public sealed class ExportFlatPatternOperation : Operation<ExportFlatPatternRequ
         }
 
         var after = doc.Info();
-        ExportPartOperation.Unchanged(before, after);
+        // The 6.D live run: on SOLIDWORKS 2026 SP4, ExportToDWG2 marks a saved part as having unsaved changes, and the
+        // API has no call to clear the flag. That is reported (marked_dirty), never undone by saving the user's file;
+        // the path, the state and the flat are still verified, and a flag cleared (a save) still fails.
+        bool markedDirty = !before.Dirty && after.Dirty;
+        ExportPartOperation.Unchanged(before, markedDirty ? Clean(after) : after);
         StateUnchanged(after, state, SheetMetalParts.State(doc));
-        file.Checks.Add($"{after.Title} kept its path ({after.Path}), its unsaved-changes flag ({(after.Dirty ? "dirty" : "clean")}) and its state ({WireNames.ForEnum(state)})");
+        file.Checks.Add(markedDirty
+            ? $"{after.Title} kept its path ({after.Path}) and its state ({WireNames.ForEnum(state)}); {method} marked it as having unsaved changes (measured on SOLIDWORKS 2026 SP4), and it was not saved to clear the flag"
+            : $"{after.Title} kept its path ({after.Path}), its unsaved-changes flag ({(after.Dirty ? "dirty" : "clean")}) and its state ({WireNames.ForEnum(state)})");
         if (switched && previousInfo != null) file.Checks.Add($"{after.Title} was made active for the export and {previousInfo.Title} active again afterwards");
         context.Log.Info($"export.flat_pattern: {DocumentKeys.Of(after)} to {path} by {method} ({file.Bytes} bytes)");
         return new ExportFlatPatternResult
@@ -129,10 +136,14 @@ public sealed class ExportFlatPatternOperation : Operation<ExportFlatPatternRequ
                 }
                 : null,
             BendLines = file.BendLines,
+            MarkedDirty = markedDirty,
             Layers = file.Layers.ToList(),
             Checks = file.Checks.ToList(),
         };
     }
+
+    /// <summary>The same document as if its unsaved-changes flag were clear: to compare the rest with what it was.</summary>
+    static DocumentInfo Clean(DocumentInfo d) => new DocumentInfo { Title = d.Title, Path = d.Path, Type = d.Type, Dirty = false, Visible = d.Visible };
 
     /// <summary>The file is there, not empty, and was written by the call that began at <paramref name="started"/>.</summary>
     static bool WrittenSince(string path, DateTime started)

@@ -25,6 +25,9 @@ public sealed class FlatPatternExpectation
     /// <summary>Bend lines were asked for.</summary>
     public bool BendLines { get; set; }
 
+    /// <summary>The part's visible sketches were asked for: their free lines cannot be told from bend lines.</summary>
+    public bool Sketches { get; set; }
+
     /// <summary>How many bends the part has (a part without bends has no bend lines either way).</summary>
     public int Bends { get; set; }
 }
@@ -156,7 +159,13 @@ public static class FlatPatternFileCheck
         file.Checks.Add(FormattableString.Invariant($"its extents {got} ({file.ExtentsFrom}, {box}) match the flat size {want} from the cut list within {tolerance:0.####} mm"));
 
         string found = $"{dxf.BendLines} lines across the outline ({dxf.NamedBendLines} entities on a layer or linetype named *{DxfFile.BendMarker}*); layers {string.Join(", ", file.Layers)}; linetypes {string.Join(", ", file.Linetypes)}";
-        if (!expected.BendLines)
+        if (!expected.BendLines && expected.Sketches)
+        {
+            file.Checks.Add(dxf.BendLines == 0
+                ? "no bend lines, as asked"
+                : $"{dxf.BendLines} free lines, asked without bend lines and with sketches: a sketch's lines cannot be told from bend lines, so they are reported, not checked");
+        }
+        else if (!expected.BendLines)
         {
             if (dxf.BendLines > 0)
                 throw ExportFileCheck.Failed("bend_lines", path, "no bend lines", found, $"{path} was asked without bend lines, and it has {dxf.BendLines}");

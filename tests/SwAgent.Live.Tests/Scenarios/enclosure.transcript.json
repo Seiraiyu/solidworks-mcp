@@ -26,6 +26,6 @@
     { "say": "fold the flange back up", "tool": "sw_sheetmetal_fold", "arguments": { "document": "${part}", "bends": [ "${flange_bend}" ] }, "save": { "fold": "/feature/name" } },
     { "say": "save the part", "tool": "sw_document_save", "arguments": { "document": "${part}" } },
     { "say": "its flat size for the shop", "tool": "sw_sheetmetal_read", "arguments": { "document": "${part}" }, "save": { "flat_length": "/flat/length_mm", "flat_width": "/flat/width_mm", "bends": "/flat/bends" } },
-    { "say": "the flat pattern as DXF, with its bend lines", "tool": "sw_export_flat_pattern", "arguments": { "document": "${part}", "path": "${dxf}", "format": "dxf" }, "save": { "dxf_length": "/extents/length_mm", "dxf_width": "/extents/width_mm", "dxf_bend_lines": "/bend_lines", "dxf_method": "/method" } }
+    { "say": "the flat pattern as DXF, with its bend lines", "tool": "sw_export_flat_pattern", "arguments": { "document": "${part}", "path": "${dxf}", "format": "dxf" }, "save": { "dxf_length": "/extents/length_mm", "dxf_width": "/extents/width_mm", "dxf_bend_lines": "/bend_lines", "dxf_method": "/method", "dxf_marked_dirty": "/marked_dirty" } }
   ]
 }
