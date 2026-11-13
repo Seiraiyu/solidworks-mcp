@@ -227,7 +227,45 @@ public class ExportFlatPatternOperationTests : SheetMetalTestBase
         Assert.True(result.MarkedDirty);
         Assert.True(result.Document.Dirty);
         Assert.Contains(result.Checks, c => c.Contains("ExportToDWG2 marked") && c.Contains("SOLIDWORKS 2026 SP4") && c.Contains("not saved"));
+        Assert.Contains(result.Checks, c => c.Contains("its geometry (") && c.Contains("2 bends") && c.Contains(" mm³"));
         Assert.True(doc.Info().Dirty, "nothing saved the part to clear the flag");
+    }
+
+    /// <summary>
+    /// With the flag no longer guarding it, a part the call marks as changed must still be the part it was: its volume,
+    /// its bend count and its cut list's flat size, measured before and after the call.
+    /// </summary>
+    [Theory]
+    [InlineData("volume")]
+    [InlineData("bends")]
+    [InlineData("flat")]
+    public void A_clean_part_the_call_marks_as_changed_and_changes_fails(string what)
+    {
+        var doc = SavedChannel();
+        doc.FlatExportTogglesDirty = true;
+        doc.FlatExportAlso = what switch
+        {
+            "volume" => () => doc.MassProperties!.VolumeMm3 += 1,
+            "bends" => () => doc.FakeBends.RemoveAt(0),
+            _ => () => doc.FlatError += 0.5,
+        };
+        var e = Fails(() => ExportFlat(new ExportFlatPatternRequest { Path = PathOf($"changed-{what}.dxf"), Format = FlatPatternFormat.Dxf }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("document_unchanged", e.Error.Details!["check"]);
+        Assert.Contains($"its {what}", e.Message);
+        Assert.Contains("ExportToDWG2 marked", e.Message);
+        Assert.True(doc.Info().Dirty, "the part is not saved to put it back");
+    }
+
+    [Fact]
+    public void A_part_already_changed_is_not_measured_again()
+    {
+        // Its unsaved-changes flag was set before the call and is checked as it was; the volume is read once, before.
+        var doc = SavedChannel();
+        doc.Document.Dirty = true;
+        var result = ExportFlat(new ExportFlatPatternRequest { Path = PathOf("already.dxf"), Format = FlatPatternFormat.Dxf });
+        Assert.False(result.MarkedDirty);
+        Assert.DoesNotContain(result.Checks, c => c.Contains("its geometry"));
     }
 
     [Fact]

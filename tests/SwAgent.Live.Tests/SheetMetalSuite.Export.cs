@@ -131,7 +131,7 @@ public sealed partial class SheetMetalSuite
     });
 
     [SkippableFact, Step(21)]
-    public Task An_unsaved_change_is_in_the_flat_pattern_and_ExportToDWG2_writes_with_sketches() => _run.CaseAsync(21, "export.flat_pattern of a 25 mm flange's tab, saved (100 × 83.2832): with sketches, through ExportToDWG2, and without, the same size; then set to K 0.1 and not saved: 100 × 82.0265 as the part is now, by both calls, and the part still unsaved", async () =>
+    public Task An_unsaved_change_is_in_the_flat_pattern_and_ExportToDWG2_writes_with_sketches() => _run.CaseAsync(21, "export.flat_pattern of a 25 mm flange's tab, saved (100 × 83.2832): with sketches, through ExportToDWG2, and without, the same size; then set to K 0.1 and not saved: 100 × 82.0265 as the part is now, with sketches and without, and the part still unsaved", async () =>
     {
         await _run.RequireOnlyOwnDocumentsAsync();
         var (path, _) = await Sheet("export-unsaved");

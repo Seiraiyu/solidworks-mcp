@@ -37,6 +37,9 @@ sealed partial class FakeDocument
     /// <summary>The export flips the part's unsaved-changes flag (as saving it, or changing it, would).</summary>
     public bool FlatExportTogglesDirty { get; set; }
 
+    /// <summary>Done to the part after the file is written (a call that changes the geometry it exported).</summary>
+    public Action? FlatExportAlso { get; set; }
+
     public bool ExportFlatPatternView(string path, bool bendLines) => WriteFlat(FlatPatternExports.FlatPatternView, path, bendLines, sketches: false);
 
     public bool ExportToDwg2(string path, string partPath, int sheetMetalOptions)
@@ -46,6 +49,13 @@ sealed partial class FakeDocument
     }
 
     bool WriteFlat(string method, string path, bool bendLines, bool sketches)
+    {
+        bool answered = WriteFlatFile(method, path, bendLines, sketches);
+        FlatExportAlso?.Invoke();
+        return answered;
+    }
+
+    bool WriteFlatFile(string method, string path, bool bendLines, bool sketches)
     {
         FlatExports.Add((method, path, bendLines, sketches));
         if (FlatExportFails.Contains(method)) return false;

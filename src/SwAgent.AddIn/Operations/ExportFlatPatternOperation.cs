@@ -13,7 +13,8 @@ namespace SwAgent.AddIn.Operations;
 /// never saved is refused before SOLIDWORKS is called (CADapter measured a Save As box that waited about 20 minutes).
 /// The calls are tried in order until one writes the file (<see cref="FlatPatternExports.Methods"/>), and the file is
 /// proven on disk: a DXF's extents against the cut list's flat size and its bend lines as asked, a DWG by its header and
-/// size (<see cref="FlatPatternFileCheck"/>). The part keeps its state, path and unsaved-changes flag (checked).
+/// size (<see cref="FlatPatternFileCheck"/>). The part keeps its state, path and unsaved-changes flag (checked); when
+/// the call marks a clean part as changed (SOLIDWORKS 2026 SP4), its volume, bends and flat size are checked instead.
 /// </summary>
 public sealed class ExportFlatPatternOperation : Operation<ExportFlatPatternRequest, ExportFlatPatternResult>
 {
@@ -60,6 +61,7 @@ public sealed class ExportFlatPatternOperation : Operation<ExportFlatPatternRequ
             Sketches = sketches,
             Bends = bends,
         };
+        var geometry = new Geometry(Volume(doc), bends, flat);
 
         // The calls work on the active document: the part is made active, and whatever was active is made active again.
         var previous = _services.SolidWorks.ActiveDoc();
@@ -103,12 +105,14 @@ public sealed class ExportFlatPatternOperation : Operation<ExportFlatPatternRequ
         var after = doc.Info();
         // The 6.D live run: on SOLIDWORKS 2026 SP4, ExportToDWG2 marks a saved part as having unsaved changes, and the
         // API has no call to clear the flag. That is reported (marked_dirty), never undone by saving the user's file;
-        // the path, the state and the flat are still verified, and a flag cleared (a save) still fails.
+        // the path and the state are still verified, a flag cleared (a save) still fails, and since the flag no longer
+        // guards the part, its volume, bend count and cut-list flat size are measured again and must be what they were.
         bool markedDirty = !before.Dirty && after.Dirty;
         ExportPartOperation.Unchanged(before, markedDirty ? Clean(after) : after);
         StateUnchanged(after, state, SheetMetalParts.State(doc));
+        if (markedDirty) geometry.Unchanged(after, method, Geometry.Of(doc, unit));
         file.Checks.Add(markedDirty
-            ? $"{after.Title} kept its path ({after.Path}) and its state ({WireNames.ForEnum(state)}); {method} marked it as having unsaved changes (measured on SOLIDWORKS 2026 SP4), and it was not saved to clear the flag"
+            ? $"{after.Title} kept its path ({after.Path}), its state ({WireNames.ForEnum(state)}) and its geometry ({geometry}); {method} marked it as having unsaved changes (measured on SOLIDWORKS 2026 SP4), and it was not saved to clear the flag"
             : $"{after.Title} kept its path ({after.Path}), its unsaved-changes flag ({(after.Dirty ? "dirty" : "clean")}) and its state ({WireNames.ForEnum(state)})");
         if (switched && previousInfo != null) file.Checks.Add($"{after.Title} was made active for the export and {previousInfo.Title} active again afterwards");
         context.Log.Info($"export.flat_pattern: {DocumentKeys.Of(after)} to {path} by {method} ({file.Bytes} bytes)");
@@ -144,6 +148,61 @@ public sealed class ExportFlatPatternOperation : Operation<ExportFlatPatternRequ
 
     /// <summary>The same document as if its unsaved-changes flag were clear: to compare the rest with what it was.</summary>
     static DocumentInfo Clean(DocumentInfo d) => new DocumentInfo { Title = d.Title, Path = d.Path, Type = d.Type, Dirty = false, Visible = d.Visible };
+
+    static double Volume(ISwDocument doc) => doc.SolidBodyCount() == 0 ? 0 : doc.Mass()?.VolumeMm3 ?? 0;
+
+    /// <summary>
+    /// What the part is, to tell that an export which marked it as changed did not change it: its solid volume, its bend
+    /// count and its cut-list flat size, each measured as the sheet-metal checks measure them.
+    /// </summary>
+    internal sealed class Geometry
+    {
+        /// <summary>The cut list's flat size is written rounded; it is read from the same text both times, so this is exact.</summary>
+        const double FlatToleranceMm = 1e-6;
+
+        public Geometry(double volumeMm3, int bends, FlatSize? flat)
+        {
+            VolumeMm3 = volumeMm3;
+            Bends = bends;
+            Flat = flat;
+        }
+
+        public double VolumeMm3 { get; }
+        public int Bends { get; }
+        public FlatSize? Flat { get; }
+
+        public static Geometry Of(ISwDocument doc, double mmPerUnit)
+        {
+            var sheet = doc.SheetMetal;
+            int bends = sheet.Bends().Count;
+            return new Geometry(Volume(doc), bends, SheetMetalParts.Flat(sheet.CutList(), mmPerUnit, bends));
+        }
+
+        static string FlatText(FlatSize? f) => f == null ? "none" : FormattableString.Invariant($"{f.LengthMm:0.####} × {f.WidthMm:0.####} mm");
+
+        public override string ToString() => FormattableString.Invariant($"{VolumeMm3:0.###} mm³, {Bends} bends, flat size {FlatText(Flat)}");
+
+        /// <summary>Fails document_unchanged, naming each measure that moved, unless <paramref name="now"/> is this.</summary>
+        public void Unchanged(DocumentInfo part, string method, Geometry now)
+        {
+            var moved = new List<string>();
+            if (Math.Abs(now.VolumeMm3 - VolumeMm3) > FeatureChecks.VolumeTolerance * Math.Max(1, Math.Abs(VolumeMm3)))
+                moved.Add(FormattableString.Invariant($"its volume {VolumeMm3:0.###} -> {now.VolumeMm3:0.###} mm³"));
+            if (now.Bends != Bends) moved.Add($"its bends {Bends} -> {now.Bends}");
+            bool sameFlat = Flat == null ? now.Flat == null
+                : now.Flat != null && Math.Abs(now.Flat.LengthMm - Flat.LengthMm) <= FlatToleranceMm && Math.Abs(now.Flat.WidthMm - Flat.WidthMm) <= FlatToleranceMm;
+            if (!sameFlat) moved.Add($"its flat size (by the cut list) {FlatText(Flat)} -> {FlatText(now.Flat)}");
+            if (moved.Count == 0) return;
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"{method} marked {part.Title} as having unsaved changes and changed it: {string.Join("; ", moved)}. It was not saved; undo the change or close it without saving",
+                new JsonObject
+                {
+                    ["check"] = "document_unchanged",
+                    ["expected"] = ToString(),
+                    ["measured"] = now.ToString(),
+                });
+        }
+    }
 
     /// <summary>The file is there, not empty, and was written by the call that began at <paramref name="started"/>.</summary>
     static bool WrittenSince(string path, DateTime started)

@@ -146,7 +146,7 @@ public sealed class ExportFlatPatternResult
     [Description("A DXF's bend lines: lines standing on their own, outside the outline's chain, whatever their layer (a visible sketch's free lines count too); absent for a DWG.")]
     public int? BendLines { get; set; }
 
-    [Description("True when the SOLIDWORKS call marked a part that had no unsaved changes as having them: every export does on SOLIDWORKS 2026 SP4, and the API cannot clear the flag. The part was not saved to clear it; its path, state and geometry are unchanged.")]
+    [Description("True when the SOLIDWORKS call marked a part that had no unsaved changes as having them: every export does on SOLIDWORKS 2026 SP4, and the API cannot clear the flag. The part was not saved to clear it; its path, state and geometry are unchanged (checked: its volume, bend count and cut-list flat size are measured before and after the call).")]
     public bool MarkedDirty { get; set; }
 
     [Required]
