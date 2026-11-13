@@ -908,10 +908,12 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
         Assert.All(four.Instances, i => Assert.True((i.TurnDeg ?? 0) <= 0.01, $"{i.Name} turned {i.TurnDeg}° off"));
         string p2 = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = pin, At = new Point3(70, 40, 50) })).Component.Name;
         var half = await Call<ComponentCircularPatternRequest, ComponentPatternResult>(new ComponentCircularPatternRequest { Document = asm, Components = { p2 }, Axis = centre.Reference!, Count = 3, AngleDeg = 180 });
-        double y = half.Sense == "along" ? 70 : 10;
+        // The sense is the turn about the centre hole's axis as SOLIDWORKS gives it, which may point down (-Z) as well as up.
+        bool up = centre.Axis!.Z > 0;
+        double y = (half.Sense == "along") == up ? 70 : 10;
         Lands(half, await Placements(asm), new[] { new Point3(40, y, 50), new Point3(10, 40, 50) });
         await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
-        return $"{four.Pattern.Name}: 3 instances at 90° steps, sense {four.Sense}; {half.Pattern.Name}: 180° over 3 is 90° steps, sense {half.Sense}";
+        return $"{four.Pattern.Name}: 3 instances at 90° steps, sense {four.Sense}; {half.Pattern.Name}: 180° over 3 is 90° steps, sense {half.Sense} about an axis pointing {(up ? "+Z" : "-Z")}";
     });
 
     [SkippableFact, Step(23)]

@@ -16,7 +16,7 @@ internal sealed class SolidWorksInterference : IInterferenceSession
 {
     const double Mm = 1000.0;
 
-    readonly IInterferenceDetectionMgr _mgr;
+    IInterferenceDetectionMgr _mgr;
     readonly Action _restore;
 
     public SolidWorksInterference(IAssemblyDoc asm, InterferenceOptions options)
@@ -47,6 +47,14 @@ internal sealed class SolidWorksInterference : IInterferenceSession
             _mgr.CreateFastenersFolder = false;
             _mgr.ShowIgnoredInterferences = false;
             _mgr.UseTransform = false;
+            // In process, the manager's results are the ones worked out when it was taken: with the settings above only set,
+            // GetInterferences still answered as before them (plan 4.D live run, 2026 SP4: coincident faces were missing,
+            // while the same calls from another process found them). So close it and take it again with them in place.
+            _mgr.Done();
+            _mgr = asm.InterferenceDetectionManager
+                ?? throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS gave no interference detection manager the second time");
+            if (_mgr.TreatCoincidenceAsInterference != options.CoincidentIsInterference)
+                throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS did not keep the interference settings between taking its manager twice");
         }
         catch
         {

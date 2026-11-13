@@ -273,7 +273,7 @@ internal sealed partial class SolidWorksAssembly
         var c = (IComponent2)component;
         if (!(ModelOf(c) is ISwDocument model) || !(feature is IFeature f) || !(model.FeatureByName(f.Name) is object own)) return list;
         var placement = TransformOf(c);
-        foreach (var face in model.FacesOf(own))
+        foreach (var face in model.FacesOf(own).Concat(PatternedFeatures(model, own).SelectMany(model.FacesOf)))
         {
             var info = model.Describe(face);
             Placement.MoveToAssembly(placement, info);
@@ -281,6 +281,41 @@ internal sealed partial class SolidWorksAssembly
             list.Add(info);
         }
         return list;
+    }
+
+    /// <summary>
+    /// The features a part's linear or circular pattern repeats (PatternFeatureArray), so that the seed's own hole counts
+    /// alongside the pattern's copies; none for any other feature.
+    /// </summary>
+    /// <remarks>
+    /// Measured on SOLIDWORKS 2026 SP4 (plan 4.D live run): a CirPattern's GetFaces gives only the copies, not the faces of
+    /// the cut it repeats, so a pin on the seed hole was 28.284 mm from the nearest of the three it listed.
+    /// </remarks>
+    static List<object> PatternedFeatures(ISwDocument model, object feature)
+    {
+        object definition = ((IFeature)feature).GetDefinition();
+        List<object> Read() => (definition switch
+        {
+            ILinearPatternFeatureData l => l.PatternFeatureArray,
+            ICircularPatternFeatureData c => c.PatternFeatureArray,
+            _ => null,
+        }) is object[] items ? items.OfType<IFeature>().Cast<object>().ToList() : new List<object>();
+        var seeds = Read();
+        if (seeds.Count > 0 || !(definition is ILinearPatternFeatureData || definition is ICircularPatternFeatureData)) return seeds;
+        var doc = (ModelDoc2)model.ApiObject();
+        bool accessed = definition is ILinearPatternFeatureData la ? la.AccessSelections(doc, null) : ((ICircularPatternFeatureData)definition).AccessSelections(doc, null);
+        try
+        {
+            return Read();
+        }
+        finally
+        {
+            if (accessed)
+            {
+                if (definition is ILinearPatternFeatureData lr) lr.ReleaseSelectionAccess();
+                else ((ICircularPatternFeatureData)definition).ReleaseSelectionAccess();
+            }
+        }
     }
 
     public IInterferenceSession OpenInterference(InterferenceOptions options) => new SolidWorksInterference(_asm, options);
