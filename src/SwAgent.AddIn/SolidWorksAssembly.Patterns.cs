@@ -96,14 +96,18 @@ internal sealed partial class SolidWorksAssembly
         if (seeds.Count == 0)
         {
             // The definition gave none (measured on 2026 SP4, plan 4.D live run): take the components among the feature's
-            // parents that some instance is a copy of. The parents also hold the component whose face or axis gave the
-            // direction (a linear or circular pattern's plate), which is not a seed.
-            facts.SeedsFrom = "GetParents";
-            seeds = (f.GetParents() as object[] ?? Array.Empty<object>()).OfType<IFeature>()
-                .Select(p => p.GetSpecificFeature2() as IComponent2).Where(c => c != null).Cast<IComponent2>()
-                .Where(p => made.Any(m => !string.Equals(m.Name2, p.Name2, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(m.GetPathName(), p.GetPathName(), StringComparison.OrdinalIgnoreCase)))
-                .ToList();
+            // parents that some instance is a copy of. The parents also hold the components whose entities gave the
+            // direction or axis (plan 4.D round 3 logged the plate); those are left out, even when they are another copy
+            // of the seed's part (plan 4.E, Task 9), unless that leaves the file no seed.
+            var parents = (f.GetParents() as object[] ?? Array.Empty<object>()).OfType<IFeature>()
+                .Select(p => p.GetSpecificFeature2() as IComponent2).Where(c => c != null).Cast<IComponent2>().ToList();
+            var owners = DirectionOwners(definition);
+            var names = PatternSeedFilter.FromParents(
+                parents.Select(p => (p.Name2, (string?)p.GetPathName())).ToList(),
+                made.Select(m => (m.Name2, (string?)m.GetPathName())).ToList(),
+                owners);
+            seeds = parents.Where(p => names.Contains(p.Name2, StringComparer.OrdinalIgnoreCase)).ToList();
+            facts.SeedsFrom = owners.Count == 0 ? "GetParents" : $"GetParents, leaving out {string.Join(", ", owners)} (direction or axis)";
         }
         facts.Seeds.AddRange(seeds);
         var seedNames = new HashSet<string>(seeds.Select(s => s.Name2), StringComparer.OrdinalIgnoreCase);
@@ -141,6 +145,43 @@ internal sealed partial class SolidWorksAssembly
                 else d.ReleaseSelectionAccess();
                 break;
         }
+    }
+
+    /// <summary>
+    /// The components whose entities give a linear pattern its directions or a circular pattern its axis: D1Axis, D2Axis
+    /// and Axis are single-dispatch getters, read between AccessSelections and ReleaseSelectionAccess. Empty when SOLIDWORKS
+    /// gives none or throws, which keeps 4.D's rule (every copied parent a seed).
+    /// </summary>
+    List<string> DirectionOwners(object definition)
+    {
+        var owners = new List<string>();
+        try
+        {
+            Access(definition, true);
+            try
+            {
+                object?[] entities = definition switch
+                {
+                    ILocalLinearPatternFeatureData l => new[] { l.D1Axis, l.D2Axis },
+                    ILocalCircularPatternFeatureData c => new[] { c.Axis },
+                    _ => Array.Empty<object?>(),
+                };
+                foreach (var e in entities)
+                {
+                    if ((e as IEntity)?.GetComponent() is IComponent2 component && !owners.Contains(component.Name2, StringComparer.OrdinalIgnoreCase))
+                        owners.Add(component.Name2);
+                }
+            }
+            finally
+            {
+                Access(definition, false);
+            }
+        }
+        catch (COMException)
+        {
+            owners.Clear();
+        }
+        return owners;
     }
 
     public object? LinearPattern(ComponentLinearSpec s, out string tried)
