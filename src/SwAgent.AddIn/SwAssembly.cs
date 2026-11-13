@@ -273,6 +273,9 @@ public sealed class ComponentPatternFacts
     /// <summary>The components it repeats.</summary>
     public List<object> Seeds { get; } = new List<object>();
 
+    /// <summary>Where the seeds were read from (for the log).</summary>
+    public string SeedsFrom { get; set; } = "";
+
     /// <summary>The components it made, the seeds not included.</summary>
     public List<object> Instances { get; } = new List<object>();
 
@@ -296,6 +299,9 @@ public interface IInterferenceSession
 
     /// <summary>Puts back what opening it set, then IInterferenceDetectionMgr.Done.</summary>
     void Done();
+
+    /// <summary>What the last Read saw besides the interferences (for the log), or empty.</summary>
+    string Note { get; }
 }
 
 /// <summary>One interference: the components (SOLIDWORKS' objects), the volume and box in mm.</summary>

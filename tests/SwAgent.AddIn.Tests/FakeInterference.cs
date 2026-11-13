@@ -25,6 +25,8 @@ sealed class FakeClash
 /// <summary>An interference session of a <see cref="FakeAssembly"/>: what was asked, and how often it was read and closed.</summary>
 sealed class FakeInterferenceSession : IInterferenceSession
 {
+    public string Note => "";
+
     readonly FakeAssembly _asm;
 
     public FakeInterferenceSession(FakeAssembly asm, InterferenceOptions options)

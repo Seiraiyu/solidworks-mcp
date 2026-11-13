@@ -66,7 +66,7 @@ public sealed class AssemblyInterferenceOperation : Operation<AssemblyInterferen
             result.Interferences.Add(new InterferenceInfo { Components = names, VolumeMm3 = f.VolumeMm3, Box = f.Box, Touching = f.VolumeMm3 <= 1e-6 });
         }
         result.TotalVolumeMm3 = result.Interferences.Sum(i => i.VolumeMm3);
-        context.Log.Info($"assembly.interference: {result.Interferences.Count} of {found.Count} interferences reported, {result.TotalVolumeMm3:0.###} mm³");
+        context.Log.Info($"assembly.interference: {result.Interferences.Count} of {found.Count} interferences reported, {result.TotalVolumeMm3:0.###} mm³; coincident {options.CoincidentIsInterference}; {session.Note}");
         return result;
     }
 

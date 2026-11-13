@@ -925,9 +925,10 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
         string seed = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = pin, At = new Point3(60, 40, 0) })).Component.Name;
         var driven = await Call<ComponentFeaturePatternRequest, ComponentPatternResult>(new ComponentFeaturePatternRequest { Document = asm, Components = { seed }, DrivingFeature = $"{pattern}@pplate-1" });
         Assert.Equal(4, driven.Holes);
+        Assert.Equal(new[] { seed }, driven.Pattern.Seeds);
         Lands(driven, await Placements(asm), new[] { new Point3(40, 60, 0), new Point3(20, 40, 0), new Point3(40, 20, 0) });
         await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
-        return $"{driven.Pattern.Name} driven by {pattern}@pplate-1: {driven.Holes} holes, instances {string.Join(", ", driven.Pattern.Instances)}";
+        return $"{driven.Pattern.Name} driven by {pattern}@pplate-1: {driven.Holes} holes, seed {string.Join(", ", driven.Pattern.Seeds)}, instances {string.Join(", ", driven.Pattern.Instances)}";
     });
 
     [SkippableFact, Step(24)]

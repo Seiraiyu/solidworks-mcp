@@ -51,7 +51,7 @@ public abstract class ComponentPatternOperation<TRequest> : AssemblyChangeOperat
         tx.Made(new CreatedItem { Name = facts.Name, Kind = ReferenceKind.Feature, Reference = Services.References.Issue(doc, pattern, doc.Describe(pattern)) },
             () => asm.DeletePatterns(new[] { pattern }));
         asm.Rebuild();
-        context.Log.Info($"{Name}: {facts.Name} of {names}, {facts.Instances.Count} instances; {tried}");
+        context.Log.Info($"{Name}: {facts.Name} of {names}, {facts.Instances.Count} instances; {tried}; seeds read back from {facts.SeedsFrom}: {string.Join(", ", facts.Seeds.Select(s => asm.Identify(s).Name))}");
         return new ComponentPatternResult { Pattern = Info(doc, asm, pattern) };
     }
 

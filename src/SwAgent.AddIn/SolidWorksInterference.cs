@@ -67,7 +67,11 @@ internal sealed class SolidWorksInterference : IInterferenceSession
     public IReadOnlyList<InterferenceFacts> Read()
     {
         var list = new List<InterferenceFacts>();
-        if (!(_mgr.GetInterferences() is object[] all)) return list;
+        // The out-of-process check that found the touching pairs asked GetInterferenceCount first; so does this.
+        int count = _mgr.GetInterferenceCount();
+        var got = _mgr.GetInterferences() as object[];
+        Note = $"GetInterferenceCount {count}, GetInterferences {got?.Length ?? 0}, TreatCoincidenceAsInterference {_mgr.TreatCoincidenceAsInterference}";
+        if (!(got is object[] all)) return list;
         foreach (var i in all.OfType<IInterference>())
         {
             var facts = new InterferenceFacts { VolumeMm3 = i.Volume * 1e9 };
@@ -78,6 +82,8 @@ internal sealed class SolidWorksInterference : IInterferenceSession
         }
         return list;
     }
+
+    public string Note { get; private set; } = "";
 
     public void Done()
     {

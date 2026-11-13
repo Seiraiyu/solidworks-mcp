@@ -73,8 +73,10 @@ internal sealed partial class SolidWorksAssembly
             Error = error == 0 || warning ? null : SolidWorksCodes.FeatureError(error),
         };
         var seeds = Seeds(definition);
+        facts.SeedsFrom = "SeedComponentArray";
         if (seeds.Count == 0)
         {
+            facts.SeedsFrom = "SeedComponentArray after AccessSelections";
             // Some definitions give their selections only between AccessSelections and ReleaseSelectionAccess.
             Access(definition, true);
             try
@@ -85,6 +87,13 @@ internal sealed partial class SolidWorksAssembly
             {
                 Access(definition, false);
             }
+        }
+        if (seeds.Count == 0)
+        {
+            // The definition gave none: take the components among the feature's parents.
+            facts.SeedsFrom = "GetParents";
+            seeds = (f.GetParents() as object[] ?? Array.Empty<object>()).OfType<IFeature>()
+                .Select(p => p.GetSpecificFeature2() as IComponent2).Where(c => c != null).Cast<IComponent2>().ToList();
         }
         facts.Seeds.AddRange(seeds);
         var seedNames = new HashSet<string>(seeds.Select(s => s.Name2), StringComparer.OrdinalIgnoreCase);
