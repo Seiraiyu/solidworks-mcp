@@ -153,6 +153,34 @@ public interface ISwAssembly
     /// </summary>
     IInterferenceSession OpenInterference(InterferenceOptions options);
 
+    /// <summary>The exploded views of a configuration, in order (IAssemblyDoc.GetExplodedViewNames2).</summary>
+    IReadOnlyList<string> ExplodedViews(string configuration);
+
+    /// <summary>The view the assembly shows exploded now, or null when it is collapsed (IModelDocExtension.IsExploded).</summary>
+    string? ShownExploded();
+
+    /// <summary>Explodes (true) or collapses (false) a view of the active configuration (IAssemblyDoc.ShowExploded2); false when SOLIDWORKS refused.</summary>
+    bool ShowExploded(string view, bool exploded);
+
+    /// <summary>A view's steps, read while it is shown exploded (IConfiguration.GetExplodeStep); what was shown before is shown again.</summary>
+    IReadOnlyList<ExplodeStepFacts> ExplodeSteps(string view);
+
+    /// <summary>Makes a new, empty exploded view in the active configuration (IAssemblyDoc.CreateExplodedView): its name, or null when SOLIDWORKS made none.</summary>
+    string? CreateExplodedView();
+
+    /// <summary>
+    /// Adds a step to the view <see cref="CreateExplodedView"/> made, by selection (never IExplodeStep.SetComponents, a
+    /// SAFEARRAY-of-dispatch setter): its name, or null when SOLIDWORKS made none. <paramref name="tried"/> says how each
+    /// way of asking went.
+    /// </summary>
+    string? AddExplodeStep(ExplodeStepSpec spec, out string tried);
+
+    /// <summary>Renames a view of the active configuration; false when SOLIDWORKS refused.</summary>
+    bool RenameExplodedView(string view, string name);
+
+    /// <summary>Deletes a view of the active configuration and its steps; false when SOLIDWORKS refused.</summary>
+    bool DeleteExplodedView(string view);
+
     /// <summary>Fault testing only (diag.edit_component): starts editing a component in context as the user would; false when SOLIDWORKS refused.</summary>
     bool EditInContext(object component);
 
@@ -312,4 +340,36 @@ public sealed class InterferenceFacts
     public double VolumeMm3 { get; set; }
 
     public Box3? Box { get; set; }
+}
+
+/// <summary>An explode step to make: the components and direction (and rotation axis) as resolved in the assembly, mm and degrees.</summary>
+public sealed class ExplodeStepSpec
+{
+    public IReadOnlyList<object> Components { get; set; } = System.Array.Empty<object>();
+
+    public object Direction { get; set; } = new object();
+
+    public double DistanceMm { get; set; }
+
+    public bool Reverse { get; set; }
+
+    /// <summary>Null for a step that does not turn.</summary>
+    public object? RotationAxis { get; set; }
+
+    public double AngleDeg { get; set; }
+}
+
+/// <summary>An explode step as SOLIDWORKS holds it.</summary>
+public sealed class ExplodeStepFacts
+{
+    public string Name { get; set; } = "";
+
+    /// <summary>The components it moves (SOLIDWORKS' objects).</summary>
+    public List<object> Components { get; } = new List<object>();
+
+    public double DistanceMm { get; set; }
+
+    public double AngleDeg { get; set; }
+
+    public bool Reversed { get; set; }
 }
