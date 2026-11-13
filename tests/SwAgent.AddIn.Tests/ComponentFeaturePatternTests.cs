@@ -36,6 +36,19 @@ public class ComponentFeaturePatternTests : ComponentPatternTestBase
     }
 
     [Fact]
+    public void A_feature_that_makes_one_hole_is_refused_since_it_needs_at_least_two()
+    {
+        // Q691: a driving feature needs two holes or more. Hole1 has one hole, the one pin-1 stands in.
+        PlatePart.AddFeature("Hole1", "HoleWzd");
+        Asm.DrivingFaces["Hole1"] = new System.Collections.Generic.List<EntityInfo> { Hole(60, 40) };
+        var e = Fails(() => Driven(new ComponentFeaturePatternRequest { Components = { "pin-1" }, DrivingFeature = "Hole1@plate-1" }));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal("/driving_feature", e.Error.Details!["field"]);
+        Assert.Equal(1, e.Error.Details["holes"]);
+        Assert.DoesNotContain(Asm.Calls, c => c.StartsWith("feature pattern"));
+    }
+
+    [Fact]
     public void A_seed_that_is_not_on_a_hole_is_refused()
     {
         Pin.Info.Transform.Origin = new Point3(100, 100, 0);

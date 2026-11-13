@@ -47,9 +47,10 @@ internal sealed class SolidWorksInterference : IInterferenceSession
             _mgr.CreateFastenersFolder = false;
             _mgr.ShowIgnoredInterferences = false;
             _mgr.UseTransform = false;
-            // In process, the manager's results are the ones worked out when it was taken: with the settings above only set,
-            // GetInterferences still answered as before them (plan 4.D live run, 2026 SP4: coincident faces were missing,
-            // while the same calls from another process found them). So close it and take it again with them in place.
+            // Closing the manager and taking it again is kept only because the passing live runs had it; it was not shown to
+            // be needed. The add-in's own measurement (plan 4.D live run, 2026 SP4): in round 2, with this retake alone, the
+            // add-in still reported 1 of 3 interferences. What changed the answer was asking GetInterferenceCount before
+            // GetInterferences (see Read): rounds 3 and 4 reported 3 of 3. Removing the retake would need another live run.
             _mgr.Done();
             _mgr = asm.InterferenceDetectionManager
                 ?? throw new SwAgentException(ErrorCode.ApiError, "SOLIDWORKS gave no interference detection manager the second time");
@@ -67,7 +68,8 @@ internal sealed class SolidWorksInterference : IInterferenceSession
     public IReadOnlyList<InterferenceFacts> Read()
     {
         var list = new List<InterferenceFacts>();
-        // The out-of-process check that found the touching pairs asked GetInterferenceCount first; so does this.
+        // Ask GetInterferenceCount before GetInterferences. The add-in's own measurement (plan 4.D live run, 2026 SP4): without
+        // it, round 2 reported 1 of 3 interferences; with it, rounds 3 and 4 reported 3 of 3, coincident faces included.
         int count = _mgr.GetInterferenceCount();
         var got = _mgr.GetInterferences() as object[];
         Note = $"GetInterferenceCount {count}, GetInterferences {got?.Length ?? 0}, TreatCoincidenceAsInterference {_mgr.TreatCoincidenceAsInterference}";
