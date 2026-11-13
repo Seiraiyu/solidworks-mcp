@@ -120,6 +120,17 @@ internal sealed partial class SolidWorksAssembly
             if (made is IExplodeStep step && error == 0 && step.GetNumOfComponents() == s.Components.Count)
             {
                 attempts.Add($"AddExplodeStep2, {label}: made {step.Name}");
+                // Plan 4.E live run: SOLIDWORKS 2026 SP4 adds a Chain1 to a view made through the API, holding every component
+                // and reading distance 0, yet in a mated assembly it moves them (a fully mated pin 37.8 mm, its fixed plate
+                // 85.6 mm). Deleting it leaves exactly the steps asked for.
+                string madeName = step.Name;
+                for (int i = config.GetNumberOfExplodeSteps() - 1; i >= 0; i--)
+                {
+                    if (!(config.GetExplodeStep(i) is IExplodeStep other) || other.Name == madeName) continue;
+                    if (other.ExplodeDistance != 0 || other.RotationAngle != 0) continue;
+                    string chain = other.Name;
+                    attempts.Add($"deleted SOLIDWORKS' own {chain}: {config.DeleteExplodeStep(chain)}");
+                }
                 tried = string.Join("; ", attempts);
                 return step.Name;
             }
