@@ -22,7 +22,7 @@ public sealed class AssembliesSuiteRun : LiveRun
 
 /// <summary>
 /// The assemblies live suite (design 455, Testing; plan 4.A covers assembly documents, components and the in-context
-/// precondition, cases 1 to 9; plan 4.B assembly references and inspection, cases 10 to 15; plan 4.C mates and degrees of freedom, cases 16 to 20; plan 4.D component patterns and interference, cases 21 to 26): every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve does, in
+/// precondition, cases 1 to 9; plan 4.B assembly references and inspection, cases 10 to 15; plan 4.C mates and degrees of freedom, cases 16 to 20; plan 4.D component patterns and interference, cases 21 to 26; plan 4.E exploded views, assembly export, the dialog-mid-mate fault case, pattern seeds and the build-an-assembly scenario, cases 27 to 32): every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve does, in
 /// [Step] order, and checks positions and states against exact values. It builds its own parts (diag.scratch_block) and
 /// assemblies in its scratch directory, records each before creating it, never ends SOLIDWORKS, stops the run if a
 /// document it did not create is open, and closes everything it made at the end. Skipped unless SWMCP_LIVE=1.
@@ -1009,8 +1009,235 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
         return $"timeout after 1000 ms with the session held 3000 ms; operation.completed ok after {completed.Data["duration_ms"]} ms; sessions opened {after.Opened}, closed {after.Closed}; the next call answered normally";
     });
 
+    // Plan 4.E. explode.SLDASM: eplate-1 (40 x 20 x 10 with a Ø10 hole at (20, 10)) fixed at the origin, eblock-1
+    // (20 x 20 x 10) at (0, 40, 0), epin-1 (Ø10 x 30, axis z) at (60, 0, 0).
+
+    /// <summary>The suite's own arithmetic for a step, independent of the add-in's: moved along way, then turned about the vertical line through (cx, cy).</summary>
+    static Point3 Stepped(Point3 p, Vector3 way, double distance, double? cx = null, double? cy = null, double angleDeg = 0)
+    {
+        var q = new Point3(p.X + way.X * distance, p.Y + way.Y * distance, p.Z + way.Z * distance);
+        if (cx == null || cy == null) return q;
+        double t = angleDeg * Math.PI / 180, dx = q.X - cx.Value, dy = q.Y - cy.Value;
+        return new Point3(cx.Value + dx * Math.Cos(t) - dy * Math.Sin(t), cy.Value + dx * Math.Sin(t) + dy * Math.Cos(t), q.Z);
+    }
+
+    static void Lands(ExplodedComponent c, Point3 expected) =>
+        Assert.True(At(c.Actual, expected.X, expected.Y, expected.Z), $"{c.Name} at {c.Actual}, expected {expected}");
+
+    static double Sign(string sense) => sense == "along" ? 1 : -1;
+
+    static void SamePlaces(Dictionary<string, Transform> a, Dictionary<string, Transform> b, string what)
+    {
+        foreach (var p in a) Assert.True(At(b[p.Key].Origin, p.Value.Origin.X, p.Value.Origin.Y, p.Value.Origin.Z), $"{what}: {p.Key} at {b[p.Key].Origin}, not {p.Value.Origin}");
+    }
+
+    Task<ExplodeListResult> Views(string asm) => Call<ExplodeListRequest, ExplodeListResult>(new ExplodeListRequest { Document = asm });
+
     [SkippableFact, Step(27)]
-    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(27, "the suite's documents closed", async () =>
+    public Task An_exploded_view_moves_each_step_where_it_says_and_leaves_the_assembly_collapsed() => _run.CaseAsync(27, "explode.create: three steps (z 40, along a face normal 25, x 10 turned 90 about a hole), each checked, the assembly collapsed after; explode.list", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string plate = await ClosedPlate("eplate");
+        string block = await ClosedBlock("eblock", 20, 20, 10);
+        string pin = await ClosedPin("epin");
+        string asm = await NewAssembly("explode");
+        await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = plate });
+        string b = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = block, At = new Point3(0, 40, 0) })).Component.Name;
+        string p = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = pin, At = new Point3(60, 0, 0) })).Component.Name;
+        var front = await PlaneFace(asm, "eplate-1", Front);
+        var hole = await CylinderFace(asm, "eplate-1");
+        var collapsed = await Placements(asm);
+
+        var request = new ExplodeCreateRequest { Document = asm };
+        request.Steps.Add(new ExplodeStep { Components = { p }, Direction = "z", DistanceMm = 40 });
+        request.Steps.Add(new ExplodeStep { Components = { b, p }, Direction = front.Reference!, DistanceMm = 25 });
+        request.Steps.Add(new ExplodeStep { Components = { b }, Direction = "x", DistanceMm = 10, RotateAbout = hole.Reference!, AngleDeg = 90 });
+        var made = await Call<ExplodeCreateRequest, ExplodeCreateResult>(request);
+        Assert.Equal(3, made.Steps.Count);
+        Assert.False(made.View.Exploded);
+
+        // The suite's own expectations from the senses reported. The hole's axis may point down as well as up (4.D case 22).
+        var pin1 = Stepped(collapsed[p].Origin, Up, 40 * Sign(made.Steps[0].Sense));
+        Lands(made.Steps[0].Components.Single(c => c.Name == p), pin1);
+        var pin2 = Stepped(pin1, front.Normal!, 25 * Sign(made.Steps[1].Sense));
+        var block2 = Stepped(collapsed[b].Origin, front.Normal!, 25 * Sign(made.Steps[1].Sense));
+        Lands(made.Steps[1].Components.Single(c => c.Name == p), pin2);
+        Lands(made.Steps[1].Components.Single(c => c.Name == b), block2);
+        double turn = 90 * Sign(made.Steps[2].TurnSense!) * (hole.Axis!.Z > 0 ? 1 : -1);
+        var block3 = Stepped(block2, new Vector3(1, 0, 0), 10 * Sign(made.Steps[2].Sense), hole.Origin!.X, hole.Origin.Y, turn);
+        Lands(made.Steps[2].Components.Single(), block3);
+
+        SamePlaces(collapsed, await Placements(asm), "collapsed again");
+        var listed = Assert.Single((await Views(asm)).Views);
+        Assert.Equal(made.View.Name, listed.Name);
+        Assert.Equal(3, listed.Steps!.Count);
+        Assert.Equal(new[] { b, p }.OrderBy(n => n), listed.Steps[1].Components.OrderBy(n => n));
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        return $"{made.View.Name}: senses {string.Join(", ", made.Steps.Select(s => s.Sense + (s.TurnSense == null ? "" : "/" + s.TurnSense)))}; pin {pin1} then {pin2}; block {block2} then {block3}; collapsed after; {made.Tried}";
+    });
+
+    [SkippableFact, Step(28)]
+    public Task An_exploded_view_is_shown_collapsed_refused_and_deleted() => _run.CaseAsync(28, "explode.show exploded and collapsed; a step along a cylinder refused with nothing made; explode.delete", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string asm = LiveScratchPath("explode", ".SLDASM");
+        var collapsed = await Placements(asm);
+        string view = Assert.Single((await Views(asm)).Views).Name;
+        var shown = await Call<ExplodeShowRequest, ExplodeShowResult>(new ExplodeShowRequest { Document = asm, View = view });
+        Assert.True(shown.Exploded);
+        Assert.Equal(view, (await Views(asm)).Exploded);
+        var exploded = await Placements(asm);
+        Assert.Contains(exploded, e => !At(e.Value.Origin, collapsed[e.Key].Origin.X, collapsed[e.Key].Origin.Y, collapsed[e.Key].Origin.Z));
+        var back = await Call<ExplodeShowRequest, ExplodeShowResult>(new ExplodeShowRequest { Document = asm, View = view, Exploded = false });
+        Assert.Equal(view, back.Before);
+        SamePlaces(collapsed, await Placements(asm), "collapsed by explode.show");
+
+        var hole = await CylinderFace(asm, "eplate-1");
+        var refused = await Refused(() => Call<ExplodeCreateRequest, ExplodeCreateResult>(new ExplodeCreateRequest
+        {
+            Document = asm, Steps = { new ExplodeStep { Components = { "epin-1" }, Direction = hole.Reference!, DistanceMm = 10 } },
+        }));
+        Assert.Equal(ErrorCode.InvalidArgument, refused.Code);
+        Assert.Equal("/steps/0/direction", refused.Error.Details!["field"]);
+        Assert.Single((await Views(asm)).Views);
+
+        var deleted = await Call<ExplodeDeleteRequest, ExplodeDeleteResult>(new ExplodeDeleteRequest { Document = asm, View = view });
+        Assert.Equal(3, deleted.Steps);
+        Assert.Empty((await Views(asm)).Views);
+        SamePlaces(collapsed, await Placements(asm), "after the delete");
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        return $"{view} shown exploded then collapsed (before {back.Before}); a cylinder as direction refused at {refused.Error.Details["field"]}; {deleted.Deleted} deleted with {deleted.Steps} steps";
+    });
+
+    [SkippableFact, Step(29)]
+    public Task An_assembly_is_exported_in_four_formats_and_left_as_it_was() => _run.CaseAsync(29, "export.assembly: STEP with an occurrence per component, Parasolid, STL in one file, 3MF; the assembly's path and flag unchanged", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string asm = LiveScratchPath("explode", ".SLDASM");
+        string folder = Path.Combine(_run.Guard.ScratchDirectory, "assembly-export");
+        Directory.CreateDirectory(folder);
+        var before = (await _run.AddinStateAsync()).Documents.Single(d => string.Equals(d.Path, asm, StringComparison.OrdinalIgnoreCase));
+        var lines = new List<string>();
+        foreach (var (format, extension) in new[] { (ExportFormat.Step, ".step"), (ExportFormat.Parasolid, ".x_t"), (ExportFormat.Stl, ".stl"), (ExportFormat.ThreeMf, ".3mf") })
+        {
+            string path = Path.Combine(folder, "explode" + extension);
+            _run.Guard.Created(path);
+            var r = await Call<ExportAssemblyRequest, ExportAssemblyResult>(new ExportAssemblyRequest { Document = asm, Path = path, Format = format, Overwrite = true });
+            Assert.True(File.Exists(path));
+            Assert.Equal(3, r.Components);
+            Assert.Equal(before.Dirty, r.Document.Dirty);
+            Assert.Equal(asm, r.Document.Path, StringComparer.OrdinalIgnoreCase);
+            if (format == ExportFormat.Step) Assert.Equal(3, r.StepOccurrences);
+            lines.Add($"{WireNames.ForEnum(format)} {r.Bytes} bytes, {r.Header}{(r.StepOccurrences == null ? "" : $", {r.StepOccurrences} occurrences")}{(r.Triangles == null ? "" : $", {r.Triangles} triangles")}");
+        }
+        // One STL for the whole assembly: nothing else with that extension in the folder.
+        Assert.Single(Directory.GetFiles(folder, "*.stl"));
+        return string.Join("; ", lines) + $"; dirty stayed {before.Dirty}";
+    });
+
+    [SkippableFact, Step(30)]
+    public Task A_mate_that_raises_a_dialog_mid_operation_is_answered_then_kept_or_rolled_back() => _run.CaseAsync(30, "a dialog during mate.add answered with sw_dialog_respond: OK keeps the concentric mate, Cancel takes the next mate back with the pin where it was", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string plate = await ClosedPlate("dplate");
+        string pin = await ClosedPin("dpin");
+        string asm = await NewAssembly("dialogmate");
+        await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = plate });
+        string p = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = pin, At = new Point3(60, 0, 0) })).Component.Name;
+
+        async Task<DialogRespondResult> MateAnswering(MateType type, string a, string b, string title, string button)
+        {
+            await Call<DiagArmDialogRequest, DiagArmDialogResult>(new DiagArmDialogRequest { Title = title, Text = "Assemblies suite: a dialog during a mate", Buttons = DiagDialogButtons.OkCancel });
+            var mate = Mate(asm, type, a, b);
+            var open = await Assert.ThrowsAsync<SwAgentException>(() => mate);
+            Assert.Equal(ErrorCode.DialogOpen, open.Code);
+            Assert.Equal(true, open.Error.Details!["started"]);
+            var dialog = (await _run.AddinStateAsync()).Dialog!;
+            Assert.Equal(title, dialog.Title);
+            return await Call<DialogRespondRequest, DialogRespondResult>(new DialogRespondRequest { Dialog = dialog.Id, Button = button, WaitMs = 30000 });
+        }
+
+        var ok = await MateAnswering(MateType.Concentric, (await CylinderFace(asm, p)).Reference!, (await CylinderFace(asm, "dplate-1")).Reference!, "swmcp live 4.E ok", "OK");
+        Assert.Equal(DialogOutcome.Result, ok.Outcome);
+        var mates = await Call<MateListRequest, MateListResult>(new MateListRequest { Document = asm });
+        Assert.Single(mates.Mates);
+        var hole = await CylinderFace(asm, "dplate-1");
+        Near(0, LineOffset(hole.Origin!, hole.Axis!, (await CylinderFace(asm, p)).Origin!), "the pin's axis on the hole's after OK");
+        var held = await Placements(asm);
+
+        var cancel = await MateAnswering(MateType.Coincident, (await PlaneFace(asm, p, Up)).Reference!, (await PlaneFace(asm, "dplate-1", Up)).Reference!, "swmcp live 4.E cancel", "Cancel");
+        Assert.Equal(DialogOutcome.Error, cancel.Outcome);
+        Assert.Equal(ErrorCode.OperationFailed, cancel.Error!.Code);
+        Assert.Single((await Call<MateListRequest, MateListResult>(new MateListRequest { Document = asm })).Mates);
+        SamePlaces(held, await Placements(asm), "after the cancelled mate");
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        return $"OK: outcome {ok.Outcome}, {mates.Mates[0].Name} kept; Cancel: outcome {cancel.Outcome} ({cancel.Error.Message}); one mate left, {p} where it was";
+    });
+
+    [SkippableFact, Step(31)]
+    public Task A_patterns_seeds_leave_out_the_copy_that_gave_its_direction() => _run.CaseAsync(31, "component.linear_pattern of spin-1 along spin-2's top face: the seeds read back are spin-1 only; the pattern deleted with its seed, spin-2 stays", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string pin = await ClosedPin("spin");
+        string asm = await NewAssembly("seeds");
+        string s1 = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = pin })).Component.Name;
+        string s2 = (await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = asm, Path = pin, At = new Point3(40, 0, 0) })).Component.Name;
+        var top = await PlaneFace(asm, s2, Up);
+        var made = await Call<ComponentLinearPatternRequest, ComponentPatternResult>(new ComponentLinearPatternRequest { Document = asm, Components = { s1 }, Direction = top.Reference!, SpacingMm = 40, Count = 2 });
+        Assert.Equal(new[] { s1 }, made.Pattern.Seeds);
+        var instance = Assert.Single(made.Pattern.Instances);
+        var gone = await Call<ComponentDeleteRequest, ComponentDeleteResult>(new ComponentDeleteRequest { Document = asm, Components = { made.Pattern.Name, s1 } });
+        Assert.Equal(new[] { s1 }, gone.Deleted);
+        Assert.Contains(s2, (await Placements(asm)).Keys);
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        return $"{made.Pattern.Name} of {s1} along {s2}'s top: seeds [{string.Join(", ", made.Pattern.Seeds)}], instance {instance}; deleted with {s1}; {s2} stays";
+    });
+
+    [SkippableFact, Step(32)]
+    public Task An_agent_builds_a_pinned_bracket_on_a_plate_through_MCP_tools_alone() => _run.CaseAsync(32, "build-an-assembly: the stand transcript through the MCP server's tools (three parts sketched, inserted and mated fully defined by assembly reference, {component, entity} and name@component; no interference; an exploded view; saved; STEP with three occurrences)", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var variables = new Dictionary<string, object?>
+        {
+            ["plate"] = New("splate", ".SLDPRT"), ["bracket"] = New("sbracket", ".SLDPRT"), ["pin"] = New("sstpin", ".SLDPRT"),
+            ["asm"] = New("stand", ".SLDASM"), ["step"] = New("stand", ".step"),
+        };
+        string asm = (string)variables["asm"]!, step = (string)variables["step"]!;
+        string log = Path.Combine(_run.Directory, "stand-transcript.jsonl");
+        var transcript = Transcript.Load(Path.Combine(AppContext.BaseDirectory, "Scenarios", "stand.transcript.json"));
+        IReadOnlyList<TranscriptCall> calls;
+        await using (var mcp = await McpSession.StartAsync(Sw))
+        {
+            try
+            {
+                calls = await transcript.RunAsync(mcp.CallAsync, variables, _run.Say);
+            }
+            catch (TranscriptFailedException e)
+            {
+                Transcript.Save(log, e.Calls);
+                throw;
+            }
+        }
+        Transcript.Save(log, calls);
+
+        var at = await Placements(asm);
+        string plateC = (string)variables["plate_c"]!, bracketC = (string)variables["bracket_c"]!, pinC = (string)variables["pin_c"]!;
+        Assert.True(At(at[plateC].Origin, 0, 0, 0), $"{plateC} at {at[plateC].Origin}");
+        Assert.True(At(at[bracketC].Origin, 10, 10, 10), $"{bracketC} at {at[bracketC].Origin}");
+        Assert.True(At(at[pinC].Origin, 20, 20, 0), $"{pinC} at {at[pinC].Origin}");
+        var dof = await Call<AssemblyDofRequest, AssemblyDofResult>(new AssemblyDofRequest { Document = asm });
+        Assert.All(dof.Components, c => Assert.True(c.Constraint == Constraint.Fixed || c.Constraint == Constraint.FullyDefined, $"{c.Name} is {c.Constraint}"));
+        Assert.Empty((await Interference(asm)).Interferences);
+        Assert.Equal("Pin out", Assert.Single((await Views(asm)).Views).Name);
+        Assert.Equal(3L, Convert.ToInt64(variables["step_occurrences"]));
+        Assert.True(File.Exists(step));
+        return $"{calls.Count} tool calls, longest {calls.Max(c => c.Ms)} ms; {plateC} (0, 0, 0), {bracketC} (10, 10, 10), {pinC} (20, 20, 0); " +
+               $"{string.Join(", ", dof.Components.Select(c => $"{c.Name} {WireNames.ForEnum(c.Constraint)}"))}; no interference; view {variables["view"]} (pin {variables["explode_sense"]}); " +
+               $"STEP {new FileInfo(step).Length} bytes, {variables["step_occurrences"]} occurrences; transcript in {Path.GetFileName(log)}";
+    });
+
+    [SkippableFact, Step(33)]
+    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(33, "the suite's documents closed", async () =>
     {
         var state = await _run.RequireOnlyOwnDocumentsAsync();
         int closed = 0;
