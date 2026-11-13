@@ -70,7 +70,7 @@ public sealed class ExportFlatPatternOperation : Operation<ExportFlatPatternRequ
         string method = "";
         try
         {
-            foreach (string m in FlatPatternExports.Methods(sketches))
+            foreach (string m in FlatPatternExports.Methods(bendLines, sketches))
             {
                 var started = DateTime.UtcNow;
                 bool answered = m == FlatPatternExports.FlatPatternView

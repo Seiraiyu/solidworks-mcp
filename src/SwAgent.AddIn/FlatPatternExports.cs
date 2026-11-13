@@ -7,8 +7,9 @@ namespace SwAgent.AddIn;
 /// <summary>
 /// How export.flat_pattern asks SOLIDWORKS for the flat pattern (design 454, Flat-pattern export: measure
 /// IPartDoc.ExportToDWG2 and ExportFlatPatternView, and use the one that writes). ExportFlatPatternView is CADapter's
-/// measured call (it wrote DXF and DWG on 2026 on a saved part), so it is tried first; ExportToDWG2 with
-/// swExportToDWG_ExportSheetMetal is tried when it writes nothing, and is the only one that can add sketches.
+/// measured call (it wrote DXF and DWG on 2026 on a saved part), but the 6.D live run found it draws no bend lines
+/// and writes the drawing sheet as the DXF's extents; ExportToDWG2 with swExportToDWG_ExportSheetMetal draws the
+/// bend lines asked for, and is the only one that can add sketches. See <see cref="Methods"/>.
 /// </summary>
 public static class FlatPatternExports
 {
@@ -22,8 +23,13 @@ public static class FlatPatternExports
 
     public static int DwgOptions(bool bendLines, bool sketches) => GeometryBit | (bendLines ? BendLinesBit : 0) | (sketches ? SketchesBit : 0);
 
-    /// <summary>The calls to try, in order, until one writes the file.</summary>
-    public static IReadOnlyList<string> Methods(bool sketches) => sketches ? new[] { ToDwg2 } : new[] { FlatPatternView, ToDwg2 };
+    /// <summary>
+    /// The calls to try, in order, until one writes the file. Sketches: ExportToDWG2 alone. Bend lines: ExportToDWG2
+    /// first, because on 2026 SP4 ExportFlatPatternView drew none when asked (6.D live run); if only it writes, the
+    /// file's bend-line check refuses it. Neither: CADapter's ExportFlatPatternView first.
+    /// </summary>
+    public static IReadOnlyList<string> Methods(bool bendLines, bool sketches) =>
+        sketches ? new[] { ToDwg2 } : bendLines ? new[] { ToDwg2, FlatPatternView } : new[] { FlatPatternView, ToDwg2 };
 
     /// <summary>How far each side of a DXF may be from the cut list's flat size: 0.01 mm beyond the cut list's own rounding.</summary>
     public static double ToleranceMm(IReadOnlyList<KeyValuePair<string, string>> cutList, double mmPerUnit) =>

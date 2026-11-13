@@ -8,9 +8,10 @@ using System.Text;
 namespace SwAgent.AddIn.Tests;
 
 /// <summary>
-/// The flat pattern written as SOLIDWORKS writes it, on a <see cref="FakeDocument"/>'s sheet: a DXF of the cut list's
-/// flat size (a rectangle in mm, its header extents set) with a line per bend on layer BENDLINES when bend lines are
-/// asked for, or a DWG of an AC1032 header and 4 KB. What a test sets makes it write nothing, draw it off size, leave
+/// The flat pattern written as SOLIDWORKS 2026 SP4 writes it (6.D live run), on a <see cref="FakeDocument"/>'s sheet:
+/// a DXF of the cut list's flat size (a rectangle in mm) with, from ExportToDWG2 and bend lines asked for, a line per
+/// bend across it on layer 0, its header the flat; from ExportFlatPatternView no bend lines and the letter sheet as
+/// its header; or a DWG of an AC1032 header and 4 KB. What a test sets makes it write nothing, draw it off size, leave
 /// out the bend lines, or change the part.
 /// </summary>
 sealed partial class FakeDocument
@@ -66,15 +67,18 @@ sealed partial class FakeDocument
         {
             Pair(0, "LINE"); Pair(8, layer); Pair(10, x1); Pair(20, y1); Pair(11, x2); Pair(21, y2);
         }
+        // As the 6.D live run measured on 2026 SP4: ExportFlatPatternView writes the letter sheet as $EXTMIN/$EXTMAX and
+        // no bend lines; ExportToDWG2 writes the flat as its extents and its bend lines on layer 0, like the outline.
+        bool view = method == FlatPatternExports.FlatPatternView;
         Pair(0, "SECTION"); Pair(2, "HEADER");
         Pair(9, "$INSUNITS"); Pair(70, 4);
         Pair(9, "$EXTMIN"); Pair(10, 0.0); Pair(20, 0.0);
-        Pair(9, "$EXTMAX"); Pair(10, w); Pair(20, h);
+        Pair(9, "$EXTMAX"); Pair(10, view ? 279.4 : w); Pair(20, view ? 215.9 : h);
         Pair(0, "ENDSEC"); Pair(0, "SECTION"); Pair(2, "ENTITIES");
         Line(0, 0, w, 0, "0"); Line(w, 0, w, h, "0"); Line(w, h, 0, h, "0"); Line(0, h, 0, 0, "0");
-        if (bendLines && !FlatExportDropsBendLines)
+        if (bendLines && !view && !FlatExportDropsBendLines)
         {
-            for (int i = 0; i < FakeBends.Count; i++) Line(0, h * (i + 1) / (FakeBends.Count + 1), w, h * (i + 1) / (FakeBends.Count + 1), "BENDLINES");
+            for (int i = 0; i < FakeBends.Count; i++) Line(0, h * (i + 1) / (FakeBends.Count + 1), w, h * (i + 1) / (FakeBends.Count + 1), "0");
         }
         Pair(0, "ENDSEC"); Pair(0, "EOF");
         File.WriteAllText(path, text.ToString());

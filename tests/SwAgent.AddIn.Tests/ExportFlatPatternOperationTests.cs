@@ -26,39 +26,53 @@ public class ExportFlatPatternOperationTests : SheetMetalTestBase
     static FlatSize FlatOf(FakeDocument doc) => SheetMetalParts.Flat(doc.CutList(), doc.MmPerUnit(), doc.FakeBends.Count)!;
 
     [Fact]
-    public void A_DXF_is_written_by_CADapters_call_and_matches_the_flat_size_with_its_bend_lines()
+    public void A_DXF_with_bend_lines_is_written_by_ExportToDWG2_and_matches_the_flat_size_with_a_line_per_bend()
     {
         var doc = SavedChannel();
         string path = PathOf("channel.dxf");
         var result = ExportFlat(new ExportFlatPatternRequest { Path = path, Format = FlatPatternFormat.Dxf });
         Assert.Equal(path, result.Path);
         Assert.Equal("DXF", result.Header);
-        Assert.Equal(FlatPatternExports.FlatPatternView, result.Method);
-        Assert.Equal((FlatPatternExports.FlatPatternView, path, true, false), doc.FlatExports.Single());
+        Assert.Equal(FlatPatternExports.ToDwg2, result.Method);
+        Assert.Equal((FlatPatternExports.ToDwg2, path, true, false), doc.FlatExports.Single());
         Assert.Single(result.Attempts);
         var flat = FlatOf(doc);
         Assert.Equal(flat.LengthMm, result.Flat!.LengthMm, 9);
         Assert.Equal(flat.LengthMm, result.Extents!.LengthMm, 6);
         Assert.Equal(flat.WidthMm, result.Extents.WidthMm, 6);
-        Assert.Equal("$EXTMIN/$EXTMAX", result.Extents.From);
+        Assert.Equal("its entities", result.Extents.From);
         Assert.Equal(2, result.BendLines);
-        Assert.Contains("BENDLINES = 2", result.Layers);
+        Assert.Contains("0 = 6", result.Layers);
         Assert.Equal(SheetState.Folded, result.State);
         Assert.Contains(result.Checks, c => c.Contains("match the flat size"));
-        Assert.Contains(result.Checks, c => c.Contains("2 bend-line entities for 2 bends"));
+        Assert.Contains(result.Checks, c => c.Contains("2 bend lines across the outline for 2 bends"));
         Assert.Contains(result.Checks, c => c.Contains("kept its path") && c.Contains("folded"));
         Assert.False(result.Document.Dirty);
         Assert.Equal(new FileInfo(path).Length, result.Bytes);
     }
 
     [Fact]
-    public void Without_bend_lines_they_are_removed_and_none_are_drawn()
+    public void Without_bend_lines_CADapters_call_writes_it_and_the_sheet_in_its_header_is_only_reported()
     {
         var doc = SavedChannel();
         var result = ExportFlat(new ExportFlatPatternRequest { Path = PathOf("plain.dxf"), Format = FlatPatternFormat.Dxf, BendLines = false });
-        Assert.False(doc.FlatExports.Single().BendLines);
+        Assert.Equal((FlatPatternExports.FlatPatternView, PathOf("plain.dxf"), false, false), doc.FlatExports.Single());
         Assert.Equal(0, result.BendLines);
+        Assert.Equal(FlatOf(doc).LengthMm, result.Extents!.LengthMm, 6);
         Assert.Contains(result.Checks, c => c == "no bend lines, as asked");
+        Assert.Contains(result.Checks, c => c.Contains("$EXTMIN/$EXTMAX give 279.4 × 215.9 mm") && c.Contains("not compared"));
+    }
+
+    [Fact]
+    public void Bend_lines_are_never_passed_without_them_when_only_CADapters_call_writes()
+    {
+        // ExportFlatPatternView draws no bend lines (6.D live run); when ExportToDWG2 writes nothing, its file fails.
+        var doc = SavedChannel();
+        doc.FlatExportWritesNothing.Add(FlatPatternExports.ToDwg2);
+        var e = Fails(() => ExportFlat(new ExportFlatPatternRequest { Path = PathOf("view-only.dxf"), Format = FlatPatternFormat.Dxf }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("bend_lines", e.Error.Details!["check"]);
+        Assert.Equal(new[] { FlatPatternExports.ToDwg2, FlatPatternExports.FlatPatternView }, doc.FlatExports.Select(x => x.Method));
     }
 
     [Fact]
@@ -87,7 +101,7 @@ public class ExportFlatPatternOperationTests : SheetMetalTestBase
     {
         var doc = SavedChannel();
         doc.FlatExportWritesNothing.Add(FlatPatternExports.FlatPatternView);
-        var result = ExportFlat(new ExportFlatPatternRequest { Path = PathOf("second.dxf"), Format = FlatPatternFormat.Dxf });
+        var result = ExportFlat(new ExportFlatPatternRequest { Path = PathOf("second.dxf"), Format = FlatPatternFormat.Dxf, BendLines = false });
         Assert.Equal(FlatPatternExports.ToDwg2, result.Method);
         Assert.Equal(2, result.Attempts.Count);
         Assert.Contains("ExportFlatPatternView answered true and wrote nothing", result.Attempts[0]);

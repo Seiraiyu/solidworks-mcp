@@ -57,9 +57,10 @@ public sealed class FlatPatternFile
 
 /// <summary>
 /// Proves on disk that export.flat_pattern wrote the flat pattern (design 454, Flat-pattern export): the file was
-/// written by this call and is not empty; a DXF parses, and its drawing extents ($EXTMIN/$EXTMAX, or its entities'
-/// when the header does not give them) match the flat size from the cut list, turned or not; with bend lines asked
-/// for it holds bend-line entities, and without, none. A DWG starts with its AC10xx version and is at least
+/// written by this call and is not empty; a DXF parses, and the extents of its entities match the flat size from the
+/// cut list, turned or not (the header's $EXTMIN/$EXTMAX is reported, not compared: SOLIDWORKS may write the sheet
+/// there); with bend lines asked for it holds a line across the outline for each bend (<see cref="DxfFile.BendLines"/>),
+/// and without, none. A DWG starts with its AC10xx version and is at least
 /// <see cref="DwgLeastBytes"/> long; its extents are not read. Otherwise verification_failed naming the check, what
 /// was expected and what was found.
 /// </summary>
@@ -128,27 +129,19 @@ public static class FlatPatternFileCheck
             units = FormattableString.Invariant($"no $INSUNITS: the part's own unit, {unit} mm");
         }
 
-        var entities = dxf.EntityExtents?.Scaled(unit);
-        DxfBox box;
-        if (dxf.HeaderExtents is DxfBox header)
-        {
-            box = header.Scaled(unit);
-            file.ExtentsFrom = "$EXTMIN/$EXTMAX";
-        }
-        else if (entities is DxfBox measured)
-        {
-            box = measured;
-            file.ExtentsFrom = "its entities";
-        }
-        else
-        {
-            throw ExportFileCheck.Failed("dxf_extents", path, "drawing extents", "none", $"{path} gives no $EXTMIN/$EXTMAX and has no lines, arcs, circles, polylines, splines or ellipses to measure");
-        }
+        // The flat is what the entities fill. The header is reported, never compared: the 6.D live run found
+        // ExportFlatPatternView writes the drawing sheet (279.4 × 215.9, letter) there, not the flat.
+        if (!(dxf.EntityExtents?.Scaled(unit) is DxfBox box))
+            throw ExportFileCheck.Failed("dxf_extents", path, "drawing extents", "none", $"{path} has no lines, arcs, circles, polylines, splines or ellipses to measure");
+        file.ExtentsFrom = "its entities";
         file.Extents = box;
         file.BendLines = dxf.BendLines;
         string splines = dxf.Splines > 0 ? $", {dxf.Splines} of them splines bounded by their control points" : "";
         string skipped = dxf.Skipped.Count > 0 ? $"; not measured: {string.Join(", ", dxf.Skipped.Select(s => $"{s.Value} {s.Key}"))}" : "";
         file.Checks.Add($"an ASCII DXF of {dxf.Entities} measured entities{splines}{skipped}; {units}; layers {string.Join(", ", file.Layers)}");
+        file.Checks.Add(dxf.HeaderExtents?.Scaled(unit) is DxfBox header
+            ? FormattableString.Invariant($"its header's $EXTMIN/$EXTMAX give {Math.Max(header.Width, header.Height):0.####} × {Math.Min(header.Width, header.Height):0.####} mm ({header}): reported, not compared (SOLIDWORKS may write the sheet there)")
+            : "its header gives no $EXTMIN/$EXTMAX");
 
         double wantLong = Math.Max(expected.LengthMm, expected.WidthMm), wantShort = Math.Min(expected.LengthMm, expected.WidthMm);
         double gotLong = Math.Max(box.Width, box.Height), gotShort = Math.Min(box.Width, box.Height);
@@ -157,15 +150,12 @@ public static class FlatPatternFileCheck
         string got = FormattableString.Invariant($"{gotLong:0.####} × {gotShort:0.####} mm");
         if (Math.Abs(gotLong - wantLong) > tolerance || Math.Abs(gotShort - wantShort) > tolerance)
         {
-            string also = file.ExtentsFrom != "its entities" && entities is DxfBox e
-                ? FormattableString.Invariant($"; its entities reach {Math.Max(e.Width, e.Height):0.####} × {Math.Min(e.Width, e.Height):0.####} mm")
-                : "";
             throw ExportFileCheck.Failed("flat_size", path, FormattableString.Invariant($"{want} within {tolerance:0.####} mm"), got,
-                FormattableString.Invariant($"{path}'s drawing extents ({file.ExtentsFrom}) are {got}, not the flat size {want} from the cut list (within {tolerance:0.####} mm){also}"));
+                FormattableString.Invariant($"{path}'s entities reach {got}, not the flat size {want} from the cut list (within {tolerance:0.####} mm)"));
         }
         file.Checks.Add(FormattableString.Invariant($"its extents {got} ({file.ExtentsFrom}, {box}) match the flat size {want} from the cut list within {tolerance:0.####} mm"));
 
-        string found = $"{dxf.BendLines} on a layer or linetype named *{DxfFile.BendMarker}*; layers {string.Join(", ", file.Layers)}; linetypes {string.Join(", ", file.Linetypes)}";
+        string found = $"{dxf.BendLines} lines across the outline ({dxf.NamedBendLines} entities on a layer or linetype named *{DxfFile.BendMarker}*); layers {string.Join(", ", file.Layers)}; linetypes {string.Join(", ", file.Linetypes)}";
         if (!expected.BendLines)
         {
             if (dxf.BendLines > 0)
@@ -176,13 +166,14 @@ public static class FlatPatternFileCheck
         {
             file.Checks.Add("the part has no bends, so it has no bend lines to show");
         }
-        else if (dxf.BendLines == 0)
+        else if (dxf.BendLines < expected.Bends)
         {
-            throw ExportFileCheck.Failed("bend_lines", path, $"bend lines for {expected.Bends} bends", found, $"{path} was asked with bend lines, and has none for the part's {expected.Bends} bends ({found})");
+            throw ExportFileCheck.Failed("bend_lines", path, $"a bend line for each of {expected.Bends} bends", found,
+                $"{path} was asked with bend lines, and has {dxf.BendLines} for the part's {expected.Bends} bends ({found})");
         }
         else
         {
-            file.Checks.Add($"{dxf.BendLines} bend-line entities for {expected.Bends} bends");
+            file.Checks.Add($"{dxf.BendLines} bend lines across the outline for {expected.Bends} bends");
         }
     }
 }

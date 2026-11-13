@@ -36,7 +36,7 @@ public class FlatPatternFileCheckTests
     static object[][] BoxOutline(bool bendLines)
     {
         var outline = Rectangle(136.5664, 96.5664);
-        return bendLines ? outline.Concat(new[] { Line(0, 18.1416, 136.5664, 18.1416, "BENDLINES") }).ToArray() : outline;
+        return bendLines ? outline.Concat(new[] { 18.1416, 38.1416, 58.4248, 78.4248 }.Select(y => Line(0, y, 136.5664, y, "BENDLINES"))).ToArray() : outline;
     }
 
     static string CheckOf(SwAgentException e)
@@ -55,12 +55,12 @@ public class FlatPatternFileCheckTests
         var file = FlatPatternFileCheck.Check(path, FlatPatternFormat.Dxf, _started, Box());
         Assert.Equal("DXF", file.Header);
         Assert.Equal(136.5664, file.Extents!.Value.MaxX, 9);
-        Assert.Equal("$EXTMIN/$EXTMAX", file.ExtentsFrom);
-        Assert.Equal(1, file.BendLines);
+        Assert.Equal("its entities", file.ExtentsFrom);
+        Assert.Equal(4, file.BendLines);
         Assert.Contains("0 = 4", file.Layers);
-        Assert.Contains("BENDLINES = 1", file.Layers);
+        Assert.Contains("BENDLINES = 4", file.Layers);
         Assert.Contains(file.Checks, c => c.Contains("136.5664 × 96.5664 mm") && c.Contains("136.57 × 96.57 mm"));
-        Assert.Contains(file.Checks, c => c.Contains("1 bend-line entities"));
+        Assert.Contains(file.Checks, c => c.Contains("4 bend lines across the outline for 4 bends"));
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public class FlatPatternFileCheckTests
     [Fact]
     public void Extents_off_the_flat_size_fail_naming_both()
     {
-        string path = Write("off.dxf", Drawing(Extents(0, 0, 136.6, 96.5664), Rectangle(136.6, 96.5664)));
+        string path = Write("off.dxf", Drawing(Array.Empty<object>(), Rectangle(136.6, 96.5664)));
         var e = Fails(path, FlatPatternFormat.Dxf, Box(bendLines: false));
         Assert.Equal("flat_size", CheckOf(e));
         Assert.Contains("136.57 × 96.57", (string)e.Error.Details!["expected"]!);
@@ -111,12 +111,45 @@ public class FlatPatternFileCheckTests
     }
 
     [Fact]
-    public void Header_extents_that_disagree_with_the_entities_are_reported_with_them()
+    public void The_flat_size_is_the_entities_and_the_header_is_reported_only()
     {
-        string path = Write("stale.dxf", Drawing(Extents(0, 0, 200, 96.5664), Rectangle(136.5664, 96.5664)));
+        // The 6.D live run: ExportFlatPatternView wrote the letter sheet (279.4 × 215.9) as $EXTMIN/$EXTMAX, and the
+        // exact flat as its entities.
+        string path = Write("sheet.dxf", Drawing(Extents(0, 0, 279.4, 215.9), Rectangle(136.5664, 96.5664)));
+        var file = FlatPatternFileCheck.Check(path, FlatPatternFormat.Dxf, _started, Box(bendLines: false));
+        Assert.Equal("its entities", file.ExtentsFrom);
+        Assert.Equal(136.5664, file.Extents!.Value.Width, 9);
+        Assert.Contains(file.Checks, c => c.Contains("$EXTMIN/$EXTMAX give 279.4 × 215.9 mm") && c.Contains("not compared"));
+    }
+
+    [Fact]
+    public void Entities_off_the_flat_size_fail_even_when_the_header_matches()
+    {
+        string path = Write("stale.dxf", Drawing(Extents(0, 0, 136.5664, 96.5664), Rectangle(200, 96.5664)));
         var e = Fails(path, FlatPatternFormat.Dxf, Box(bendLines: false));
         Assert.Equal("flat_size", CheckOf(e));
-        Assert.Contains("its entities reach 136.5664 × 96.5664", e.Message);
+        Assert.Contains("200 × 96.5664", (string)e.Error.Details!["measured"]!);
+    }
+
+    [Fact]
+    public void Lines_across_the_outline_on_layer_0_are_bend_lines_one_per_bend()
+    {
+        var expected = new FlatPatternExpectation { LengthMm = 100, WidthMm = 83.28, ToleranceMm = 0.015, MmPerUnit = 1, BendLines = true, Bends = 1 };
+        var entities = Rectangle(100, 83.2832).Concat(new[] { Line(0, 58.1416, 100, 58.1416, "0", "Continuous") }).ToArray();
+        string path = Write("layer0.dxf", Drawing(Array.Empty<object>(), entities));
+        var file = FlatPatternFileCheck.Check(path, FlatPatternFormat.Dxf, _started, expected);
+        Assert.Equal(1, file.BendLines);
+        Assert.Contains(file.Checks, c => c.Contains("1 bend lines across the outline for 1 bends"));
+    }
+
+    [Fact]
+    public void Fewer_bend_lines_than_bends_fail()
+    {
+        var entities = Rectangle(136.5664, 96.5664).Concat(new[] { Line(0, 18.1416, 136.5664, 18.1416) }).ToArray();
+        string path = Write("one-of-four.dxf", Drawing(Array.Empty<object>(), entities));
+        var e = Fails(path, FlatPatternFormat.Dxf, Box());
+        Assert.Equal("bend_lines", CheckOf(e));
+        Assert.Contains("has 1 for the part's 4 bends", e.Message);
     }
 
     [Fact]

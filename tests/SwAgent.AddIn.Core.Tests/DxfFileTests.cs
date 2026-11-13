@@ -136,7 +136,75 @@ public class DxfFileTests
     }
 
     [Fact]
-    public void Bend_lines_are_the_entities_on_a_bend_layer_or_linetype()
+    public void A_bend_line_is_a_line_across_the_outline_whatever_its_layer()
+    {
+        // The 6.D live run's tab-saved-sketches.dxf (ExportToDWG2): the bend line is on layer 0, linetype Continuous,
+        // like the outline, and runs from one side of it to the other.
+        var entities = new[]
+        {
+            Line(100, -58.1415926536, 0, -58.1415926536, "0", "Continuous"),
+            Line(100, -83.2831853072, 0, -83.2831853072, "0", "Continuous"),
+            Line(0, -83.2831853072, 0, 0, "0", "Continuous"),
+            Line(0, 0, 100, 0, "0", "Continuous"),
+            Line(100, 0, 100, -83.2831853072, "0", "Continuous"),
+        };
+        var dxf = DxfFile.Parse(Drawing(Array.Empty<object>(), entities));
+        Assert.Equal(1, dxf.BendLines);
+        Assert.Equal(0, dxf.NamedBendLines);
+        Assert.Equal(5, dxf.Entities);
+    }
+
+    [Fact]
+    public void An_outline_alone_has_no_bend_lines()
+    {
+        // The 6.D live run's box.dxf (ExportFlatPatternView): CADapter's box flat, its 12 outline lines and nothing else.
+        double[] xs = { 71.4168146928, 89.7, 189.7, 207.9831853072 }, ys = { 59.6668146928, 82.95, 132.95, 156.2331853072 };
+        var outline = new[]
+        {
+            Line(xs[2], ys[0], xs[1], ys[0]), Line(xs[1], ys[1], xs[1], ys[0]), Line(xs[0], ys[1], xs[1], ys[1]),
+            Line(xs[0], ys[1], xs[0], ys[2]), Line(xs[1], ys[2], xs[0], ys[2]), Line(xs[1], ys[3], xs[1], ys[2]),
+            Line(xs[1], ys[3], xs[2], ys[3]), Line(xs[2], ys[2], xs[2], ys[3]), Line(xs[3], ys[2], xs[2], ys[2]),
+            Line(xs[3], ys[2], xs[3], ys[1]), Line(xs[2], ys[1], xs[3], ys[1]), Line(xs[2], ys[0], xs[2], ys[1]),
+        };
+        var dxf = DxfFile.Parse(Drawing(Array.Empty<object>(), outline));
+        Assert.Equal(0, dxf.BendLines);
+        Assert.Equal(12, dxf.Entities);
+    }
+
+    [Fact]
+    public void A_bend_line_may_end_where_the_outline_is_split_into_two_lines_in_line()
+    {
+        var entities = new[]
+        {
+            Line(0, 0, 100, 0), Line(100, 0, 100, 30), Line(100, 30, 100, 60), Line(100, 60, 0, 60),
+            Line(0, 60, 0, 30), Line(0, 30, 0, 0),
+            Line(0, 30, 100, 30),
+        };
+        Assert.Equal(1, DxfFile.Parse(Drawing(Array.Empty<object>(), entities)).BendLines);
+    }
+
+    [Fact]
+    public void A_bend_line_cut_by_a_hole_counts_each_piece()
+    {
+        var hole = new object[] { 0, "CIRCLE", 8, "0", 10, 50.0, 20, 30.0, 40, 2.0 };
+        var entities = Rectangle(100, 60).Concat(new[] { Line(0, 30, 48, 30), Line(52, 30, 100, 30), hole }).ToArray();
+        Assert.Equal(2, DxfFile.Parse(Drawing(Array.Empty<object>(), entities)).BendLines);
+    }
+
+    [Fact]
+    public void Lines_that_do_not_cross_the_outline_are_not_bend_lines()
+    {
+        var entities = Rectangle(100, 60).Concat(new[]
+        {
+            Line(20, 20, 40, 20),        // a sketch line inside, touching nothing
+            Line(0, 10, 30, 10),         // from the outline to nowhere
+            Line(10, 0, 40, 0),          // along an edge of the outline
+        }).ToArray();
+        Assert.Equal(0, DxfFile.Parse(Drawing(Array.Empty<object>(), entities)).BendLines);
+    }
+
+    [Fact]
+    public void Entities_on_a_bend_layer_or_linetype_are_counted_by_name_too()
     {
         var entities = Rectangle(100, 83.2832).Concat(new[]
         {
@@ -144,6 +212,7 @@ public class DxfFileTests
             Line(0, 55, 100, 55, "0", "SW_BEND_DOWN"),
         }).ToArray();
         var dxf = DxfFile.Parse(Drawing(Array.Empty<object>(), entities));
+        Assert.Equal(2, dxf.NamedBendLines);
         Assert.Equal(2, dxf.BendLines);
         Assert.Equal(6, dxf.Entities);
         Assert.Equal(1, dxf.Layers["BENDLINES"]);

@@ -132,7 +132,7 @@
         },
         "from": {
           "type": "string",
-          "description": "Where they were read: $EXTMIN/$EXTMAX in the header, or its entities when the header does not give them."
+          "description": "Where they were read: its entities (the header's $EXTMIN/$EXTMAX is reported in checks, not compared)."
         }
       },
       "required": [
@@ -149,7 +149,7 @@
     },
     "bend_lines": {
       "type": "integer",
-      "description": "A DXF's bend-line entities (on a layer or linetype named for bends); absent for a DWG."
+      "description": "A DXF's bend lines: lines running across the outline, whatever their layer; absent for a DWG."
     },
     "layers": {
       "type": "array",

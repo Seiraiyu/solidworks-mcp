@@ -82,7 +82,7 @@ public sealed class ExportOptions
 }
 
 [Operation("export.flat_pattern", typeof(ExportFlatPatternResult))]
-[Description("Writes a sheet-metal part's flat pattern as DXF or DWG, the file a cutting machine takes, in the part's units. The part must be saved to disk: a part never saved is refused before SOLIDWORKS is called (save it with sw_document_save_as first), because SOLIDWORKS then opens a Save As box that waits for the user. A part with unsaved changes is exported as it is now. The part need not be flattened: it keeps its state (folded or flattened), its path and its unsaved-changes flag, and the part that was active is made active again. Bend lines are drawn unless bend_lines is false; the part's visible sketches only when sketches is true. Checked on disk: the file was written by this call and is not empty; a DXF parses, its drawing extents match the flat size from the cut list (sw_sheetmetal_read's flat) within 0.01 mm beyond the cut list's own rounding, turned or not, and it holds bend lines exactly when they were asked for and the part has bends; a DWG starts with its AC10xx version and is at least 1 KB (its extents are not read). Otherwise verification_failed, naming the check; the file is left where it was written. A SOLIDWORKS call that writes nothing is followed by the next (ExportFlatPatternView, then ExportToDWG2), and operation_failed lists every attempt when none writes.")]
+[Description("Writes a sheet-metal part's flat pattern as DXF or DWG, the file a cutting machine takes, in the part's units. The part must be saved to disk: a part never saved is refused before SOLIDWORKS is called (save it with sw_document_save_as first), because SOLIDWORKS then opens a Save As box that waits for the user. A part with unsaved changes is exported as it is now. The part need not be flattened: it keeps its state (folded or flattened), its path and its unsaved-changes flag, and the part that was active is made active again. Bend lines are drawn unless bend_lines is false; the part's visible sketches only when sketches is true. Checked on disk: the file was written by this call and is not empty; a DXF parses, the extents of its entities match the flat size from the cut list (sw_sheetmetal_read's flat) within 0.01 mm beyond the cut list's own rounding, turned or not (the header's extents are reported, not compared), and it holds a line across the outline for each bend when bend lines were asked for, and none when they were not; a DWG starts with its AC10xx version and is at least 1 KB (its extents are not read). Otherwise verification_failed, naming the check; the file is left where it was written. A SOLIDWORKS call that writes nothing is followed by the next (with bend lines or sketches, ExportToDWG2 first, since ExportFlatPatternView draws no bend lines; without, ExportFlatPatternView, then ExportToDWG2), and operation_failed lists every attempt when none writes.")]
 public sealed class ExportFlatPatternRequest
 {
     [Description("The sheet-metal part: its title or full path. The active document when absent.")]
@@ -143,7 +143,7 @@ public sealed class ExportFlatPatternResult
     [Description("A DXF's drawing extents; absent for a DWG.")]
     public DrawingExtents? Extents { get; set; }
 
-    [Description("A DXF's bend-line entities (on a layer or linetype named for bends); absent for a DWG.")]
+    [Description("A DXF's bend lines: lines running across the outline, whatever their layer; absent for a DWG.")]
     public int? BendLines { get; set; }
 
     [Required]
@@ -177,7 +177,7 @@ public sealed class DrawingExtents
     public double WidthMm { get; set; }
 
     [Required]
-    [Description("Where they were read: $EXTMIN/$EXTMAX in the header, or its entities when the header does not give them.")]
+    [Description("Where they were read: its entities (the header's $EXTMIN/$EXTMAX is reported in checks, not compared).")]
     public string From { get; set; } = "";
 }
 

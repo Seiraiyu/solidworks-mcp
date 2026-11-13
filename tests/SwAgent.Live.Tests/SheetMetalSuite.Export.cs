@@ -65,14 +65,16 @@ public sealed partial class SheetMetalSuite
         return (Math.Max(w, h), Math.Min(w, h));
     }
 
-    /// <summary>The DXF's own header agrees with what export.flat_pattern measured, when it gives extents; a note either way.</summary>
+    /// <summary>
+    /// The DXF's own header, read here, as a note: whether it agrees with the entities export.flat_pattern measured. Not
+    /// asserted: the 6.D live run found ExportFlatPatternView writes the drawing sheet (279.4 × 215.9) there.
+    /// </summary>
     static string HeaderAgrees(ExportFlatPatternResult dxf)
     {
         var sides = HeaderSides(dxf.Path);
-        if (sides == null) return "no $EXTMIN/$EXTMAX in the file (the entities gave the extents)";
-        Within(dxf.Extents!.LengthMm, sides.Value.Long, 1e-6, "the header's longer side, read here");
-        Within(dxf.Extents.WidthMm, sides.Value.Short, 1e-6, "the header's shorter side, read here");
-        return FormattableString.Invariant($"$EXTMIN/$EXTMAX read here: {sides.Value.Long:0.####} × {sides.Value.Short:0.####}");
+        if (sides == null) return "no $EXTMIN/$EXTMAX in the file";
+        bool agrees = Math.Abs(dxf.Extents!.LengthMm - sides.Value.Long) <= 1e-6 && Math.Abs(dxf.Extents.WidthMm - sides.Value.Short) <= 1e-6;
+        return FormattableString.Invariant($"$EXTMIN/$EXTMAX read here: {sides.Value.Long:0.####} × {sides.Value.Short:0.####} ({(agrees ? "the flat" : "not the flat: reported only")})");
     }
 
     [SkippableFact, Step(20)]
@@ -86,7 +88,9 @@ public sealed partial class SheetMetalSuite
         var dxf = await ExportFlat(new ExportFlatPatternRequest { Document = path, Path = ScratchFile("box.dxf"), Format = FlatPatternFormat.Dxf });
         long ms = clock.ElapsedMilliseconds;
         Assert.Equal("DXF", dxf.Header);
-        Within(length, dxf.Extents!.LengthMm, 0.01, "the DXF's length");
+        Assert.Equal("ExportToDWG2", dxf.Method);
+        Assert.Equal("its entities", dxf.Extents!.From);
+        Within(length, dxf.Extents.LengthMm, 0.01, "the DXF's length");
         Within(width, dxf.Extents.WidthMm, 0.01, "the DXF's width");
         Assert.True(dxf.BendLines >= 4, $"a bend line per bend: {dxf.BendLines} for 4 bends; layers {string.Join(", ", dxf.Layers)}");
         Assert.False(dxf.Document.Dirty);
@@ -95,8 +99,10 @@ public sealed partial class SheetMetalSuite
 
         var plain = await ExportFlat(new ExportFlatPatternRequest { Document = path, Path = ScratchFile("box-plain.dxf"), Format = FlatPatternFormat.Dxf, BendLines = false });
         Assert.Equal(0, plain.BendLines);
+        Assert.Equal("ExportFlatPatternView", plain.Method);
         Within(length, plain.Extents!.LengthMm, 0.01, "the DXF without bend lines, its length");
         Within(width, plain.Extents.WidthMm, 0.01, "the DXF without bend lines, its width");
+        string plainHeader = HeaderAgrees(plain);
 
         var dwg = await ExportFlat(new ExportFlatPatternRequest { Document = path, Path = ScratchFile("box.dwg"), Format = FlatPatternFormat.Dwg });
         Assert.Matches("^AC10[0-9][0-9]$", dwg.Header);
@@ -110,7 +116,7 @@ public sealed partial class SheetMetalSuite
         await Flatten(path, false);
         Assert.Equal(SheetState.Folded, (await Read(path)).State);
         return FormattableString.Invariant($"DXF by {dxf.Method} in {ms} ms (export deadline 120 s), {dxf.Bytes} bytes: {dxf.Extents.LengthMm:0.####} × {dxf.Extents.WidthMm:0.####} from {dxf.Extents.From} (expected {length:0.####} × {width:0.####}); {header}; ") +
-               $"{dxf.BendLines} bend lines; layers {string.Join(", ", dxf.Layers)}; attempts {string.Join("; ", dxf.Attempts)} | without bend lines: {plain.BendLines}, layers {string.Join(", ", plain.Layers)} | " +
+               $"{dxf.BendLines} bend lines; layers {string.Join(", ", dxf.Layers)}; attempts {string.Join("; ", dxf.Attempts)} | without bend lines: by {plain.Method}, {plain.BendLines}, layers {string.Join(", ", plain.Layers)}, {plainHeader} | " +
                $"DWG by {dwg.Method}: {dwg.Header}, {dwg.Bytes} bytes | flattened: by {flat.Method}, {flat.Extents.LengthMm:0.####} × {flat.Extents.WidthMm:0.####}, left flattened, folded again | checks: {string.Join("; ", dxf.Checks)}";
     });
 
@@ -125,7 +131,9 @@ public sealed partial class SheetMetalSuite
         foreach (var (name, sketches) in new[] { ("tab-saved-sketches.dxf", true), ("tab-saved.dxf", false) })
         {
             var saved = await ExportFlat(new ExportFlatPatternRequest { Document = path, Path = ScratchFile(name), Format = FlatPatternFormat.Dxf, Sketches = sketches });
-            Assert.Equal(sketches ? "ExportToDWG2" : "ExportFlatPatternView", saved.Method);
+            // Bend lines are asked for (the default), so both go through ExportToDWG2 (6.D live run).
+            Assert.Equal("ExportToDWG2", saved.Method);
+            Assert.True(saved.BendLines >= 1, $"{name}: a bend line for the one bend, {saved.BendLines}");
             Within(100, saved.Extents!.LengthMm, 0.01, $"{name}: its length");
             Within(60 + Across25, saved.Extents.WidthMm, 0.01, $"{name}: its width");
             Assert.False(saved.Document.Dirty);
@@ -133,9 +141,11 @@ public sealed partial class SheetMetalSuite
         }
 
         await Call<SheetMetalSetParametersRequest, SheetMetalSetParametersResult>(new SheetMetalSetParametersRequest { Document = path, Allowance = new BendAllowance { KFactor = 0.1 } });
-        foreach (var (name, sketches) in new[] { ("tab-unsaved.dxf", false), ("tab-unsaved-sketches.dxf", true) })
+        // Without bend lines and sketches ExportFlatPatternView writes; with sketches ExportToDWG2: both calls see the change.
+        foreach (var (name, sketches, method) in new[] { ("tab-unsaved.dxf", false, "ExportFlatPatternView"), ("tab-unsaved-sketches.dxf", true, "ExportToDWG2") })
         {
-            var unsaved = await ExportFlat(new ExportFlatPatternRequest { Document = path, Path = ScratchFile(name), Format = FlatPatternFormat.Dxf, Sketches = sketches });
+            var unsaved = await ExportFlat(new ExportFlatPatternRequest { Document = path, Path = ScratchFile(name), Format = FlatPatternFormat.Dxf, Sketches = sketches, BendLines = sketches });
+            Assert.Equal(method, unsaved.Method);
             Within(60 + Across25AtK01, unsaved.Extents!.WidthMm, 0.01, $"{name}: its width at K 0.1, as the part is now");
             Assert.True(unsaved.Document.Dirty, "the part keeps its unsaved changes");
             notes.Add(FormattableString.Invariant($"unsaved at K 0.1, by {unsaved.Method}: {unsaved.Extents.LengthMm:0.####} × {unsaved.Extents.WidthMm:0.####} (expected 100 × {60 + Across25AtK01:0.####}); {HeaderAgrees(unsaved)}"));

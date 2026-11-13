@@ -23,16 +23,25 @@ public class FlatPatternExportsTests
     }
 
     [Fact]
-    public void CADapters_call_is_tried_first_and_ExportToDWG2_after_it()
+    public void Without_bend_lines_CADapters_call_is_tried_first_and_ExportToDWG2_after_it()
     {
-        Assert.Equal(new[] { FlatPatternExports.FlatPatternView, FlatPatternExports.ToDwg2 }, FlatPatternExports.Methods(sketches: false));
+        Assert.Equal(new[] { FlatPatternExports.FlatPatternView, FlatPatternExports.ToDwg2 }, FlatPatternExports.Methods(bendLines: false, sketches: false));
     }
 
     [Fact]
-    public void Sketches_are_written_by_ExportToDWG2_alone()
+    public void With_bend_lines_ExportToDWG2_is_tried_first()
+    {
+        // The 6.D live run: ExportFlatPatternView drew no bend lines on 2026 SP4 when asked for them; ExportToDWG2 did.
+        Assert.Equal(new[] { FlatPatternExports.ToDwg2, FlatPatternExports.FlatPatternView }, FlatPatternExports.Methods(bendLines: true, sketches: false));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Sketches_are_written_by_ExportToDWG2_alone(bool bendLines)
     {
         // ExportFlatPatternView takes only "remove bend lines": it cannot add sketches.
-        Assert.Equal(new[] { FlatPatternExports.ToDwg2 }, FlatPatternExports.Methods(sketches: true));
+        Assert.Equal(new[] { FlatPatternExports.ToDwg2 }, FlatPatternExports.Methods(bendLines, sketches: true));
     }
 
     [Fact]
@@ -61,10 +70,31 @@ public class FlatPatternExportsTests
         string folder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "swagent-tests", System.Guid.NewGuid().ToString("N"));
         System.IO.Directory.CreateDirectory(folder);
         string path = System.IO.Path.Combine(folder, "box.dxf");
+        // As the 6.D live run measured: ExportFlatPatternView writes the letter sheet as the header's extents, the
+        // flat as its entities, and no bend lines.
         Assert.True(doc.ExportFlatPatternView(path, bendLines: true));
         var dxf = SwAgent.AddIn.Core.DxfFile.Read(path);
-        Assert.Equal(136.57, dxf.HeaderExtents!.Value.Width, 9);
-        Assert.Equal(96.57, dxf.HeaderExtents.Value.Height, 9);
+        Assert.Equal(279.4, dxf.HeaderExtents!.Value.Width, 9);
+        Assert.Equal(136.57, dxf.EntityExtents!.Value.Width, 9);
+        Assert.Equal(96.57, dxf.EntityExtents.Value.Height, 9);
+        Assert.Equal(0, dxf.BendLines);
         Assert.Equal((FlatPatternExports.FlatPatternView, path, true, false), doc.FlatExports[0]);
+    }
+
+    [Fact]
+    public void The_fakes_ExportToDWG2_draws_its_bend_lines_on_layer_0_across_the_outline()
+    {
+        var doc = FakeDocument.Part("Part1", @"C:\scratch\part1.SLDPRT");
+        doc.Sheet = new SheetDefaults { ThicknessMm = 2, BendRadiusMm = 3, Allowance = new BendAllowance { KFactor = 0.5 } };
+        doc.CutListOverride = CutList("136.57", "96.57");
+        doc.FakeBends.Add(new FakeBend());
+        string folder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "swagent-tests", System.Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(folder);
+        string path = System.IO.Path.Combine(folder, "box.dxf");
+        Assert.True(doc.ExportToDwg2(path, doc.Document.Path!, FlatPatternExports.DwgOptions(bendLines: true, sketches: false)));
+        var dxf = SwAgent.AddIn.Core.DxfFile.Read(path);
+        Assert.Equal(1, dxf.BendLines);
+        Assert.Equal(0, dxf.NamedBendLines);
+        Assert.Equal(136.57, dxf.HeaderExtents!.Value.Width, 9);
     }
 }

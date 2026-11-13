@@ -66,12 +66,9 @@ public sealed partial class SheetMetalSuite
         Within(read.Flat.LengthMm, Number("dxf_length"), 0.015, "the DXF's length against the flat size");
         Within(read.Flat.WidthMm, Number("dxf_width"), 0.015, "the DXF's width against the flat size");
         Assert.True(Number("dxf_bend_lines") >= 2, $"bend lines for the flange's bend and the hem's: {variables["dxf_bend_lines"]}");
+        // The header is a note, not a check: ExportFlatPatternView writes the drawing sheet there (6.D live run).
         var sides = HeaderSides(dxf);
-        if (sides != null)
-        {
-            Within(Number("dxf_length"), sides.Value.Long, 1e-6, "the DXF's $EXTMIN/$EXTMAX, read here, its longer side");
-            Within(Number("dxf_width"), sides.Value.Short, 1e-6, "the DXF's $EXTMIN/$EXTMAX, read here, its shorter side");
-        }
+        bool headerIsFlat = sides != null && Math.Abs(Number("dxf_length") - sides.Value.Long) <= 1e-6 && Math.Abs(Number("dxf_width") - sides.Value.Short) <= 1e-6;
 
         var box = await BoxOf(part);
         Near(100, box.Max.X - box.Min.X, "the bracket's length", 1e-5);
@@ -84,7 +81,7 @@ public sealed partial class SheetMetalSuite
         return FormattableString.Invariant($"{calls.Count} tool calls ({string.Join(", ", calls.Select(c => c.Tool))}), longest {calls.Max(c => c.Ms)} ms; ") +
                $"{variables["base"]}, {variables["flange"]} ({variables["flange_bend"]}), {variables["hem"]}, {variables["unfold"]}, {variables["cut"]}, {variables["fold"]}; " +
                FormattableString.Invariant($"flat {read.Flat.LengthMm} × {read.Flat.WidthMm} (expected 100 × {width:0.####}, the hem's share {hem:0.####} from a tab with it alone, {hemFlat.LengthMm} × {hemFlat.WidthMm}); ") +
-               FormattableString.Invariant($"DXF by {variables["dxf_method"]}: {Number("dxf_length"):0.####} × {Number("dxf_width"):0.####}, {variables["dxf_bend_lines"]} bend lines, {new FileInfo(dxf).Length} bytes{(sides == null ? ", no $EXTMIN/$EXTMAX" : "")}; ") +
+               FormattableString.Invariant($"DXF by {variables["dxf_method"]}: {Number("dxf_length"):0.####} × {Number("dxf_width"):0.####}, {variables["dxf_bend_lines"]} bend lines, {new FileInfo(dxf).Length} bytes, {(sides == null ? "no $EXTMIN/$EXTMAX" : headerIsFlat ? "its header the flat" : $"its header {sides.Value.Long:0.####} × {sides.Value.Short:0.####}, not the flat")}; ") +
                FormattableString.Invariant($"box {box.Max.X - box.Min.X:0.####} × {box.Max.Y - box.Min.Y:0.####} × {box.Max.Z - box.Min.Z:0.####}; {holes.Count} faces of the 4 mm hole; transcript in {Path.GetFileName(log)}");
     });
 }
