@@ -278,3 +278,127 @@ public sealed class ExplodeCreateOperation : AssemblyChangeOperation<ExplodeCrea
         return trimmed;
     }
 }
+
+/// <summary>
+/// explode.list (design 455, Exploded views): read-only. Every configuration's views; steps for the active one's, which
+/// SOLIDWORKS gives only while a view is shown (ISwAssembly.ExplodeSteps shows it and puts back what was shown).
+/// </summary>
+public sealed class ExplodeListOperation : Operation<ExplodeListRequest, ExplodeListResult>
+{
+    readonly AddInServices _services;
+
+    public ExplodeListOperation(AddInServices services)
+    {
+        _services = services;
+    }
+
+    protected override ExplodeListResult Run(ExplodeListRequest request, IOperationContext context)
+    {
+        var (doc, asm) = DocumentLocator.FindAssembly(_services.SolidWorks, request.Document, Name);
+        string active = doc.ActiveConfiguration();
+        string? shown = asm.ShownExploded();
+        var result = new ExplodeListResult { Document = doc.Info(), Configuration = active, Exploded = shown };
+        foreach (var configuration in doc.ConfigurationNames())
+        {
+            bool isActive = string.Equals(configuration, active, StringComparison.OrdinalIgnoreCase);
+            foreach (var view in asm.ExplodedViews(configuration))
+                result.Views.Add(ExplodeRequests.Describe(asm, view, configuration, isActive ? shown : null, isActive ? asm.ExplodeSteps(view) : null));
+        }
+        return result;
+    }
+
+    /// <summary>Reading changed nothing: the assembly shows what it showed before.</summary>
+    protected override void Verify(ExplodeListRequest request, ExplodeListResult result, IOperationContext context)
+    {
+        var (_, asm) = DocumentLocator.FindAssembly(_services.SolidWorks, DocumentLocator.Label(result.Document), Name);
+        string? shown = asm.ShownExploded();
+        if (!string.Equals(shown, result.Exploded, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"reading the views left {shown ?? "no view"} shown exploded, not {result.Exploded ?? "no view"} as before",
+                new JsonObject { ["check"] = "shown", ["expected"] = result.Exploded, ["measured"] = shown });
+        }
+    }
+}
+
+/// <summary>
+/// explode.show (design 455, Exploded views): explodes the assembly to a view of the active configuration, or collapses
+/// it. Display state only, so not a transaction; it waits like a change does, since the Explode PropertyManager is a
+/// command and an in-context edit is the user's.
+/// </summary>
+public sealed class ExplodeShowOperation : Operation<ExplodeShowRequest, ExplodeShowResult>
+{
+    readonly AddInServices _services;
+
+    public ExplodeShowOperation(AddInServices services)
+    {
+        _services = services;
+    }
+
+    protected override ExplodeShowResult Run(ExplodeShowRequest request, IOperationContext context)
+    {
+        var (doc, asm) = DocumentLocator.FindAssembly(_services.SolidWorks, request.Document, Name);
+        AssemblyChangeGuard.Require(_services.SolidWorks, doc, asm, Name);
+        string view = ExplodeRequests.View(doc, asm, request.View);
+        bool exploded = request.Exploded ?? true;
+        string? before = asm.ShownExploded();
+        if (exploded && !string.Equals(before, view, StringComparison.OrdinalIgnoreCase) && !asm.ShowExploded(view, true))
+            throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not show {view} exploded", new JsonObject { ["view"] = view });
+        if (!exploded && before != null && !asm.ShowExploded(before, false))
+            throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not collapse {before}", new JsonObject { ["view"] = before });
+        return new ExplodeShowResult { Document = doc.Info(), View = view, Exploded = exploded, Before = before };
+    }
+
+    /// <summary>The assembly shows the view exploded, or no view, as asked.</summary>
+    protected override void Verify(ExplodeShowRequest request, ExplodeShowResult result, IOperationContext context)
+    {
+        var (_, asm) = DocumentLocator.FindAssembly(_services.SolidWorks, DocumentLocator.Label(result.Document), Name);
+        string? shown = asm.ShownExploded();
+        string? wanted = result.Exploded ? result.View : null;
+        if (!string.Equals(shown, wanted, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"the assembly shows {shown ?? "no view"} exploded, not {wanted ?? "no view"}",
+                new JsonObject { ["check"] = "shown", ["expected"] = wanted, ["measured"] = shown });
+        }
+    }
+}
+
+/// <summary>
+/// explode.delete (design 455, Exploded views): a view of the active configuration and its steps. A view shown exploded
+/// is collapsed first, recorded so that a refused delete shows it again (and nothing is "put back" from the exploded
+/// placements the change began with). A deletion is not rolled back.
+/// </summary>
+public sealed class ExplodeDeleteOperation : AssemblyChangeOperation<ExplodeDeleteRequest, ExplodeDeleteResult>
+{
+    public ExplodeDeleteOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(ExplodeDeleteRequest request) => request.Document;
+
+    protected override ExplodeDeleteResult Change(ISwDocument doc, ISwAssembly asm, ExplodeDeleteRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        string configuration = doc.ActiveConfiguration();
+        string view = ExplodeRequests.View(doc, asm, request.View);
+        int steps = asm.ExplodeSteps(view).Count;
+        if (string.Equals(asm.ShownExploded(), view, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!asm.ShowExploded(view, false)) throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not collapse {view} to delete it");
+            tx.Edited(new ChangedItem { Name = view, Property = "exploded", Before = "true", After = "false" }, () => asm.ShowExploded(view, true));
+        }
+        if (!asm.DeleteExplodedView(view))
+            throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not delete the exploded view {view}", new JsonObject { ["view"] = view });
+        context.Log.Info($"{Name}: {view} of {configuration}, {steps} steps");
+        return new ExplodeDeleteResult { Deleted = view, Configuration = configuration, Steps = steps };
+    }
+
+    /// <summary>The view is gone.</summary>
+    protected override void Check(ISwDocument doc, ISwAssembly asm, ExplodeDeleteRequest request, ExplodeDeleteResult result)
+    {
+        if (asm.ExplodedViews(result.Configuration).Contains(result.Deleted, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"SOLIDWORKS reported {result.Deleted} deleted, but {result.Configuration} still has it",
+                new JsonObject { ["check"] = "view_deleted", ["remaining"] = new List<object?> { result.Deleted } });
+        }
+    }
+}
