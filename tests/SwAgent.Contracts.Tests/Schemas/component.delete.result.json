@@ -1,13 +1,13 @@
 {
   "type": "object",
-  "description": "The components deleted.",
+  "description": "The components and patterns deleted.",
   "properties": {
     "deleted": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "description": "The names of the components deleted."
+      "description": "The names of the components deleted, pattern instances not included."
     },
     "mates_deleted": {
       "type": "array",
@@ -15,6 +15,20 @@
         "type": "string"
       },
       "description": "The names of the mates deleted with them."
+    },
+    "patterns_deleted": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The names of the component patterns deleted."
+    },
+    "instances_deleted": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The names of the instances deleted with those patterns."
     },
     "change": {
       "type": "object",
@@ -319,6 +333,8 @@
   "required": [
     "deleted",
     "mates_deleted",
+    "patterns_deleted",
+    "instances_deleted",
     "change"
   ],
   "additionalProperties": false

@@ -15,7 +15,7 @@ namespace SwAgent.AddIn;
 /// The real assembly, through IAssemblyDoc and IComponent2. UI thread only. Converts metres to millimetres here and in
 /// <see cref="Placement"/>, nowhere else. Covered by the assemblies live suite, not by unit tests.
 /// </summary>
-internal sealed class SolidWorksAssembly : ISwAssembly
+internal sealed partial class SolidWorksAssembly : ISwAssembly
 {
     const double Mm = 1000.0;
 

@@ -1,0 +1,46 @@
+{
+  "type": "object",
+  "description": "Repeats components around an axis (a component pattern; SOLIDWORKS' LocalCirPattern). Angles in degrees. The axis is an axis, a straight or circular edge, or a cylindrical or conical face (its axis): a reference issued in the assembly, name@component (Axis1@plate-1), or with axis_component a reference issued in that component's own part. With equal_spacing (the default) the instances share angle_deg (360 unless given): 360 is split into count steps, any smaller angle into count - 1; without it, angle_deg is the angle from one instance to the next. The seeds must be top-level, resolved components that are not themselves pattern instances. Checked: the pattern has the instances asked for, and each one is its seed turned about the axis by the step × i, origin and axes, within 0.001 mm and 0.01 degrees; sense says which way it turned (reverse flips it). Otherwise the pattern is deleted and every moved component put back (rolled back). Delete it later with component.delete. References are opaque: pass one back exactly as it was given, and never build or change one.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The components to repeat (the seeds): each a reference (r1.component.…) or a name (pin-1)."
+    },
+    "axis": {
+      "type": "string",
+      "description": "The axis to turn about. See the operation's description for the forms it takes."
+    },
+    "axis_component": {
+      "type": "string",
+      "description": "Only when axis is a reference issued in a component's own part (or a name there): that component, by reference or name."
+    },
+    "count": {
+      "type": "integer",
+      "description": "How many instances, the seed included: 2 to 500."
+    },
+    "angle_deg": {
+      "type": "number",
+      "description": "With equal_spacing, the angle the instances share (default 360); without it, the angle between neighbours. Degrees, more than 0 and at most 360."
+    },
+    "equal_spacing": {
+      "type": "boolean",
+      "description": "Share angle_deg equally among the instances. Default true."
+    },
+    "reverse": {
+      "type": "boolean",
+      "description": "Turn the other way. Default false."
+    }
+  },
+  "required": [
+    "components",
+    "axis"
+  ],
+  "additionalProperties": false
+}

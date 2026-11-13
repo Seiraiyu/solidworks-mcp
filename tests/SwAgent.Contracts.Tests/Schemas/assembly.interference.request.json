@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "description": "Finds where components of an assembly overlap, with SOLIDWORKS' interference detection over the whole assembly (inside subassemblies too): each pair of components that interfere, the volume (mm³) and the box (mm, assembly coordinates) of the overlap. Faces that only touch are not interference unless coincident_is_interference is true; hidden components are left out unless include_hidden is true. With components, only the interferences that involve one of them (or a component inside one of them) are reported. Changes nothing; the interference session is always closed, also when SOLIDWORKS fails or the call runs past its deadline.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The assembly: its title or full path. The active document when absent."
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Report only the interferences that involve these components: each a reference (r1.component.…) or a name (bracket-1; sub-1/pin-1 inside a subassembly). Every interference when absent."
+    },
+    "coincident_is_interference": {
+      "type": "boolean",
+      "description": "Count faces that touch as interference (reported with touching true and volume 0). Default false."
+    },
+    "include_hidden": {
+      "type": "boolean",
+      "description": "Include hidden components. Default false."
+    }
+  },
+  "additionalProperties": false
+}

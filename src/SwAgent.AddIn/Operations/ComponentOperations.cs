@@ -228,8 +228,9 @@ public sealed class ComponentSetOperation : AssemblyChangeOperation<ComponentSet
 /// </summary>
 public sealed class ComponentDeleteOperation : AssemblyChangeOperation<ComponentDeleteRequest, ComponentDeleteResult>
 {
-    /// <summary>The assembly's mate count before the delete (one request runs at a time).</summary>
+    /// <summary>The assembly's mate count before the delete, and the instances that go with the patterns (one request runs at a time).</summary>
     int _matesBefore;
+    System.Collections.Generic.List<string> _instances = new System.Collections.Generic.List<string>();
 
     public ComponentDeleteOperation(AddInServices services)
         : base(services)
@@ -242,30 +243,68 @@ public sealed class ComponentDeleteOperation : AssemblyChangeOperation<Component
     {
         if (request.Components.Count == 0)
             throw new SwAgentException(ErrorCode.InvalidArgument, "components is empty; name at least one", new JsonObject { ["field"] = "components" });
-        var doomed = new System.Collections.Generic.List<(object Component, ComponentInfo Info)>();
+        var patterns = new System.Collections.Generic.List<(object Pattern, ComponentPatternFacts Facts)>();
+        var doomed = new System.Collections.Generic.List<(object Component, ComponentInfo Info, int Index)>();
         for (int i = 0; i < request.Components.Count; i++)
         {
-            var component = Component(doc, asm, request.Components[i], $"/components/{i}");
+            string field = $"/components/{i}";
+            var pattern = PatternLookup.TryFind(Services.References, doc, asm, request.Components[i], field);
+            if (pattern != null)
+            {
+                var facts = asm.ReadPattern(pattern);
+                if (!patterns.Exists(p => p.Facts.Name == facts.Name)) patterns.Add((pattern, facts));
+                continue;
+            }
+            var component = Component(doc, asm, request.Components[i], field);
             var info = asm.Read(component);
             if (info.Parent != null)
             {
                 throw new SwAgentException(ErrorCode.InvalidArgument,
                     $"{info.Name} is inside the subassembly {info.Parent}; open {info.Parent}'s own document to delete it there, or delete {info.Parent}",
-                    new JsonObject { ["field"] = $"/components/{i}", ["component"] = info.Name, ["subassembly"] = info.Parent });
+                    new JsonObject { ["field"] = field, ["component"] = info.Name, ["subassembly"] = info.Parent });
             }
-            if (!doomed.Exists(d => d.Info.Name == info.Name)) doomed.Add((component, info));
+            if (!doomed.Exists(d => d.Info.Name == info.Name)) doomed.Add((component, info, i));
         }
-        var mates = doomed.SelectMany(d => asm.MatesOf(d.Component)).Distinct().ToList();
+        var membership = PatternLookup.Membership(asm);
+        var going = new System.Collections.Generic.HashSet<string>(patterns.Select(p => p.Facts.Name), System.StringComparer.OrdinalIgnoreCase);
+        foreach (var (_, info, index) in doomed)
+        {
+            string field = $"/components/{index}";
+            if (membership.InstanceOf.TryGetValue(info.Name, out var owner))
+            {
+                throw new SwAgentException(ErrorCode.InvalidArgument,
+                    $"{info.Name} is an instance of the pattern {owner}; delete the pattern (component.delete with {owner}), which deletes all its instances, rather than one of them",
+                    new JsonObject { ["field"] = field, ["component"] = info.Name, ["pattern"] = owner });
+            }
+            if (membership.SeedOf.TryGetValue(info.Name, out var of) && of.Any(p => !going.Contains(p)))
+            {
+                var kept = of.Where(p => !going.Contains(p)).ToList();
+                throw new SwAgentException(ErrorCode.InvalidArgument,
+                    $"{info.Name} is the seed of {string.Join(", ", kept)}; delete the pattern in the same request ([\"{kept[0]}\", \"{info.Name}\"]) or on its own first",
+                    new JsonObject { ["field"] = field, ["component"] = info.Name, ["patterns"] = kept.Select(p => (object?)p).ToList() });
+            }
+        }
+        var instances = patterns.SelectMany(p => p.Facts.Instances).ToList();
+        _instances = instances.Select(c => asm.Identify(c).Name).ToList();
+        var mates = doomed.SelectMany(d => asm.MatesOf(d.Component)).Concat(instances.SelectMany(i => asm.MatesOf(i))).Distinct().ToList();
         _matesBefore = asm.MateCount();
-        asm.Delete(doomed.Select(d => d.Component).ToList());
-        context.Log.Info($"component.delete: {string.Join(", ", doomed.Select(d => d.Info.Name))}{(mates.Count > 0 ? $" with mates {string.Join(", ", mates)}" : "")}");
-        return new ComponentDeleteResult { Deleted = doomed.Select(d => d.Info.Name).ToList(), MatesDeleted = mates };
+        if (patterns.Count > 0) asm.DeletePatterns(patterns.Select(p => p.Pattern).ToList());
+        if (doomed.Count > 0) asm.Delete(doomed.Select(d => d.Component).ToList());
+        context.Log.Info($"component.delete: {string.Join(", ", patterns.Select(p => p.Facts.Name).Concat(doomed.Select(d => d.Info.Name)))}{(mates.Count > 0 ? $" with mates {string.Join(", ", mates)}" : "")}");
+        return new ComponentDeleteResult
+        {
+            Deleted = doomed.Select(d => d.Info.Name).ToList(),
+            MatesDeleted = mates,
+            PatternsDeleted = patterns.Select(p => p.Facts.Name).ToList(),
+            InstancesDeleted = _instances.ToList(),
+        };
     }
 
-    /// <summary>None of the components is left, and the assembly has as many fewer mates as went with them.</summary>
+    /// <summary>None of the components, patterns or instances is left, and the assembly has as many fewer mates as went with them.</summary>
     protected override void Check(ISwDocument doc, ISwAssembly asm, ComponentDeleteRequest request, ComponentDeleteResult result)
     {
-        var left = result.Deleted.Where(n => asm.ComponentByName(n) != null).ToList();
+        var left = result.Deleted.Concat(_instances).Where(n => asm.ComponentByName(n) != null)
+            .Concat(result.PatternsDeleted.Where(p => asm.PatternByName(p) != null)).ToList();
         if (left.Count > 0)
         {
             throw new SwAgentException(ErrorCode.VerificationFailed, $"SOLIDWORKS did not delete {string.Join(", ", left)}",
