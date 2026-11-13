@@ -167,7 +167,7 @@ public sealed class ExportPartOperation : Operation<ExportPartRequest, ExportPar
     }
 
     /// <summary>An export is a copy: the part's path and its unsaved-changes flag are what they were.</summary>
-    static void Unchanged(DocumentInfo before, DocumentInfo after)
+    internal static void Unchanged(DocumentInfo before, DocumentInfo after)
     {
         bool samePath = before.Path == null ? after.Path == null : after.Path != null && DocumentKeys.Same(before.Path, after.Path);
         if (samePath && before.Dirty == after.Dirty) return;

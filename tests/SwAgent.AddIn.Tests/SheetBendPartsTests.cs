@@ -103,6 +103,20 @@ public class SheetBendPartsTests : SheetMetalFlangeTestBase
     }
 
     [Fact]
+    public void A_fixed_face_centre_a_fraction_of_a_micron_off_is_on_the_face()
+    {
+        // 6.D live run: after an unfold and a cut, SOLIDWORKS measured the base face's own centre 0.000x mm off it,
+        // and fold refused the face with "0 mm off the face".
+        var doc = Flanged();
+        doc.SheetFaceList[0].Info.DistanceMm = 0.0004;
+        var plane = SheetMetalParts.Fixed(doc, doc.SheetFaceList[0], "fixed_face");
+        Assert.Equal((20.0, 10.0, 0.0), (plane.Centre.X, plane.Centre.Y, plane.Centre.Z));
+        doc.SheetFaceList[0].Info.DistanceMm = SheetMetalParts.OnFaceMm * 2;
+        var e = Fails(() => SheetMetalParts.Fixed(doc, doc.SheetFaceList[0], "fixed_face"));
+        Assert.Contains("centre is 0.002 mm off the face", e.Message);
+    }
+
+    [Fact]
     public void A_flattened_part_is_told_to_fold_with_the_flatten_tool()
     {
         var doc = Flanged();

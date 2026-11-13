@@ -23,6 +23,7 @@ It offers these tools:
 - Reference geometry: `sw_refgeom_plane` (offset, angle, three points, parallel through a point, normal to a curve), `sw_refgeom_axis` and `sw_refgeom_point`.
 - `sw_model_measure` gives the distance, closest points, centre distance and angle between two faces, edges, vertices, planes, axes or points.
 - `sw_export_part` writes a copy of a part as STEP (AP214 or AP242), Parasolid (`.x_t`), binary STL or 3MF.
+- Sheet metal: `sw_sheetmetal_base_flange` starts a sheet-metal part from a sketch, `sw_sheetmetal_set_parameters` changes its thickness, bend radius, bend allowance and relief, and `sw_sheetmetal_read` reads it as a sheet-metal designer does (every bend, and the flat size). `sw_sheetmetal_edge_flange`, `sw_sheetmetal_miter_flange`, `sw_sheetmetal_hem` and `sw_sheetmetal_sketched_bend` add flanges, hems and bends; `sw_sheetmetal_flatten` flattens and folds the part; `sw_sheetmetal_unfold` and `sw_sheetmetal_fold` unfold chosen bends to cut across them; `sw_sheetmetal_convert` turns an L or U solid into sheet metal. `sw_export_flat_pattern` writes the flat pattern as DXF or DWG for the shop. See **Sheet metal**.
 - Mates: `sw_mate_add` (coincident, parallel, perpendicular, tangent, concentric, lock, distance and angle), `sw_mate_edit`, `sw_mate_delete` and `sw_mate_list`. Each new or edited mate is checked by measuring the geometry it constrains, and rolled back with every moved component put back when it does not hold. `sw_assembly_dof` gives each component's constrained state (fixed, fully, under or over defined). **Known gap:** it does not report free motion for a component with mates, because SOLIDWORKS 2026 SP4's `GetRemainingDOFs` answers `unavailable` for every mated component. Counts are given only for fixed, fully defined and unmated components, and `note` says so otherwise.
 - `sw_api_call`, the escape hatch, calls any member of SOLIDWORKS' API the other tools do not cover yet. It can be turned off (see **The escape hatch**).
 
@@ -36,7 +37,7 @@ Faces, edges, vertices, features, planes, sketches, sketch entities and dimensio
 
 ### Changing a part
 
-Every tool that changes a part (the sketch, dimension, feature and reference geometry tools) works the same way:
+Every tool that changes a part (the sketch, dimension, feature, reference geometry and sheet-metal tools) works the same way:
 
 - It does not start while you are editing a sketch in the part or have a command's PropertyManager open: it answers `busy` with `user_editing` and changes nothing. It never closes your sketch or command. A command open anywhere in SOLIDWORKS counts, not only one in that part: SOLIDWORKS reports the open command for the whole application.
 - It checks its own result against what was asked, by the part's geometry rather than SOLIDWORKS' return value (a sketch holds what was drawn, every dimension reads back at its value, nothing new fails to rebuild), and if anything is wrong it takes the change back, so the part is as it was. If taking it back fails too, it says so (`rollback_failed`) and leaves the part open with its changes for you to look at.
@@ -61,6 +62,19 @@ Each feature tool checks the geometry it made, as well as the checks every chang
 - `sw_feature_suppress` checks each feature reads as asked after the rebuild, and puts them back otherwise. `sw_feature_delete` refuses a feature that others are built on (at any depth) unless `children: delete`, and a deleted feature cannot be made again, so a check that fails afterwards is `rollback_failed`.
 
 A feature SOLIDWORKS does not make (a fillet too big for its edge, a cut that misses the part) answers `operation_failed` with SOLIDWORKS' rebuild errors, and nothing is left of it. The sketch an extrude or revolve used is kept.
+
+### Sheet metal
+
+A sheet-metal part is a part with a `Sheet-Metal` feature: `sw_sheetmetal_base_flange` makes one from a sketch, and `sw_sheetmetal_convert` from a solid of constant thickness. The sheet-metal tools answer `wrong_document_type` (with `needs: sheet_metal`) on any other part. A part has one sheet-metal body: its thickness belongs to the part, so a second base flange or a convert on a sheet-metal part is refused.
+
+- **Folded to change.** Flanges, hems, bends, convert and parameter changes refuse a flattened part (`invalid_argument`); fold it with `sw_sheetmetal_flatten {flat: false}` first. Nothing is folded or flattened on the agent's behalf. `sw_feature_extrude` cuts work in either state.
+- **Checked by the bend arithmetic.** A bend of angle θ, inner radius R and thickness T holds `w · θ/2 · ((R+T)² − R²)` of material folded and develops to the bend allowance `θ · (R + K·T)` flat (or the allowance or deduction given). Every flange, hem and bend is checked against the volume, box and bend count that gives, and flattening must change the volume by exactly `Σ w · T · (BA − θ·(R + T/2))`, which is nothing at K = 0.5. A hem's volume is checked within a band, not exactly.
+- **Bend allowance** is a K-factor, an allowance or a deduction, exactly one of them. It is written into each flange where SOLIDWORKS does not carry the part's default to it. Bend tables and gauge tables are not read.
+- **Flattening** is the `Flat-Pattern` feature's suppression, and `sw_sheetmetal_read` reports the state from it. The flat size is the cut list's `Bounding Box Length` and `Width`, which SOLIDWORKS rounds to the part's display precision (136.57 for 136.5664).
+- **Unfold, cut and fold.** `sw_sheetmetal_unfold` unfolds the bends named with a fixed face kept put, a cut is made with `sw_feature_extrude`, and `sw_sheetmetal_fold` folds them back. On SOLIDWORKS 2026 SP4 a cut must stay inside the bend or on the side that stays put: once it reaches into the side that turns, SOLIDWORKS makes no Fold, and `sw_sheetmetal_fold` answers `operation_failed` and changes nothing.
+- **Hems** are closed or open. Teardrop and rolled hems are refused (`invalid_argument` at `kind`): SOLIDWORKS 2026 SP4 does not make them through its API, though it does by hand.
+
+`sw_export_flat_pattern` writes the flat pattern as DXF or DWG, with the bend lines unless `bend_lines: false`, and the part's visible sketches only with `sketches: true`. The part must be saved to disk: a part never saved is refused before SOLIDWORKS is asked (`invalid_argument`; save it with `sw_document_save_as` first), because SOLIDWORKS then opens a Save As box that waits for you. A part with unsaved changes is exported as it is now. The part need not be flattened, and keeps its state and path. On SOLIDWORKS 2026 SP4 every export marks a saved part as having unsaved changes: `ExportToDWG2` writing a DXF, `ExportFlatPatternView` writing a DXF, and either writing a DWG. The API cannot clear that flag, so the result says `marked_dirty: true` and the part is not saved behind you. Since the flag then no longer shows a change, the part's volume, bend count and cut-list flat size are measured before and after the call, and the export fails `document_unchanged` if any of them moved. Save it with `sw_document_save` if you want it clean. A part that already had unsaved changes keeps them and is not marked. On a part with unsaved changes only `ExportToDWG2` is asked: it writes the part as it is now, where `ExportFlatPatternView` wrote the saved base alone. With bend lines or sketches the add-in asks SOLIDWORKS with `ExportToDWG2` first: on SOLIDWORKS 2026 SP4, `ExportFlatPatternView` draws no bend lines even when asked, so it is tried only after `ExportToDWG2` writes nothing, and its file then fails the bend-line check. Without either, `ExportFlatPatternView` is asked first and `ExportToDWG2` after it. The result says which wrote it. The file is then checked on disk: a DXF must parse, the extents of its entities must be the flat size from the cut list within 0.01 mm beyond the cut list's rounding (the header's `$EXTMIN`/`$EXTMAX` is reported, not compared: `ExportFlatPatternView` writes the drawing sheet there), and it must hold a bend line for each bend when bend lines were asked for, and none when they were not. Bend lines are found by their geometry, not their layer (SOLIDWORKS 2026 SP4 draws them on layer 0, like the outline): a line that stands on its own, outside the chain of the outline and its cut-outs. A visible sketch's free lines look the same, so with `sketches: true` and `bend_lines: false` the count is reported, not checked. A DWG must start with its `AC10xx` version and be at least 1 KB; its extents are not read.
 
 ### Closing documents
 
@@ -229,7 +243,7 @@ Logs are in `%LOCALAPPDATA%\solidworks-mcp\logs\` and are kept 14 days:
 
 ## Upgrading and uninstalling
 
-To upgrade, install the new release the same way. Its `swmcp.exe` is in a new version folder, so run `claude mcp remove --scope user solidworks` and then the `claude_code` line it prints. The add-in speaks protocol version 8, and a SOLIDWORKS that still has an older add-in loaded answers `addin_incompatible`. Close SOLIDWORKS and start it again from the 3DEXPERIENCE dashboard, and the next call loads the new add-in. The earlier version's folder stays until you uninstall.
+To upgrade, install the new release the same way. Its `swmcp.exe` is in a new version folder, so run `claude mcp remove --scope user solidworks` and then the `claude_code` line it prints. The add-in speaks protocol version 10, and a SOLIDWORKS that still has an older add-in loaded answers `addin_incompatible`. Close SOLIDWORKS and start it again from the 3DEXPERIENCE dashboard, and the next call loads the new add-in. The earlier version's folder stays until you uninstall.
 
 ```powershell
 & "$app\swmcp.exe" uninstall
@@ -248,14 +262,17 @@ In your running SOLIDWORKS, an agent can:
 - name faces, edges and features by references that survive rebuilds and reopening;
 - read the feature tree, dimensions, mass properties, bounding box and rebuild errors, and measure;
 - export STEP, Parasolid, STL and 3MF;
+- make sheet-metal parts with flanges, hems and bends, change their thickness, radius and allowance, flatten them, cut across bends, and write their flat patterns as DXF or DWG checked against the flat size;
 - see what you have selected;
 - reach the rest of SOLIDWORKS' API through `sw_api_call`.
 
 In this release it cannot:
 
-- work on assemblies, drawings or sheet metal, or check interference;
+- work on assemblies or drawings, or check interference;
 - make teardrop or rolled hems: `sw_sheetmetal_hem` makes closed and open hems and refuses the other two kinds, which SOLIDWORKS does not make through its API as it does by hand;
-- export drawing formats (PDF, DXF, DWG);
+- fold a part whose cut reaches past a bend into the side that turns (see **Sheet metal**);
+- make sheet-metal corners, jogs, lofted bends, cross breaks, rips, gussets, tabs and slots, vents or forming tools, use bend or gauge tables, or put more than one sheet-metal body in a part;
+- export drawings (PDF, or a drawing sheet as DXF or DWG); a part's flat pattern is written as DXF or DWG by `sw_export_flat_pattern`, and a DWG's extents are not checked;
 - set materials, appearances, equations, design tables or custom properties, except through `sw_api_call`;
 - make variable-radius fillets or chamfers other than distance-angle and distance-distance, or do surface, multibody, weldment or direct-editing work;
 - set a custom STL or 3MF mesh resolution, or write STEP AP242 on a seat without SOLIDWORKS MBD (see **Export**);
@@ -357,5 +374,19 @@ Remove-Item env:SWMCP_LIVE
 Its report is in `%LOCALAPPDATA%\solidworks-mcp\live-runs\<run>-parts-suite\report.md`.
 
 Its case 33 is the build-a-part scenario. It plays `tests/SwAgent.Live.Tests/Scenarios/bracket.transcript.json` through the MCP server's own tools, as an agent would: a 60 x 50 x 40 mm L-bracket of 6 mm stock with a 5 mm inside fillet and two 5 mm holes. The bracket must come out at 24938.982 mm³ with its centre of mass at (18.276, 13.621, 0) mm, and its STEP copy must be written. The calls and their answers are kept in the run's `bracket-transcript.jsonl`.
+
+#### Sheet-metal suite
+
+`SheetMetalSuite` checks the sheet-metal tools against the bend arithmetic and against the sizes CADapter measured on SOLIDWORKS 2026: a 100 x 60 x 2 mm tab must be 12000 mm³ and flat 100 x 60; a 25 mm flange at R 3 must flatten to 83.2832 mm across at K 0.5, 82.0265 at K 0.1 and 84.5398 at K 0.9; four 20 mm flanges must make a 100 x 60 x 22 mm box that flattens to 136.5664 x 96.5664 mm at the same volume; an L of 60 x 40 x 50 mm with a 2 mm wall must convert and flatten to 96.2832 x 50 mm; a hole cut across an unfolded bend must fold with it, and one reaching into the side that turns must be refused; the flat pattern's DXF must have the flat size, with and without bend lines, whether the part is folded, flattened or has unsaved changes; and a part never saved must be refused with no dialog opened. One case asks you to open a PropertyManager by hand, and is skipped after 3 minutes if nobody does. It needs the add-in loaded with diagnostics on, as the parts suite does, and stops if any document it did not create is open:
+
+```powershell
+$env:SWMCP_LIVE = "1"
+dotnet test tests/SwAgent.Live.Tests -c Release --filter "FullyQualifiedName~SwAgent.Live.Tests.SheetMetalSuite"
+Remove-Item env:SWMCP_LIVE
+```
+
+Its report is in `%LOCALAPPDATA%\solidworks-mcp\live-runs\<run>-sheet-metal-suite\report.md`.
+
+Its case 23 is the build-an-enclosure scenario. It plays `tests/SwAgent.Live.Tests/Scenarios/enclosure.transcript.json` through the MCP server's own tools: a 100 x 60 mm blank of 2 mm sheet, a 25 mm flange, a 10 mm closed hem, and a 4 mm relief hole cut across the flange's unfolded bend where it meets the base, folded back. Its flat must be 100 mm by 60 + 23.2832 mm plus the hem's share (measured on a tab with that hem alone), and its DXF must be that size. The calls and their answers are kept in the run's `enclosure-transcript.jsonl`.
 
 The SP4 canary, `Canary`, checks that a sketch call made through COM from outside SOLIDWORKS still crashes it. It is expected to crash SOLIDWORKS. It never runs by default: it needs `SWMCP_CANARY=1` as well, and is run on its own with `--filter "FullyQualifiedName~Canary"`, after a SOLIDWORKS update.

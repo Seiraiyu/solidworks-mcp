@@ -256,6 +256,13 @@ public static class SheetMetalParts
     }
 
     /// <summary>
+    /// How far a face's own centre may measure off it and still be on it, mm. SOLIDWORKS' distance from a face to its
+    /// centre is not exactly 0 (the 6.D live run measured a fraction of a micron after an unfold and a cut); an L-shaped
+    /// face or a hole at the centre puts it millimetres off.
+    /// </summary>
+    public const double OnFaceMm = 0.001;
+
+    /// <summary>
     /// A planar face of the sheet that stays put, read for its plane: its normal and its centre, which must lie on it
     /// (an L-shaped face or one with a hole at its centre is refused, naming the field).
     /// </summary>
@@ -265,8 +272,8 @@ public static class SheetMetalParts
         if (info.Geometry != GeometryType.Plane || info.Normal == null || info.Origin == null)
             throw FeatureFacts.Invalid(field, $"{field} is a {WireNames.ForEnum(info.Geometry)} face; the face that stays put is a planar face of the sheet (sheetmetal.read gives the base face)");
         double off = doc.DistanceMm(face, info.Origin);
-        if (off > 1e-6)
-            throw FeatureFacts.Invalid(field, FormattableString.Invariant($"{field}'s centre is {off:0.###} mm off the face (an L-shaped face, or a hole at its centre); name a face whose centre is on it"));
+        if (off > OnFaceMm)
+            throw FeatureFacts.Invalid(field, FormattableString.Invariant($"{field}'s centre is {off:0.######} mm off the face (an L-shaped face, or a hole at its centre); name a face whose centre is on it"));
         return new FixedPlane(face, info.Normal, info.Origin);
     }
 
@@ -320,15 +327,15 @@ public static class SheetMetalParts
     /// How far rounding can have put the cut list's length plus width off, mm: half a unit in the last decimal place
     /// each is written to (SOLIDWORKS rounds them to the part's display precision; CADapter read 83.28 for 83.2832).
     /// </summary>
-    public static double FlatRoundingMm(IReadOnlyList<KeyValuePair<string, string>> cutList, double mmPerUnit)
+    public static double FlatRoundingMm(IReadOnlyList<KeyValuePair<string, string>> cutList, double mmPerUnit) =>
+        HalfUnitMm(cutList, LengthProperty, mmPerUnit) + HalfUnitMm(cutList, WidthProperty, mmPerUnit);
+
+    /// <summary>Half a unit in the last decimal place the cut list writes <paramref name="name"/> to, mm: how far its rounding can be off.</summary>
+    public static double HalfUnitMm(IReadOnlyList<KeyValuePair<string, string>> cutList, string name, double mmPerUnit)
     {
-        double Half(string name)
-        {
-            string value = cutList.FirstOrDefault(p => p.Key == name).Value?.Trim() ?? "";
-            int dot = value.IndexOf('.');
-            return 0.5 * Math.Pow(10, -(dot < 0 ? 0 : value.Length - dot - 1)) * mmPerUnit;
-        }
-        return Half(LengthProperty) + Half(WidthProperty);
+        string value = cutList.FirstOrDefault(p => p.Key == name).Value?.Trim() ?? "";
+        int dot = value.IndexOf('.');
+        return 0.5 * Math.Pow(10, -(dot < 0 ? 0 : value.Length - dot - 1)) * mmPerUnit;
     }
 }
 

@@ -1,0 +1,31 @@
+{
+  "name": "enclosure",
+  "description": "An agent makes a small sheet-metal bracket for an enclosure and hands over its DXF: a 100 x 60 mm blank of 2 mm sheet at R 3, a 25 mm flange (inner virtual sharp) on its back edge, a 10 mm closed hem on its front edge, a 4 mm relief hole cut across the flange's bend where it meets the base (unfolded, cut, folded back: the cut stays on the side that stays put), saved, read for its flat size, and its flat pattern exported as DXF. The base face lies at z = -2 facing -z (the sheet-metal suite's base flange on the front plane). Variables: part (the .SLDPRT to create) and dxf (the .dxf to write).",
+  "steps": [
+    { "say": "a new part, saved where it was asked for", "tool": "sw_document_new", "arguments": { "path": "${part}" } },
+    {
+      "say": "the 100 x 60 mm blank on the front plane",
+      "tool": "sw_sketch_create",
+      "arguments": { "document": "${part}", "on": "front", "name": "blank", "rectangles": [ { "id": "blank", "corner1": { "x": 0, "y": 0 }, "corner2": { "x": 100, "y": 60 } } ] },
+      "save": { "blank": "/sketch/name" }
+    },
+    { "say": "make it 2 mm sheet with a 3 mm bend radius", "tool": "sw_sheetmetal_base_flange", "arguments": { "document": "${part}", "sketch": "${blank}", "thickness_mm": 2, "bend_radius_mm": 3 }, "save": { "base": "/feature/name" } },
+    { "say": "the back edge of the base face", "tool": "sw_model_find", "arguments": { "document": "${part}", "kind": "edge", "near": { "x": 50, "y": 60, "z": -2 }, "max_distance_mm": 0.001, "limit": 1 }, "save": { "back_edge": "/entities/0/reference" } },
+    { "say": "a 25 mm flange up from the back edge", "tool": "sw_sheetmetal_edge_flange", "arguments": { "document": "${part}", "edges": [ "${back_edge}" ], "length_mm": 25, "length_from": "inner_virtual_sharp" }, "save": { "flange": "/feature/name", "flange_bend": "/sheet/bends/0/name" } },
+    { "say": "the front edge of the base face", "tool": "sw_model_find", "arguments": { "document": "${part}", "kind": "edge", "near": { "x": 50, "y": 0, "z": -2 }, "max_distance_mm": 0.001, "limit": 1 }, "save": { "front_edge": "/entities/0/reference" } },
+    { "say": "a 10 mm closed hem on the front edge, for a safe edge", "tool": "sw_sheetmetal_hem", "arguments": { "document": "${part}", "edges": [ "${front_edge}" ], "kind": "closed", "length_mm": 10 }, "save": { "hem": "/feature/name" } },
+    { "say": "read the part for its base face", "tool": "sw_sheetmetal_read", "arguments": { "document": "${part}" }, "save": { "base_face": "/base_face/reference" } },
+    { "say": "unfold the flange's bend, the base staying put", "tool": "sw_sheetmetal_unfold", "arguments": { "document": "${part}", "fixed_face": "${base_face}", "bends": [ "${flange_bend}" ] }, "save": { "unfold": "/feature/name" } },
+    {
+      "say": "a 4 mm relief hole on the line where the flat bend meets the base",
+      "tool": "sw_sketch_create",
+      "arguments": { "document": "${part}", "on": "front", "name": "relief", "circles": [ { "id": "hole", "center": { "x": 50, "y": 55 }, "radius_mm": 2 } ] },
+      "save": { "relief": "/sketch/name" }
+    },
+    { "say": "cut it through the sheet", "tool": "sw_feature_extrude", "arguments": { "document": "${part}", "sketch": "${relief}", "mode": "cut", "end": "through_all", "direction2": { "end": "through_all" } }, "save": { "cut": "/feature/name" } },
+    { "say": "fold the flange back up", "tool": "sw_sheetmetal_fold", "arguments": { "document": "${part}", "bends": [ "${flange_bend}" ] }, "save": { "fold": "/feature/name" } },
+    { "say": "save the part", "tool": "sw_document_save", "arguments": { "document": "${part}" } },
+    { "say": "its flat size for the shop", "tool": "sw_sheetmetal_read", "arguments": { "document": "${part}" }, "save": { "flat_length": "/flat/length_mm", "flat_width": "/flat/width_mm", "bends": "/flat/bends" } },
+    { "say": "the flat pattern as DXF, with its bend lines", "tool": "sw_export_flat_pattern", "arguments": { "document": "${part}", "path": "${dxf}", "format": "dxf" }, "save": { "dxf_length": "/extents/length_mm", "dxf_width": "/extents/width_mm", "dxf_bend_lines": "/bend_lines", "dxf_method": "/method", "dxf_marked_dirty": "/marked_dirty" } }
+  ]
+}
