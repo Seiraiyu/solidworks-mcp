@@ -97,8 +97,10 @@ internal sealed partial class SolidWorksAssembly
         {
             // The definition gave none (measured on 2026 SP4, plan 4.D live run): take the components among the feature's
             // parents that some instance is a copy of. The parents also hold the components whose entities gave the
-            // direction or axis (plan 4.D round 3 logged the plate); those are left out, even when they are another copy
-            // of the seed's part (plan 4.E, Task 9), unless that leaves the file no seed.
+            // direction or axis (plan 4.D round 3 logged the plate); those DirectionOwners finds are left out, even when they
+            // are another copy of the seed's part (plan 4.E, Task 9), unless that leaves the file no seed. On 2026 SP4 it finds
+            // them only for linear patterns: a circular pattern's Axis gave no component (plan 4.E live run), so its axis's
+            // component stays among the parents and is read as a seed when it is a copy of the seed's part.
             var parents = (f.GetParents() as object[] ?? Array.Empty<object>()).OfType<IFeature>()
                 .Select(p => p.GetSpecificFeature2() as IComponent2).Where(c => c != null).Cast<IComponent2>().ToList();
             var owners = DirectionOwners(definition);

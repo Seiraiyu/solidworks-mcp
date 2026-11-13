@@ -7,7 +7,7 @@
       "properties": {
         "name": {
           "type": "string",
-          "description": "Its name, for example ExplView1."
+          "description": "Its name, for example Exploded View1."
         },
         "configuration": {
           "type": "string",

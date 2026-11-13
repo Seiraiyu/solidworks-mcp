@@ -123,7 +123,7 @@ public sealed class ExplodeStepInfo
 public sealed class ExplodedViewInfo
 {
     [Required]
-    [Description("Its name, for example ExplView1.")]
+    [Description("Its name, for example Exploded View1.")]
     public string Name { get; set; } = "";
 
     [Required]
@@ -194,7 +194,7 @@ public sealed class ExplodeShowRequest
     public string? Document { get; set; }
 
     [Required]
-    [Description("The view's name, for example ExplView1 (explode.list lists them).")]
+    [Description("The view's name, for example Exploded View1 (explode.list lists them).")]
     public string View { get; set; } = "";
 
     [Description("true to explode, false to collapse. Default true.")]
@@ -227,7 +227,7 @@ public sealed class ExplodeDeleteRequest
     public string? Document { get; set; }
 
     [Required]
-    [Description("The view's name, for example ExplView1 (explode.list lists them).")]
+    [Description("The view's name, for example Exploded View1 (explode.list lists them).")]
     public string View { get; set; } = "";
 }
 

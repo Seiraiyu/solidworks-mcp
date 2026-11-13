@@ -8,7 +8,7 @@
     },
     "view": {
       "type": "string",
-      "description": "The view's name, for example ExplView1 (explode.list lists them)."
+      "description": "The view's name, for example Exploded View1 (explode.list lists them)."
     },
     "exploded": {
       "type": "boolean",

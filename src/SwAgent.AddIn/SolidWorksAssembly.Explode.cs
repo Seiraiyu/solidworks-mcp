@@ -14,8 +14,8 @@ namespace SwAgent.AddIn;
 /// IConfiguration.AddExplodeStep2, which acts on the selection: the components, the direction and the rotation axis are
 /// selected with marks, never set through IExplodeStep.SetComponents, a SAFEARRAY-of-dispatch setter of the kind that
 /// crashed SOLIDWORKS 2026 SP4 in plan 4.B. SOLIDWORKS' help gives no marks for it, so AddExplodeStep tries a short list
-/// of schemes and keeps the first that makes a step holding every component; tried says how each went, and the live run
-/// (plan 4.E, Task 14) records the one SOLIDWORKS takes. A view's steps are read through IConfiguration while it is shown
+/// of schemes and keeps the first that makes a step holding every component; tried says how each went. The live run
+/// (plan 4.E, Task 14) found the scheme SOLIDWORKS takes (see AddExplodeStep). A view's steps are read through IConfiguration while it is shown
 /// exploded, and what was shown before is shown again.
 /// </summary>
 internal sealed partial class SolidWorksAssembly
@@ -64,7 +64,10 @@ internal sealed partial class SolidWorksAssembly
                     if (s.GetComponent(c) is IComponent2 component) facts.Components.Add(component);
                 }
                 // Plan 4.E live run: SOLIDWORKS 2026 SP4 puts a Chain1 first in every view made through the API, holding every
-                // component and moving none (distance 0, no angle); it is not one of the view's steps.
+                // component and reading distance 0, no angle, yet in a mated assembly it moves them (a fully mated pin 37.8 mm,
+                // its fixed plate 85.6 mm). It is not one of the view's steps, so a zero step is not listed. That is safe:
+                // explode.create deletes Chain1 after each step, and a Chain1 left behind would move components and fail
+                // the per-step check that nothing else moved.
                 if (s.ExplodeDistance == 0 && s.RotationAngle == 0) continue;
                 steps.Add(facts);
             }
@@ -88,6 +91,11 @@ internal sealed partial class SolidWorksAssembly
         return ExplodedViews(config).FirstOrDefault(v => !before.Contains(v, StringComparer.OrdinalIgnoreCase));
     }
 
+    /// <remarks>
+    /// Plan 4.E live run (SOLIDWORKS 2026 SP4): every step was made with the first scheme, components mark 1 and direction
+    /// mark 2. The second scheme (components mark 0) never ran live; it stays as a fallback. The rotation axis mark is
+    /// never used, because turned steps are refused.
+    /// </remarks>
     public string? AddExplodeStep(ExplodeStepSpec s, out string tried)
     {
         var attempts = new List<string>();
