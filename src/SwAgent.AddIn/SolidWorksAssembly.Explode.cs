@@ -63,9 +63,9 @@ internal sealed partial class SolidWorksAssembly
                 {
                     if (s.GetComponent(c) is IComponent2 component) facts.Components.Add(component);
                 }
-                // Plan 4.E live run: each step SOLIDWORKS 2026 SP4 makes brings a second one (Chain1, its explode line chain)
-                // that moves no component; it is not one of the view's steps.
-                if (facts.Components.Count == 0) continue;
+                // Plan 4.E live run: SOLIDWORKS 2026 SP4 puts a Chain1 first in every view made through the API, holding every
+                // component and moving none (distance 0, no angle); it is not one of the view's steps.
+                if (s.ExplodeDistance == 0 && s.RotationAngle == 0) continue;
                 steps.Add(facts);
             }
             return steps;
