@@ -50,7 +50,7 @@ public sealed class DiagDialogResult
 }
 
 [Operation("diag.arm_dialog", typeof(DiagArmDialogResult), Internal = true)]
-[Description("Fault testing only: the next model change shows this message box, owned by SOLIDWORKS' main window, after it has made its change and before it checks it, as a feature that raises a prompt mid-operation would. ok or yes lets the change go on; cancel or no rolls it back. Shown once. Refused unless diagnostics are on.")]
+[Description("Fault testing only: the next model or assembly change (a feature, a mate, a component pattern, an exploded view …) shows this message box, owned by SOLIDWORKS' main window, after it has made its change and before it checks it, as a feature or mate that raises a prompt mid-operation would. ok or yes lets the change go on; cancel or no rolls it back, and an assembly change puts back every component it moved. Shown once. Refused unless diagnostics are on.")]
 public sealed class DiagArmDialogRequest
 {
     [Required]

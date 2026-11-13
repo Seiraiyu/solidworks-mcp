@@ -67,6 +67,7 @@ public abstract class AssemblyChangeOperation<TRequest, TResult> : Operation<TRe
         try
         {
             result = Change(doc, asm, request, tx, context);
+            ArmedDialogs.Show(Services, Name, context);
         }
         catch (Exception e)
         {
