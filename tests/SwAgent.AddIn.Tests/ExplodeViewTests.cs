@@ -72,7 +72,7 @@ public class ExplodeViewTests : ExplodeTestBase
     }
 
     [Fact]
-    public void Delete_collapses_a_shown_view_then_deletes_it()
+    public void Delete_on_SP4_collapses_a_shown_view_empties_it_and_says_the_view_is_left()
     {
         Explode(Step("z", 40, "pin-1"));
         Show("ExplView1");
@@ -80,12 +80,37 @@ public class ExplodeViewTests : ExplodeTestBase
         Assert.Equal("ExplView1", r.Deleted);
         Assert.Equal("Default", r.Configuration);
         Assert.Equal(1, r.Steps);
-        Assert.Empty(Asm.Views);
+        Assert.True(r.ViewLeftEmpty);
+        Assert.Empty(Assert.Single(Asm.Views).Steps);
+        var listed = Assert.Single(List().Views);
+        Assert.Equal(true, listed.Empty);
+        Assert.Empty(listed.Steps!);
+        var again = Delete("ExplView1");
+        Assert.Equal(0, again.Steps);
+        Assert.True(again.ViewLeftEmpty);
         Assert.Null(Asm.Shown);
         Assert.Equal(0, Pin.Info.Transform.Origin.Z, 9);
         var changed = Assert.Single(r.Change.Changed);
         Assert.Equal("ExplView1", changed.Name);
         Assert.Equal("exploded", changed.Property);
+    }
+
+    [Fact]
+    public void Where_SOLIDWORKS_can_delete_a_view_it_is_gone()
+    {
+        Asm.ViewsCanBeDeleted = true;
+        Explode(Step("z", 40, "pin-1"));
+        var r = Delete("ExplView1");
+        Assert.False(r.ViewLeftEmpty);
+        Assert.Empty(Asm.Views);
+        Assert.Empty(List().Views);
+    }
+
+    [Fact]
+    public void A_listed_view_with_steps_is_not_empty()
+    {
+        Explode(Step("z", 40, "pin-1"));
+        Assert.Equal(false, Assert.Single(List().Views).Empty);
     }
 
     [Fact]

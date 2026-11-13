@@ -175,10 +175,10 @@ public interface ISwAssembly
     /// </summary>
     string? AddExplodeStep(ExplodeStepSpec spec, out string tried);
 
-    /// <summary>Renames a view of the active configuration; false when SOLIDWORKS refused. <paramref name="tried"/> says how each way of asking went.</summary>
-    bool RenameExplodedView(string view, string name, out string tried);
-
-    /// <summary>Deletes a view of the active configuration and its steps; false when SOLIDWORKS refused. <paramref name="tried"/> says how each way of asking went.</summary>
+    /// <summary>
+    /// Deletes a view of the active configuration's steps, and the view itself when SOLIDWORKS lets it (2026 SP4 does not:
+    /// the view is left, empty). True when it has no steps left; <paramref name="tried"/> says how each way of asking went.
+    /// </summary>
     bool DeleteExplodedView(string view, out string tried);
 
     /// <summary>Fault testing only (diag.edit_component): starts editing a component in context as the user would; false when SOLIDWORKS refused.</summary>

@@ -1083,7 +1083,7 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
     });
 
     [SkippableFact, Step(28)]
-    public Task An_exploded_view_is_shown_collapsed_refused_and_deleted() => _run.CaseAsync(28, "explode.show exploded and collapsed; a step along a cylinder refused with nothing made; explode.delete", async () =>
+    public Task An_exploded_view_is_shown_collapsed_refused_and_deleted() => _run.CaseAsync(28, "explode.show exploded and collapsed; a step along a cylinder refused with nothing made; explode.delete empties the view (SP4 leaves it, empty, and says so)", async () =>
     {
         await _run.RequireOnlyOwnDocumentsAsync();
         string asm = LiveScratchPath("explode", ".SLDASM");
@@ -1109,10 +1109,14 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
 
         var deleted = await Call<ExplodeDeleteRequest, ExplodeDeleteResult>(new ExplodeDeleteRequest { Document = asm, View = view });
         Assert.Equal(3, deleted.Steps);
-        Assert.Empty((await Views(asm)).Views);
+        // SOLIDWORKS 2026 SP4's API cannot delete an exploded view: its steps go and the view is left, empty, and said to be.
+        Assert.True(deleted.ViewLeftEmpty);
+        var left = Assert.Single((await Views(asm)).Views);
+        Assert.Equal(view, left.Name);
+        Assert.Equal(true, left.Empty);
         SamePlaces(collapsed, await Placements(asm), "after the delete");
         await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
-        return $"{view} shown exploded then collapsed (before {back.Before}); a cylinder as direction refused at {refused.Error.Details["field"]}; {deleted.Deleted} deleted with {deleted.Steps} steps";
+        return $"{view} shown exploded then collapsed (before {back.Before}); a cylinder as direction refused at {refused.Error.Details["field"]}; {deleted.Deleted} emptied of {deleted.Steps} steps, view_left_empty {deleted.ViewLeftEmpty}";
     });
 
     [SkippableFact, Step(29)]
@@ -1234,7 +1238,7 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
         var dof = await Call<AssemblyDofRequest, AssemblyDofResult>(new AssemblyDofRequest { Document = asm });
         Assert.All(dof.Components, c => Assert.True(c.Constraint == Constraint.Fixed || c.Constraint == Constraint.FullyDefined, $"{c.Name} is {c.Constraint}"));
         Assert.Empty((await Interference(asm)).Interferences);
-        Assert.Equal("Pin out", Assert.Single((await Views(asm)).Views).Name);
+        Assert.Equal((string)variables["view"]!, Assert.Single((await Views(asm)).Views).Name);
         Assert.Equal(3L, Convert.ToInt64(variables["step_occurrences"]));
         Assert.True(File.Exists(step));
         return $"{calls.Count} tool calls, longest {calls.Max(c => c.Ms)} ms; {plateC} (0, 0, 0), {bracketC} (10, 10, 10), {pinC} (20, 20, 0); " +

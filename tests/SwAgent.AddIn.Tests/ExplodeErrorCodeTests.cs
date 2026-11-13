@@ -52,6 +52,8 @@ public class ExplodeErrorCodeTests : ExplodeTestBase
     [Fact]
     public void Operation_failed_and_verification_failed_are_reached()
     {
+        // verification_failed is the answer when the rollback is clean; on SP4 it is the cause of a partial one.
+        Asm.ViewsCanBeDeleted = true;
         Asm.StepFails = true;
         Assert.Equal(ErrorCode.OperationFailed, Fails(() => Explode(Step("z", 10, "pin-1"))).Code);
         Asm.StepFails = false;

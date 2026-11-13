@@ -101,6 +101,10 @@
               "additionalProperties": false
             },
             "description": "Its steps, in order; absent for a view of a configuration that is not active, whose steps SOLIDWORKS gives only while it is shown."
+          },
+          "empty": {
+            "type": "boolean",
+            "description": "True when it has no steps: what explode.delete or a rolled-back explode.create leaves on SOLIDWORKS 2026 SP4, whose API cannot delete a view. Absent when its steps were not read."
           }
         },
         "required": [

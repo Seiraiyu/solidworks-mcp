@@ -63,6 +63,9 @@ internal sealed partial class SolidWorksAssembly
                 {
                     if (s.GetComponent(c) is IComponent2 component) facts.Components.Add(component);
                 }
+                // Plan 4.E live run: each step SOLIDWORKS 2026 SP4 makes brings a second one (Chain1, its explode line chain)
+                // that moves no component; it is not one of the view's steps.
+                if (facts.Components.Count == 0) continue;
                 steps.Add(facts);
             }
             return steps;
@@ -136,142 +139,64 @@ internal sealed partial class SolidWorksAssembly
     static string ExplodeStepError(int code) =>
         Enum.IsDefined(typeof(swCreateExplodeStepError_e), code) ? ((swCreateExplodeStepError_e)code).ToString() : $"swCreateExplodeStepError {code}";
 
-    /// <summary>The names SelectByID2 might know a view by: its own, then with the configuration and the assembly.</summary>
-    IEnumerable<string> ViewNames(string view)
-    {
-        string config = ActiveConfig().Name;
-        string title = System.IO.Path.GetFileNameWithoutExtension(_doc.GetTitle());
-        return new[] { view, $"{view}@{config}", $"{view}@{config}@{title}" };
-    }
-
-    bool SelectView(string name)
-    {
-        _doc.ClearSelection2(true);
-        return _doc.Extension.SelectByID2(name, "EXPLODEVIEWS", 0, 0, 0, false, 0, null, 0);
-    }
-
     bool HasView(string view) => ExplodedViews(ActiveConfig().Name).Contains(view, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// By selection (SelectByID2 with EXPLODEVIEWS) and the selected feature's Name; tried says how each name went. Plan 4.E
-    /// live run: an exploded view is no feature in the FeatureManager (IFeatureManager.GetFeatures lists none).
-    /// </summary>
-    public bool RenameExplodedView(string view, string name, out string tried)
-    {
-        var attempts = new List<string>();
-        try
-        {
-            foreach (var n in ViewNames(view))
-            {
-                try
-                {
-                    if (!SelectView(n))
-                    {
-                        attempts.Add($"SelectByID2({n}, EXPLODEVIEWS): not selected");
-                        continue;
-                    }
-                    var selection = (ISelectionMgr)_doc.SelectionManager;
-                    if (!(selection.GetSelectedObject6(1, -1) is IFeature f))
-                    {
-                        attempts.Add($"SelectByID2({n}, EXPLODEVIEWS): selected type {selection.GetSelectedObjectType3(1, -1)}, not a feature");
-                        continue;
-                    }
-                    f.Name = name;
-                    bool renamed = HasView(name);
-                    attempts.Add($"SelectByID2({n}, EXPLODEVIEWS) + IFeature.Name: {(renamed ? "renamed" : "no view by the new name")}");
-                    if (renamed)
-                    {
-                        tried = string.Join("; ", attempts);
-                        return true;
-                    }
-                }
-                catch (COMException e)
-                {
-                    attempts.Add($"{n}: {e.Message}");
-                }
-            }
-        }
-        finally
-        {
-            _doc.ClearSelection2(true);
-        }
-        tried = string.Join("; ", attempts);
-        return false;
-    }
-
-    /// <summary>
-    /// By selection (SelectByID2 with EXPLODEVIEWS, then DeleteSelection2, then EditDelete), and failing that its steps one by
-    /// one (IConfiguration.DeleteExplodeStep, read while the view is shown). True only when the view is gone; tried says how
-    /// each way went.
+    /// Plan 4.E live run, SOLIDWORKS 2026 SP4: an exploded view cannot be selected through the API. SelectByID2 with
+    /// EXPLODEVIEWS selects nothing under any name, the view is in no feature list, and GetSelectByIdSpecification gives a
+    /// view the user selected an empty name. Selected by hand, DeleteSelection2 deletes it. So the view is selected by name
+    /// once, in case a later SOLIDWORKS allows it, and otherwise every one of its steps is deleted (DeleteExplodeStep, read
+    /// while the view is shown), which leaves the view empty. True when it has no steps left; tried says how each way went.
     /// </summary>
     public bool DeleteExplodedView(string view, out string tried)
     {
         var attempts = new List<string>();
         try
         {
-            foreach (var n in ViewNames(view))
+            _doc.ClearSelection2(true);
+            if (_doc.Extension.SelectByID2(view, "EXPLODEVIEWS", 0, 0, 0, false, 0, null, 0))
             {
-                try
+                bool deleted = _doc.Extension.DeleteSelection2((int)swDeleteSelectionOptions_e.swDelete_Absorbed);
+                attempts.Add($"SelectByID2({view}, EXPLODEVIEWS) + DeleteSelection2: {deleted}");
+                if (!HasView(view))
                 {
-                    if (!SelectView(n))
-                    {
-                        attempts.Add($"SelectByID2({n}, EXPLODEVIEWS): not selected");
-                        continue;
-                    }
-                    bool deleted = _doc.Extension.DeleteSelection2((int)swDeleteSelectionOptions_e.swDelete_Absorbed);
-                    attempts.Add($"SelectByID2({n}, EXPLODEVIEWS) + DeleteSelection2: {deleted}");
-                    if (!HasView(view)) return Done(attempts, out tried);
-                    if (SelectView(n))
-                    {
-                        _doc.EditDelete();
-                        attempts.Add("+ EditDelete");
-                        if (!HasView(view)) return Done(attempts, out tried);
-                    }
+                    tried = string.Join("; ", attempts);
+                    return true;
                 }
-                catch (COMException e)
-                {
-                    attempts.Add($"{n}: {e.Message}");
-                }
+            }
+            else
+            {
+                attempts.Add($"SelectByID2({view}, EXPLODEVIEWS): not selected");
             }
 
-            // Its steps, one by one, read while it is shown.
-            try
+            if (!_asm.ShowExploded2(true, view))
             {
-                if (_asm.ShowExploded2(true, view))
-                {
-                    var config = ActiveConfig();
-                    for (int i = config.GetNumberOfExplodeSteps() - 1; i >= 0; i--)
-                    {
-                        if (!(config.GetExplodeStep(i) is IExplodeStep step)) continue;
-                        string stepName = step.Name;
-                        attempts.Add($"DeleteExplodeStep({stepName}): {config.DeleteExplodeStep(stepName)}");
-                    }
-                    attempts.Add($"{config.GetNumberOfExplodeSteps()} steps left");
-                    _asm.ShowExploded2(false, view);
-                }
-                else
-                {
-                    attempts.Add($"ShowExploded2({view}) refused, so its steps were not read");
-                }
+                attempts.Add($"ShowExploded2({view}) refused, so its steps were not read");
+                tried = string.Join("; ", attempts);
+                return false;
             }
-            catch (COMException e)
+            var config = ActiveConfig();
+            for (int i = config.GetNumberOfExplodeSteps() - 1; i >= 0; i--)
             {
-                attempts.Add($"steps: {e.Message}");
+                if (!(config.GetExplodeStep(i) is IExplodeStep step)) continue;
+                string stepName = step.Name;
+                attempts.Add($"DeleteExplodeStep({stepName}): {config.DeleteExplodeStep(stepName)}");
             }
-            if (!HasView(view)) return Done(attempts, out tried);
-            attempts.Add($"{view} is still listed");
+            int left = config.GetNumberOfExplodeSteps();
+            _asm.ShowExploded2(false, view);
+            attempts.Add(left == 0 ? $"no steps left; {view} itself stays, empty" : $"{left} steps left");
+            tried = string.Join("; ", attempts);
+            return left == 0;
+        }
+        catch (COMException e)
+        {
+            attempts.Add(e.Message);
+            tried = string.Join("; ", attempts);
+            return false;
         }
         finally
         {
             _doc.ClearSelection2(true);
         }
-        tried = string.Join("; ", attempts);
-        return false;
-    }
-
-    static bool Done(List<string> attempts, out string tried)
-    {
-        tried = string.Join("; ", attempts);
-        return true;
     }
 }

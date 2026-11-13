@@ -71,8 +71,6 @@ sealed partial class FakeAssembly
     /// <summary>Collapsing leaves the components where they were exploded.</summary>
     public bool CollapseStays { get; set; }
 
-    public bool RenameRefused { get; set; }
-
     public bool DeleteRefused { get; set; }
 
     FakeExplodeView? ViewNamed(string name) =>
@@ -164,27 +162,30 @@ sealed partial class FakeAssembly
         return step.Name;
     }
 
-    public bool RenameExplodedView(string view, string name, out string tried)
-    {
-        tried = RenameRefused ? "fake: refused" : "fake: renamed";
-        Calls.Add($"rename view {view}");
-        var v = ViewNamed(view);
-        if (RenameRefused || v == null) return false;
-        if (Shown == v.Name) Shown = name;
-        if (_making == v.Name) _making = name;
-        v.Name = name;
-        return true;
-    }
+    /// <summary>As SOLIDWORKS 2026 SP4: deleting a view deletes its steps and leaves the view, empty, unless ViewsCanBeDeleted.</summary>
+    public bool ViewsCanBeDeleted { get; set; }
 
     public bool DeleteExplodedView(string view, out string tried)
     {
-        tried = DeleteRefused ? "fake: refused" : "fake: deleted";
         Calls.Add($"delete view {view}");
         var v = ViewNamed(view);
-        if (DeleteRefused || v == null) return false;
+        if (DeleteRefused || v == null)
+        {
+            tried = "fake: refused";
+            return false;
+        }
         if (Shown == v.Name) Collapse();
-        if (_making == v.Name) _making = null;
-        Views.Remove(v);
+        v.Steps.Clear();
+        if (ViewsCanBeDeleted)
+        {
+            if (_making == v.Name) _making = null;
+            Views.Remove(v);
+            tried = "fake: deleted";
+        }
+        else
+        {
+            tried = "fake: steps deleted, the view left empty";
+        }
         return true;
     }
 }

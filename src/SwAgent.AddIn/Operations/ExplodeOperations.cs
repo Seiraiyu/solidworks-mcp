@@ -50,6 +50,10 @@ public static class ExplodeRequests
             new JsonObject { ["field"] = field, ["views"] = here.Select(v => (object?)v).ToList() });
     }
 
+    /// <summary>The active configuration still lists the view.</summary>
+    public static bool Listed(ISwDocument doc, ISwAssembly asm, string view) =>
+        asm.ExplodedViews(doc.ActiveConfiguration()).Contains(view, StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Where every component is now, nested ones included, by name.</summary>
     public static Dictionary<string, Transform> Places(ISwAssembly asm) =>
         asm.Components(false).Select(asm.Read).ToDictionary(i => i.Name, i => i.Transform, StringComparer.OrdinalIgnoreCase);
@@ -68,6 +72,7 @@ public static class ExplodeRequests
             AngleDeg = s.AngleDeg > 0 ? s.AngleDeg : (double?)null,
             Reversed = s.Reversed,
         }).ToList(),
+        Empty = steps == null ? (bool?)null : steps.Count == 0,
     };
 }
 
@@ -113,7 +118,7 @@ public sealed class ExplodeCreateOperation : AssemblyChangeOperation<ExplodeCrea
     {
         string configuration = ExplodeRequests.Configuration(doc, request.Configuration);
         var steps = Resolve(doc, asm, request);
-        string? name = NameOf(asm, configuration, request.Name);
+        if (request.Name != null) throw PatternRequests.Invalid("/name", NameRefused);
 
         string? shownBefore = asm.ShownExploded();
         _shownBefore = shownBefore;
@@ -131,9 +136,18 @@ public sealed class ExplodeCreateOperation : AssemblyChangeOperation<ExplodeCrea
         tx.Made(created, () =>
         {
             if (string.Equals(asm.ShownExploded(), view, StringComparison.OrdinalIgnoreCase)) asm.ShowExploded(view, false);
-            if (!asm.DeleteExplodedView(view, out string deleted))
-                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not delete the exploded view {view}; tried {deleted}", new JsonObject { ["view"] = view, ["tried"] = deleted });
+            bool emptied = asm.DeleteExplodedView(view, out string deleted);
             if (shownBefore != null) asm.ShowExploded(shownBefore, true);
+            if (!emptied)
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not delete the steps of {view}; tried {deleted}", new JsonObject { ["view"] = view, ["tried"] = deleted });
+            // SOLIDWORKS 2026 SP4's API cannot delete an exploded view: its steps are gone, the view is left empty, and that is
+            // a partial rollback, reported in remaining, never a clean one.
+            if (ExplodeRequests.Listed(doc, asm, view))
+            {
+                throw new SwAgentException(ErrorCode.OperationFailed,
+                    $"{view}'s steps were deleted, but SOLIDWORKS 2026 SP4 cannot delete an exploded view through its API, so {view} is left in the assembly, empty",
+                    new JsonObject { ["view"] = view, ["view_left_empty"] = true, ["tried"] = deleted });
+            }
         });
 
         var outcomes = new List<ExplodeStepOutcome>();
@@ -163,13 +177,6 @@ public sealed class ExplodeCreateOperation : AssemblyChangeOperation<ExplodeCrea
             before = after;
         }
 
-        if (name != null && !string.Equals(name, view, StringComparison.Ordinal))
-        {
-            if (!asm.RenameExplodedView(view, name, out string renamed))
-                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not rename {view} to {name}; tried {renamed}", new JsonObject { ["field"] = "/name", ["tried"] = renamed });
-            view = name;
-            created.Name = name;
-        }
         if (string.Equals(asm.ShownExploded(), view, StringComparison.OrdinalIgnoreCase) && !asm.ShowExploded(view, false))
             throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not collapse {view} after making it");
         ExplodeGeometry.Back(_collapsed, ExplodeRequests.Places(asm));
@@ -265,16 +272,8 @@ public sealed class ExplodeCreateOperation : AssemblyChangeOperation<ExplodeCrea
     /// <summary>Why rotate_about and angle_deg are refused (plan 4.E live run).</summary>
     public const string RotateRefused = "SOLIDWORKS 2026 SP4 does not turn explode steps about a chosen axis through its API (it turns them about their own origins, and makes two steps); leave out rotate_about and angle_deg, and turn components with component.place";
 
-    /// <summary>The name asked for, unless it is blank or another view of the configuration has it; null when none is asked.</summary>
-    static string? NameOf(ISwAssembly asm, string configuration, string? name)
-    {
-        if (name == null) return null;
-        string trimmed = name.Trim();
-        if (trimmed.Length == 0 || trimmed.Length > 100) throw PatternRequests.Invalid("/name", "name must be 1 to 100 characters, not blank");
-        if (asm.ExplodedViews(configuration).Contains(trimmed, StringComparer.OrdinalIgnoreCase))
-            throw PatternRequests.Invalid("/name", $"{configuration} already has an exploded view named {trimmed}; choose another name, or delete that view with explode.delete");
-        return trimmed;
-    }
+    /// <summary>Why name is refused (plan 4.E live run).</summary>
+    public const string NameRefused = "SOLIDWORKS 2026 SP4 does not rename exploded views through its API (it cannot select one); leave out name, and SOLIDWORKS names the view (Exploded View1)";
 }
 
 /// <summary>
@@ -379,24 +378,34 @@ public sealed class ExplodeDeleteOperation : AssemblyChangeOperation<ExplodeDele
         string configuration = doc.ActiveConfiguration();
         string view = ExplodeRequests.View(doc, asm, request.View);
         int steps = asm.ExplodeSteps(view).Count;
+        string how = "it had no steps, so nothing was deleted";
         if (string.Equals(asm.ShownExploded(), view, StringComparison.OrdinalIgnoreCase))
         {
             if (!asm.ShowExploded(view, false)) throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not collapse {view} to delete it");
             tx.Edited(new ChangedItem { Name = view, Property = "exploded", Before = "true", After = "false" }, () => asm.ShowExploded(view, true));
         }
-        if (!asm.DeleteExplodedView(view, out string how))
-            throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not delete the exploded view {view}; tried {how}", new JsonObject { ["view"] = view, ["tried"] = how });
-        context.Log.Info($"{Name}: {view} of {configuration}, {steps} steps; {how}");
-        return new ExplodeDeleteResult { Deleted = view, Configuration = configuration, Steps = steps };
+        if (steps > 0 && !asm.DeleteExplodedView(view, out how))
+            throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not delete the steps of {view}; tried {how}", new JsonObject { ["view"] = view, ["tried"] = how });
+        bool left = ExplodeRequests.Listed(doc, asm, view);
+        context.Log.Info($"{Name}: {view} of {configuration}, {steps} steps; {how}{(left ? "; the view is left, empty (SOLIDWORKS 2026 SP4 cannot delete it)" : "")}");
+        return new ExplodeDeleteResult { Deleted = view, Configuration = configuration, Steps = steps, ViewLeftEmpty = left };
     }
 
-    /// <summary>The view is gone.</summary>
+    /// <summary>The view has no steps (or is gone), and view_left_empty says which.</summary>
     protected override void Check(ISwDocument doc, ISwAssembly asm, ExplodeDeleteRequest request, ExplodeDeleteResult result)
     {
-        if (asm.ExplodedViews(result.Configuration).Contains(result.Deleted, StringComparer.OrdinalIgnoreCase))
+        bool listed = asm.ExplodedViews(result.Configuration).Contains(result.Deleted, StringComparer.OrdinalIgnoreCase);
+        if (listed != result.ViewLeftEmpty)
         {
-            throw new SwAgentException(ErrorCode.VerificationFailed, $"SOLIDWORKS reported {result.Deleted} deleted, but {result.Configuration} still has it",
-                new JsonObject { ["check"] = "view_deleted", ["remaining"] = new List<object?> { result.Deleted } });
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"{result.Deleted} is {(listed ? "still" : "no longer")} in {result.Configuration}, though view_left_empty said otherwise",
+                new JsonObject { ["check"] = "view_left_empty", ["expected"] = result.ViewLeftEmpty, ["measured"] = listed });
+        }
+        if (!listed) return;
+        int left = asm.ExplodeSteps(result.Deleted).Count;
+        if (left > 0)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"SOLIDWORKS reported the steps of {result.Deleted} deleted, but it still has {left}",
+                new JsonObject { ["check"] = "view_steps", ["expected"] = 0, ["measured"] = left, ["remaining"] = new List<object?> { result.Deleted } });
         }
     }
 }

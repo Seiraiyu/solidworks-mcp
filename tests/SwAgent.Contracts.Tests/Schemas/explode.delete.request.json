@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "Deletes an exploded view of the active configuration and its steps; a view shown exploded is collapsed first. Components stay where they are collapsed. Checked: the view is gone. A deletion is not rolled back: a failed check says what is left.",
+  "description": "Empties an exploded view of the active configuration: SOLIDWORKS 2026 SP4's API cannot delete an exploded view, so this deletes every one of its steps and leaves the view itself, empty (view_left_empty says so). A view shown exploded is collapsed first. Components stay where they are collapsed. Checked: the view has no steps. Not rolled back: a failed check says what is left.",
   "properties": {
     "document": {
       "type": "string",

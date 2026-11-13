@@ -1,10 +1,10 @@
 {
   "type": "object",
-  "description": "The exploded view deleted.",
+  "description": "The exploded view emptied (and deleted, where SOLIDWORKS allows).",
   "properties": {
     "deleted": {
       "type": "string",
-      "description": "The view's name."
+      "description": "The view's name: its steps are deleted, and the view too unless view_left_empty."
     },
     "configuration": {
       "type": "string",
@@ -13,6 +13,10 @@
     "steps": {
       "type": "integer",
       "description": "How many steps it had."
+    },
+    "view_left_empty": {
+      "type": "boolean",
+      "description": "True when the view itself is still there, with no steps: SOLIDWORKS 2026 SP4's API cannot delete an exploded view."
     },
     "change": {
       "type": "object",
@@ -318,6 +322,7 @@
     "deleted",
     "configuration",
     "steps",
+    "view_left_empty",
     "change"
   ],
   "additionalProperties": false

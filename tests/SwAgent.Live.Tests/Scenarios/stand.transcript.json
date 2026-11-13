@@ -37,7 +37,7 @@
     { "say": "the pin square to the plate", "tool": "sw_mate_add", "arguments": { "document": "${asm}", "type": "parallel", "alignment": "aligned", "entities": [ { "entity": "right@${pin_c}" }, { "entity": "right@${plate_c}" } ] }, "save": { "pin_square": "/mate/name" } },
     { "say": "is everything held?", "tool": "sw_assembly_dof", "arguments": { "document": "${asm}" }, "save": { "dof": "/components" } },
     { "say": "does anything overlap?", "tool": "sw_assembly_interference", "arguments": { "document": "${asm}" }, "save": { "interferences": "/interferences" } },
-    { "say": "an exploded view with the pin pulled out", "tool": "sw_explode_create", "arguments": { "document": "${asm}", "name": "Pin out", "steps": [ { "components": [ "${pin_c}" ], "direction": "z", "distance_mm": 40 } ] }, "save": { "view": "/view/name", "explode_sense": "/steps/0/sense" } },
+    { "say": "an exploded view with the pin pulled out", "tool": "sw_explode_create", "arguments": { "document": "${asm}", "steps": [ { "components": [ "${pin_c}" ], "direction": "z", "distance_mm": 40 } ] }, "save": { "view": "/view/name", "explode_sense": "/steps/0/sense" } },
     { "say": "save the assembly, and any part it changed", "tool": "sw_document_save", "arguments": { "document": "${asm}" } },
     { "say": "the assembly as STEP", "tool": "sw_export_assembly", "arguments": { "document": "${asm}", "path": "${step}", "format": "step" }, "save": { "step_occurrences": "/step_occurrences", "step_components": "/components" } }
   ]

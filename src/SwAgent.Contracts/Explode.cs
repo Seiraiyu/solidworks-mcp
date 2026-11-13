@@ -3,7 +3,7 @@ using System.ComponentModel;
 
 namespace SwAgent.Contracts;
 
-[Description("One step of an exploded view: components moved along a direction, and optionally turned about an axis afterwards.")]
+[Description("One step of an exploded view: components moved along a direction.")]
 public sealed class ExplodeStep
 {
     [Required]
@@ -23,18 +23,18 @@ public sealed class ExplodeStep
     [Description("Go the other way along the direction. Default false.")]
     public bool? Reverse { get; set; }
 
-    [Description("An axis to turn them about once moved: an axis, a straight or circular edge, or a cylindrical or conical face, in the forms direction takes. With angle_deg.")]
+    [Description("Refused on SOLIDWORKS 2026 SP4: its API turns a step's components about their own origins, never about the axis asked; turn components with component.place. Leave it out.")]
     public string? RotateAbout { get; set; }
 
-    [Description("Only when rotate_about is a reference issued in a component's own part (or a name there): that component, by reference or name.")]
+    [Description("Refused with rotate_about. Leave it out.")]
     public string? RotateAboutComponent { get; set; }
 
-    [Description("How far to turn them about rotate_about, degrees, more than 0 and at most 360. With rotate_about.")]
+    [Description("Refused with rotate_about (SOLIDWORKS 2026 SP4 turns about the wrong axis). Leave it out.")]
     public double? AngleDeg { get; set; }
 }
 
 [Operation("explode.create", typeof(ExplodeCreateResult))]
-[Description("Makes an exploded view of an assembly in one call (SOLIDWORKS' Explode): a new view in the active configuration holding every step given, in order. Lengths in mm, angles in degrees. A step's direction is x, y or z (the assembly's axes), a straight edge, an axis, or a plane or planar face's normal: a reference issued in the assembly, name@component (Axis1@plate-1), or with direction_component a reference issued in that component's own part. Checked step by step: after each step the view is shown exploded and every component read; the step's components must have moved distance_mm along the direction from where the previous steps left them, then turned angle_deg about rotate_about, within 0.001 mm and 0.01 degrees, and no other component may have moved. SOLIDWORKS chooses which way along a direction and about an axis it goes; each step's sense says which, and reverse flips it. Then the assembly is collapsed again (or shows what it showed before) and every component must be back where it was. Otherwise the view is deleted (rolled back). Show it with explode.show, list it with explode.list, delete it with explode.delete. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+[Description("Makes an exploded view of an assembly in one call (SOLIDWORKS' Explode): a new view in the active configuration holding every step given, in order, named by SOLIDWORKS (Exploded View1). Lengths in mm. A step's direction is x, y or z (the assembly's axes), a straight edge, an axis, or a plane or planar face's normal: a reference issued in the assembly, name@component (Axis1@plate-1), or with direction_component a reference issued in that component's own part. Checked step by step: after each step the view is shown exploded and every component read; the step's components must have moved distance_mm along the direction from where the previous steps left them, within 0.001 mm and 0.01 degrees, and no other component may have moved. SOLIDWORKS chooses which way along a direction it goes; each step's sense says which, and reverse flips it. Then the assembly is collapsed again (or shows what it showed before) and every component must be back where it was. Otherwise the change is rolled back as far as SOLIDWORKS 2026 SP4 allows: every step is deleted, but its API cannot delete an exploded view, so an empty view is left, and the error says so (rollback_failed, remaining). On SOLIDWORKS 2026 SP4 a step cannot be turned (rotate_about is refused) and the view cannot be named (name is refused). Show it with explode.show, list it with explode.list, empty it with explode.delete. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class ExplodeCreateRequest
 {
     [Description("The assembly: its title or full path. The active document when absent.")]
@@ -43,7 +43,7 @@ public sealed class ExplodeCreateRequest
     [Description("The configuration to make the view in; it must be the active one (configuration.activate changes that). The active configuration when absent.")]
     public string? Configuration { get; set; }
 
-    [Description("The view's name; SOLIDWORKS' own (ExplView1) when absent.")]
+    [Description("Refused on SOLIDWORKS 2026 SP4, whose API cannot select an exploded view to rename it; SOLIDWORKS names it (Exploded View1). Leave it out.")]
     public string? Name { get; set; }
 
     [Required]
@@ -135,6 +135,9 @@ public sealed class ExplodedViewInfo
 
     [Description("Its steps, in order; absent for a view of a configuration that is not active, whose steps SOLIDWORKS gives only while it is shown.")]
     public List<ExplodeStepInfo>? Steps { get; set; }
+
+    [Description("True when it has no steps: what explode.delete or a rolled-back explode.create leaves on SOLIDWORKS 2026 SP4, whose API cannot delete a view. Absent when its steps were not read.")]
+    public bool? Empty { get; set; }
 }
 
 [Description("The exploded view made.")]
@@ -217,7 +220,7 @@ public sealed class ExplodeShowResult
 }
 
 [Operation("explode.delete", typeof(ExplodeDeleteResult))]
-[Description("Deletes an exploded view of the active configuration and its steps; a view shown exploded is collapsed first. Components stay where they are collapsed. Checked: the view is gone. A deletion is not rolled back: a failed check says what is left.")]
+[Description("Empties an exploded view of the active configuration: SOLIDWORKS 2026 SP4's API cannot delete an exploded view, so this deletes every one of its steps and leaves the view itself, empty (view_left_empty says so). A view shown exploded is collapsed first. Components stay where they are collapsed. Checked: the view has no steps. Not rolled back: a failed check says what is left.")]
 public sealed class ExplodeDeleteRequest
 {
     [Description("The assembly: its title or full path. The active document when absent.")]
@@ -228,11 +231,11 @@ public sealed class ExplodeDeleteRequest
     public string View { get; set; } = "";
 }
 
-[Description("The exploded view deleted.")]
+[Description("The exploded view emptied (and deleted, where SOLIDWORKS allows).")]
 public sealed class ExplodeDeleteResult : IAssemblyChangeResult
 {
     [Required]
-    [Description("The view's name.")]
+    [Description("The view's name: its steps are deleted, and the view too unless view_left_empty.")]
     public string Deleted { get; set; } = "";
 
     [Required]
@@ -241,6 +244,9 @@ public sealed class ExplodeDeleteResult : IAssemblyChangeResult
 
     [Description("How many steps it had.")]
     public int Steps { get; set; }
+
+    [Description("True when the view itself is still there, with no steps: SOLIDWORKS 2026 SP4's API cannot delete an exploded view.")]
+    public bool ViewLeftEmpty { get; set; }
 
     [Required]
     [Description("What changed in the assembly.")]

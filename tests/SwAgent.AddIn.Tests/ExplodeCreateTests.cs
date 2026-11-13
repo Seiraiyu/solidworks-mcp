@@ -8,6 +8,26 @@ namespace SwAgent.AddIn.Tests;
 
 public class ExplodeCreateTests : ExplodeTestBase
 {
+    // A SOLIDWORKS that can delete a view, so a rollback is clean; SP4, which cannot, is A_failed_step_on_SP4_leaves_an_empty_view_reported_as_a_partial_rollback.
+    public ExplodeCreateTests() => Asm.ViewsCanBeDeleted = true;
+
+    [Fact]
+    public void A_failed_step_on_SP4_leaves_an_empty_view_reported_as_a_partial_rollback()
+    {
+        Asm.ViewsCanBeDeleted = false;
+        Asm.StepStrays = (c, i) => c.Info.Name == "pin-1" ? new Vector3(0, 0, 0.5) : null;
+        var e = Fails(() => Explode(Step("z", 40, "pin-1")));
+        Assert.Equal(true, e.Error.Details!["rollback_failed"]);
+        Assert.Equal("verification_failed", e.Error.Details["cause"]);
+        var remaining = Assert.Single((List<object?>)e.Error.Details["remaining"]!);
+        Assert.Contains("cannot delete an exploded view", (string)remaining!);
+        Assert.DoesNotContain("ExplView1", (List<object?>)e.Error.Details["rolled_back"]!);
+        var left = Assert.Single(Asm.Views);
+        Assert.Empty(left.Steps);
+        Assert.Null(Asm.Shown);
+        Assert.Equal(0, Pin.Info.Transform.Origin.Z, 9);
+    }
+
     [Fact]
     public void One_step_up_z_moves_the_pin_and_leaves_the_assembly_collapsed()
     {
@@ -123,21 +143,16 @@ public class ExplodeCreateTests : ExplodeTestBase
     }
 
     [Fact]
-    public void The_name_asked_is_given_and_a_refused_rename_takes_the_view_back()
+    public void A_name_is_refused_because_SP4_cannot_rename_a_view()
     {
         var request = Request(Step("z", 40, "pin-1"));
         request.Name = "Pin out";
-        var r = Explode(request);
-        Assert.Equal("Pin out", r.View.Name);
-        Assert.Equal("Pin out", Assert.Single(r.Change.Created).Name);
-
-        Asm.RenameRefused = true;
-        var again = Request(Step("z", 40, "pin-1"));
-        again.Name = "Pin out again";
-        var e = Fails(() => Explode(again));
-        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        var e = Fails(() => Explode(request));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
         Assert.Equal("/name", e.Error.Details!["field"]);
-        Assert.Equal(new[] { "Pin out" }, Asm.ExplodedViews("Default"));
+        Assert.Contains("does not rename exploded views", e.Message);
+        Assert.Empty(Asm.Views);
+        Assert.DoesNotContain("explode view", Asm.Calls);
     }
 
     [Fact]
@@ -189,18 +204,5 @@ public class ExplodeCreateTests : ExplodeTestBase
         blank.Name = " ";
         Refused(blank, "/name");
         Assert.DoesNotContain("explode view", Asm.Calls);
-    }
-
-    [Fact]
-    public void A_name_already_taken_in_the_configuration_is_refused()
-    {
-        var first = Request(Step("z", 10, "pin-1"));
-        first.Name = "Pin out";
-        Explode(first);
-        var second = Request(Step("z", 20, "pin-1"));
-        second.Name = "pin OUT";
-        var e = Fails(() => Explode(second));
-        Assert.Equal("/name", e.Error.Details!["field"]);
-        Assert.Single(Asm.Views);
     }
 }

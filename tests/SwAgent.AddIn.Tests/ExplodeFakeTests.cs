@@ -30,7 +30,7 @@ public class ExplodeFakeTests : AssemblyTestBase
     }
 
     [Fact]
-    public void A_fake_step_can_go_against_its_direction_and_a_view_be_renamed_and_deleted()
+    public void A_fake_step_can_go_against_its_direction_and_a_view_be_emptied()
     {
         var pin = Asm.AddComponent("pin-1", PathOf("pin.SLDPRT"));
         var up = Doc.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, Origin = new Point3(), Axis = new Vector3(0, 0, 1) });
@@ -39,10 +39,10 @@ public class ExplodeFakeTests : AssemblyTestBase
         Asm.AddExplodeStep(new ExplodeStepSpec { Components = new[] { (object)pin.Entity }, Direction = up, DistanceMm = 10 }, out _);
         Asm.ShowExploded(view, true);
         Assert.Equal(-10, Asm.Read(pin.Entity).Transform.Origin.Z, 9);
-        Assert.True(Asm.RenameExplodedView(view, "Pin out", out _));
-        Assert.Equal("Pin out", Asm.ShownExploded());
-        Assert.True(Asm.DeleteExplodedView("Pin out", out _));
-        Assert.Empty(Asm.ExplodedViews("Default"));
+        Assert.True(Asm.DeleteExplodedView(view, out string tried));
+        Assert.Equal("fake: steps deleted, the view left empty", tried);
+        Assert.Equal(new[] { view }, Asm.ExplodedViews("Default"));
+        Assert.Empty(Asm.ExplodeSteps(view));
         Assert.Null(Asm.ShownExploded());
         Assert.Equal(0, Asm.Read(pin.Entity).Transform.Origin.Z, 9);
     }
