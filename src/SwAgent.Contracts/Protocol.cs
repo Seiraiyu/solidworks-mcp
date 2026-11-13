@@ -13,7 +13,8 @@ public static class Protocol
     /// 9: mates and degrees of freedom: mate.add, mate.edit, mate.delete, mate.list, assembly.dof; r1.mate references.
     /// 10: flat-pattern export: export.flat_pattern.
     /// 11: component patterns and interference: component.linear_pattern, component.circular_pattern, component.feature_pattern, assembly.interference; component.delete deletes patterns.
-    public const int Version = 11;
+    /// 12: exploded views and assembly export: explode.create, explode.list, explode.show, explode.delete, export.assembly; diag.arm_dialog stops assembly changes too.
+    public const int Version = 12;
 
     public const string PipeNamePrefix = "solidworks-mcp-";
 

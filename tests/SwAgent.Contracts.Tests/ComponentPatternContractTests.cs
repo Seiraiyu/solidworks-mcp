@@ -97,8 +97,8 @@ public class ComponentPatternContractTests
     }
 
     [Fact]
-    public void Protocol_11_speaks_patterns_and_interference()
+    public void Protocol_11_and_later_speak_patterns()
     {
-        Assert.Equal(11, Protocol.Version);
+        Assert.True(Protocol.Version >= 11, $"protocol {Protocol.Version} speaks patterns from 11 on");
     }
 }
