@@ -24,7 +24,10 @@ public static class ExportSettings
     };
 
     /// <summary>The STEP schema a request asks for: ap214 unless options say otherwise.</summary>
-    public static StepSchema SchemaOf(ExportPartRequest request) => request.Options?.StepSchema ?? StepSchema.Ap214;
+    public static StepSchema SchemaOf(ExportPartRequest request) => SchemaOf(request.Options);
+
+    /// <summary>The STEP schema options ask for: ap214 unless they say otherwise.</summary>
+    public static StepSchema SchemaOf(ExportOptions? options) => options?.StepSchema ?? StepSchema.Ap214;
 
     /// <summary>The preferences to set for the call, in order; invalid_argument for an option the format does not take or a custom mesh without its values.</summary>
     public static IReadOnlyList<PreferenceSetting> For(ExportFormat format, ExportOptions? options)
@@ -63,6 +66,21 @@ public static class ExportSettings
         else
         {
             list.Add(Toggle(nameof(swUserPreferenceToggle_e.sw3MFShowInfoOnSave), (int)swUserPreferenceToggle_e.sw3MFShowInfoOnSave, false));
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// An assembly's: a part's, and for STL every component into one file with no interference check first (design 455,
+    /// Export: STL and 3MF write one file of the whole assembly; 3MF always does).
+    /// </summary>
+    public static IReadOnlyList<PreferenceSetting> ForAssembly(ExportFormat format, ExportOptions? options)
+    {
+        var list = new List<PreferenceSetting>(For(format, options));
+        if (format == ExportFormat.Stl)
+        {
+            list.Add(Toggle(nameof(swUserPreferenceToggle_e.swSTLComponentsIntoOneFile), (int)swUserPreferenceToggle_e.swSTLComponentsIntoOneFile, true));
+            list.Add(Toggle(nameof(swUserPreferenceToggle_e.swSTLCheckForInterference), (int)swUserPreferenceToggle_e.swSTLCheckForInterference, false));
         }
         return list;
     }

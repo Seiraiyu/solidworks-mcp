@@ -44,6 +44,9 @@ sealed partial class FakeDocument
     /// <summary>An export makes the document that file (SaveAs without the copy option).</summary>
     public bool ExportMovesDocument { get; set; }
 
+    /// <summary>A STEP export of an assembly holds this many NEXT_ASSEMBLY_USAGE_OCCURRENCE entities.</summary>
+    public int StepOccurrences { get; set; }
+
     /// <summary>Triangles a binary STL holds: coarse 12, fine 44, custom 100, as the fake meshes the block.</summary>
     public static int Triangles(double quality) => quality == 1 ? 12 : quality == 3 ? 100 : 44;
 
@@ -96,6 +99,13 @@ sealed partial class FakeDocument
         }
         if (ExportWritesNothing) return new SaveOutcome(true, 0, 0);
         File.WriteAllBytes(path, ExportWrites ?? Bytes(path, prefs));
+        string extension = Path.GetExtension(path).ToLowerInvariant();
+        if (StepOccurrences > 0 && ExportWrites == null && (extension == ".step" || extension == ".stp"))
+        {
+            var lines = new StringBuilder();
+            for (int i = 1; i <= StepOccurrences; i++) lines.Append($"#{i}=NEXT_ASSEMBLY_USAGE_OCCURRENCE('{i}','c-{i}','',#{100 + i},#{200 + i},$);\r\n");
+            File.WriteAllText(path, File.ReadAllText(path).Replace("DATA;\r\n", "DATA;\r\n" + lines));
+        }
         return new SaveOutcome(true, 0, 0);
     }
 

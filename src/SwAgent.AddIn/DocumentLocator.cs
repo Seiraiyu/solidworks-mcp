@@ -87,6 +87,7 @@ public static class DocumentLocator
     {
         ["model.tree"] = "assembly.components lists an assembly's components, and model.find its components' faces, edges and vertices",
         ["model.dimensions"] = "open a component's part with document.open to read its dimensions",
+        ["export.part"] = "export.assembly writes an assembly as STEP, Parasolid, STL or 3MF",
     };
 
     /// <summary>The way to change a component's geometry, for every other part-only operation.</summary>

@@ -129,4 +129,20 @@ public class ExportFileCheckTests
         Assert.Equal("file_written", CheckOf(e));
         Assert.Contains("before this call", e.Message);
     }
+
+    [Fact]
+    public void A_STEP_files_assembly_occurrences_are_counted()
+    {
+        string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), System.Guid.NewGuid().ToString("N") + ".step");
+        try
+        {
+            System.IO.File.WriteAllText(path, "ISO-10303-21;\nDATA;\n#1=NEXT_ASSEMBLY_USAGE_OCCURRENCE('1','a','',#2,#3,$);\n" +
+                "#4 = NEXT_ASSEMBLY_USAGE_OCCURRENCE ('2','b','',#2,#5,$);\n#6=PRODUCT('NEXT_ASSEMBLY_USAGE_OCCURRENCE','x','',(#7));\nENDSEC;\n");
+            Assert.Equal(2, ExportFileCheck.StepOccurrences(path));
+        }
+        finally
+        {
+            System.IO.File.Delete(path);
+        }
+    }
 }
