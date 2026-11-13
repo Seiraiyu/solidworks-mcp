@@ -60,7 +60,7 @@ public class FlatPatternFileCheckTests
         Assert.Contains("0 = 4", file.Layers);
         Assert.Contains("BENDLINES = 4", file.Layers);
         Assert.Contains(file.Checks, c => c.Contains("136.5664 × 96.5664 mm") && c.Contains("136.57 × 96.57 mm"));
-        Assert.Contains(file.Checks, c => c.Contains("4 bend lines across the outline for 4 bends"));
+        Assert.Contains(file.Checks, c => c.Contains("4 bend lines (lines outside the outline's chain) for 4 bends"));
     }
 
     [Fact]
@@ -139,7 +139,7 @@ public class FlatPatternFileCheckTests
         string path = Write("layer0.dxf", Drawing(Array.Empty<object>(), entities));
         var file = FlatPatternFileCheck.Check(path, FlatPatternFormat.Dxf, _started, expected);
         Assert.Equal(1, file.BendLines);
-        Assert.Contains(file.Checks, c => c.Contains("1 bend lines across the outline for 1 bends"));
+        Assert.Contains(file.Checks, c => c.Contains("1 bend lines (lines outside the outline's chain) for 1 bends"));
     }
 
     [Fact]

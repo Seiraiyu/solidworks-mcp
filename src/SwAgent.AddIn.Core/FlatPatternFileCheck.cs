@@ -62,7 +62,7 @@ public sealed class FlatPatternFile
 /// Proves on disk that export.flat_pattern wrote the flat pattern (design 454, Flat-pattern export): the file was
 /// written by this call and is not empty; a DXF parses, and the extents of its entities match the flat size from the
 /// cut list, turned or not (the header's $EXTMIN/$EXTMAX is reported, not compared: SOLIDWORKS may write the sheet
-/// there); with bend lines asked for it holds a line across the outline for each bend (<see cref="DxfFile.BendLines"/>),
+/// there); with bend lines asked for it holds a bend line for each bend (<see cref="DxfFile.BendLines"/>),
 /// and without, none. A DWG starts with its AC10xx version and is at least
 /// <see cref="DwgLeastBytes"/> long; its extents are not read. Otherwise verification_failed naming the check, what
 /// was expected and what was found.
@@ -158,7 +158,7 @@ public static class FlatPatternFileCheck
         }
         file.Checks.Add(FormattableString.Invariant($"its extents {got} ({file.ExtentsFrom}, {box}) match the flat size {want} from the cut list within {tolerance:0.####} mm"));
 
-        string found = $"{dxf.BendLines} lines across the outline ({dxf.NamedBendLines} entities on a layer or linetype named *{DxfFile.BendMarker}*); layers {string.Join(", ", file.Layers)}; linetypes {string.Join(", ", file.Linetypes)}";
+        string found = $"{dxf.BendLines} lines outside the outline's chain ({dxf.NamedBendLines} entities on a layer or linetype named *{DxfFile.BendMarker}*); layers {string.Join(", ", file.Layers)}; linetypes {string.Join(", ", file.Linetypes)}";
         if (!expected.BendLines && expected.Sketches)
         {
             file.Checks.Add(dxf.BendLines == 0
@@ -182,7 +182,7 @@ public static class FlatPatternFileCheck
         }
         else
         {
-            file.Checks.Add($"{dxf.BendLines} bend lines across the outline for {expected.Bends} bends");
+            file.Checks.Add($"{dxf.BendLines} bend lines (lines outside the outline's chain) for {expected.Bends} bends");
         }
     }
 }

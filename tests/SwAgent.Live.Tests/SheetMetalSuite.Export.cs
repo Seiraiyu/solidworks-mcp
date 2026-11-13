@@ -152,16 +152,30 @@ public sealed partial class SheetMetalSuite
         }
 
         await Call<SheetMetalSetParametersRequest, SheetMetalSetParametersResult>(new SheetMetalSetParametersRequest { Document = path, Allowance = new BendAllowance { KFactor = 0.1 } });
-        // Without bend lines and sketches ExportFlatPatternView writes; with sketches ExportToDWG2: both calls see the change.
-        foreach (var (name, sketches, method) in new[] { ("tab-unsaved.dxf", false, "ExportFlatPatternView"), ("tab-unsaved-sketches.dxf", true, "ExportToDWG2") })
+        // A part with unsaved changes goes to ExportToDWG2 alone, with sketches or without bend lines: ExportFlatPatternView
+        // wrote the saved base (100 × 60) for it (6.D live run). Each export sees the change, and the plain one has no bend lines.
+        // Both are made and recorded before either is asserted, so the report says what each call wrote (6.D live run).
+        var failures = new List<string>();
+        foreach (var (name, sketches, method) in new[] { ("tab-unsaved-sketches.dxf", true, "ExportToDWG2"), ("tab-unsaved.dxf", false, "ExportToDWG2") })
         {
-            var unsaved = await ExportFlat(new ExportFlatPatternRequest { Document = path, Path = ScratchFile(name), Format = FlatPatternFormat.Dxf, Sketches = sketches, BendLines = sketches });
-            Assert.Equal(method, unsaved.Method);
-            Within(60 + Across25AtK01, unsaved.Extents!.WidthMm, 0.01, $"{name}: its width at K 0.1, as the part is now");
-            Assert.True(unsaved.Document.Dirty, "the part keeps its unsaved changes");
-            Assert.False(unsaved.MarkedDirty, "a part already changed is not marked by the export");
-            notes.Add(FormattableString.Invariant($"unsaved at K 0.1, by {unsaved.Method}:{unsaved.Extents.LengthMm:0.####} × {unsaved.Extents.WidthMm:0.####} (expected 100 × {60 + Across25AtK01:0.####}); {HeaderAgrees(unsaved)}"));
+            try
+            {
+                var unsaved = await ExportFlat(new ExportFlatPatternRequest { Document = path, Path = ScratchFile(name), Format = FlatPatternFormat.Dxf, Sketches = sketches, BendLines = sketches });
+                Assert.Equal(method, unsaved.Method);
+                if (!sketches) Assert.Equal(0, unsaved.BendLines);
+                Within(60 + Across25AtK01, unsaved.Extents!.WidthMm, 0.01, $"{name}: its width at K 0.1, as the part is now");
+                Assert.True(unsaved.Document.Dirty, "the part keeps its unsaved changes");
+                Assert.False(unsaved.MarkedDirty, "a part already changed is not marked by the export");
+                notes.Add(FormattableString.Invariant($"unsaved at K 0.1, by {unsaved.Method}: {unsaved.Extents.LengthMm:0.####} × {unsaved.Extents.WidthMm:0.####} (expected 100 × {60 + Across25AtK01:0.####}); {HeaderAgrees(unsaved)}"));
+            }
+            catch (Exception e) when (e is SwAgentException || e is Xunit.Sdk.XunitException)
+            {
+                string measured = e is SwAgentException s && s.Error.Details?["measured"] is { } m ? $" (measured {m})" : "";
+                failures.Add($"{name} by {method}: {e.Message}{measured}");
+                notes.Add($"unsaved at K 0.1, {name} by {method}: FAILED {e.Message}");
+            }
         }
+        Assert.True(failures.Count == 0, string.Join(" | ", failures) + " || " + string.Join(" | ", notes));
         var state = (await _run.AddinStateAsync()).Documents.Single(d => string.Equals(d.Path, path, StringComparison.OrdinalIgnoreCase));
         Assert.True(state.Dirty, "still unsaved after both exports");
         return string.Join(" | ", notes);

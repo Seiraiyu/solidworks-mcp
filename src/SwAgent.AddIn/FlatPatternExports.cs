@@ -24,12 +24,14 @@ public static class FlatPatternExports
     public static int DwgOptions(bool bendLines, bool sketches) => GeometryBit | (bendLines ? BendLinesBit : 0) | (sketches ? SketchesBit : 0);
 
     /// <summary>
-    /// The calls to try, in order, until one writes the file. Sketches: ExportToDWG2 alone. Bend lines: ExportToDWG2
-    /// first, because on 2026 SP4 ExportFlatPatternView drew none when asked (6.D live run); if only it writes, the
-    /// file's bend-line check refuses it. Neither: CADapter's ExportFlatPatternView first.
+    /// The calls to try, in order, until one writes the file (6.D live run, SOLIDWORKS 2026 SP4). Sketches, or a part
+    /// with unsaved changes: ExportToDWG2 alone (ExportFlatPatternView cannot add sketches, and on a part with unsaved
+    /// changes it wrote the base alone, 100 × 60 for a flat of 100 × 82.0265, where ExportToDWG2 wrote the part as it
+    /// is now). Bend lines: ExportToDWG2 first, because ExportFlatPatternView drew none when asked; if only it writes,
+    /// the file's bend-line check refuses it. Neither: CADapter's ExportFlatPatternView first.
     /// </summary>
-    public static IReadOnlyList<string> Methods(bool bendLines, bool sketches) =>
-        sketches ? new[] { ToDwg2 } : bendLines ? new[] { ToDwg2, FlatPatternView } : new[] { FlatPatternView, ToDwg2 };
+    public static IReadOnlyList<string> Methods(bool bendLines, bool sketches, bool unsaved) =>
+        sketches || unsaved ? new[] { ToDwg2 } : bendLines ? new[] { ToDwg2, FlatPatternView } : new[] { FlatPatternView, ToDwg2 };
 
     /// <summary>How far each side of a DXF may be from the cut list's flat size: 0.01 mm beyond the cut list's own rounding.</summary>
     public static double ToleranceMm(IReadOnlyList<KeyValuePair<string, string>> cutList, double mmPerUnit) =>

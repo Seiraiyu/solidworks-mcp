@@ -45,7 +45,7 @@ public class ExportFlatPatternOperationTests : SheetMetalTestBase
         Assert.Contains("0 = 6", result.Layers);
         Assert.Equal(SheetState.Folded, result.State);
         Assert.Contains(result.Checks, c => c.Contains("match the flat size"));
-        Assert.Contains(result.Checks, c => c.Contains("2 bend lines across the outline for 2 bends"));
+        Assert.Contains(result.Checks, c => c.Contains("2 bend lines (lines outside the outline's chain) for 2 bends"));
         Assert.Contains(result.Checks, c => c.Contains("kept its path") && c.Contains("folded"));
         Assert.False(result.Document.Dirty);
         Assert.Equal(new FileInfo(path).Length, result.Bytes);
@@ -242,9 +242,12 @@ public class ExportFlatPatternOperationTests : SheetMetalTestBase
     {
         var doc = SavedChannel();
         doc.Document.Dirty = true;
-        var result = ExportFlat(new ExportFlatPatternRequest { Path = PathOf("dirty.dxf"), Format = FlatPatternFormat.Dxf });
+        var result = ExportFlat(new ExportFlatPatternRequest { Path = PathOf("dirty.dxf"), Format = FlatPatternFormat.Dxf, BendLines = false });
         Assert.True(result.Document.Dirty);
         Assert.True(doc.Info().Dirty);
+        Assert.False(result.MarkedDirty);
+        // ExportFlatPatternView writes the base alone for a part with unsaved changes (6.D live run): never asked.
+        Assert.Equal(new[] { FlatPatternExports.ToDwg2 }, doc.FlatExports.Select(x => x.Method));
     }
 
     [Fact]

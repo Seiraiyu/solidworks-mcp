@@ -25,14 +25,14 @@ public class FlatPatternExportsTests
     [Fact]
     public void Without_bend_lines_CADapters_call_is_tried_first_and_ExportToDWG2_after_it()
     {
-        Assert.Equal(new[] { FlatPatternExports.FlatPatternView, FlatPatternExports.ToDwg2 }, FlatPatternExports.Methods(bendLines: false, sketches: false));
+        Assert.Equal(new[] { FlatPatternExports.FlatPatternView, FlatPatternExports.ToDwg2 }, FlatPatternExports.Methods(bendLines: false, sketches: false, unsaved: false));
     }
 
     [Fact]
     public void With_bend_lines_ExportToDWG2_is_tried_first()
     {
         // The 6.D live run: ExportFlatPatternView drew no bend lines on 2026 SP4 when asked for them; ExportToDWG2 did.
-        Assert.Equal(new[] { FlatPatternExports.ToDwg2, FlatPatternExports.FlatPatternView }, FlatPatternExports.Methods(bendLines: true, sketches: false));
+        Assert.Equal(new[] { FlatPatternExports.ToDwg2, FlatPatternExports.FlatPatternView }, FlatPatternExports.Methods(bendLines: true, sketches: false, unsaved: false));
     }
 
     [Theory]
@@ -41,7 +41,17 @@ public class FlatPatternExportsTests
     public void Sketches_are_written_by_ExportToDWG2_alone(bool bendLines)
     {
         // ExportFlatPatternView takes only "remove bend lines": it cannot add sketches.
-        Assert.Equal(new[] { FlatPatternExports.ToDwg2 }, FlatPatternExports.Methods(bendLines, sketches: true));
+        Assert.Equal(new[] { FlatPatternExports.ToDwg2 }, FlatPatternExports.Methods(bendLines, sketches: true, unsaved: false));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_part_with_unsaved_changes_is_written_by_ExportToDWG2_alone(bool bendLines)
+    {
+        // The 6.D live run: on a part with unsaved changes ExportFlatPatternView wrote 100 × 60 (the base alone) for a
+        // flat of 100 × 82.0265; ExportToDWG2 wrote the part as it is now.
+        Assert.Equal(new[] { FlatPatternExports.ToDwg2 }, FlatPatternExports.Methods(bendLines, sketches: false, unsaved: true));
     }
 
     [Fact]
