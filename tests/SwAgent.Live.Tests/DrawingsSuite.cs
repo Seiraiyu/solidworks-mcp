@@ -545,8 +545,7 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
         }
         Assert.Equal("B", detail.Label);
         Assert.Equal(2, detail.View.Scale.Numerator);
-        Near(330, detail.View.Position.X, "detail x");
-        Near(90, detail.View.Position.Y, "detail y");
+        // Where it is: the hole's centre drawn at (330, 90) (below); its Position is its own origin (5.B live run).
         Assert.True(detail.PointsInside > 0, "the detail draws edges");
         var shown = await Call<ViewEntitiesRequest, ViewEntitiesResult>(new ViewEntitiesRequest { Document = Drawing, View = detail.View.Name });
         var circle = Assert.Single(shown.Entities, x => x.Shape == DrawnShape.Circle && Math.Abs(x.RadiusMm!.Value - 10) <= Tol);

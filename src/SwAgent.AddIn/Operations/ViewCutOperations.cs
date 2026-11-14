@@ -195,6 +195,18 @@ public sealed class ViewDetailOperation : DrawingChangeOperation<ViewDetailReque
                 $"SOLIDWORKS made no detail of {_parent} around {centre.Described}; nothing was left on the drawing",
                 new JsonObject { ["parent"] = _parent, ["label"] = label });
         MadeCut(doc, drawing, tx, name, _parent, label, section: false);
+        // SOLIDWORKS 2026 SP4 gives a detail's Position as its own origin, not the circle's centre, and draws that centre
+        // a fraction of a millimetre off where it was asked (5.B live run): move the view so its transform draws the
+        // centre at at.
+        if (drawing.ReadView(name) is ViewFacts made && drawing.Transform(name) is ViewTransform madeT)
+        {
+            var landed = ViewGeometry.ToSheet(madeT, centre.Point);
+            if (!ViewGeometry.Near(landed, _at))
+            {
+                context.Log.Info(FormattableString.Invariant($"view.detail: {name} drew the circle's centre at {landed} (its position {made.Position}); moving it to {_at}"));
+                drawing.SetPosition(name, new SheetPoint(made.Position.X + _at.X - landed.X, made.Position.Y + _at.Y - landed.Y));
+            }
+        }
         context.Log.Info(FormattableString.Invariant($"view.detail: {name} ({label}) of {_parent} around {centre.Described}, r {request.RadiusMm} mm, at {request.Scale} on {_at}"));
         return new ViewDetailResult
         {
@@ -219,12 +231,15 @@ public sealed class ViewDetailOperation : DrawingChangeOperation<ViewDetailReque
         if (facts.Parent != _parent) throw ViewCreateOperation.Failed(name, "parent", _parent, facts.Parent ?? "none");
         var detail = drawing.ReadDetail(name) ?? throw ViewCreateOperation.Failed(name, "detail", $"the detail {result.Label}", "no detail");
         if (!string.Equals(detail.Label, result.Label, StringComparison.OrdinalIgnoreCase)) throw ViewCreateOperation.Failed(name, "label", result.Label, detail.Label);
-        if (!ViewGeometry.Near(facts.Position, _at)) throw ViewCreateOperation.Failed(name, "position", _at.ToString(), facts.Position.ToString());
         if (!DrawingReader.SameScale(facts.Scale, request.Scale)) throw ViewCreateOperation.Failed(name, "scale", request.Scale.ToString(), facts.Scale.ToString());
         double scale = DrawingReader.Ratio(request.Scale);
         var t = ViewChecks.Scale(drawing, name, scale);
         if (ViewCutGeometry.DetailTurnMismatch(drawing.Transform(_parent)!, t) is string turned)
             throw ViewCreateOperation.Failed(name, "turn", $"turned as {_parent}", turned);
+        // Where it is: where its transform draws the circle's centre (its Position is its own origin, not the centre).
+        var drawnCentre = ViewGeometry.ToSheet(t, result.Centre);
+        if (!ViewGeometry.Near(drawnCentre, _at))
+            throw ViewCreateOperation.Failed(name, "position", $"the circle's centre drawn at {_at}", $"{drawnCentre} (its position {facts.Position})");
         var points = DrawingReader.Points(drawing, facts);
         if (points.Count == 0)
         {

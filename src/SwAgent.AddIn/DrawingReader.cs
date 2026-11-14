@@ -66,29 +66,44 @@ public static class DrawingReader
     /// </summary>
     public static SheetBox? Extents(ISwDrawing drawing, ViewFacts facts)
     {
+        var numbers = drawing.Polylines(facts.Name);
         try
         {
-            return ViewGeometry.DrawnExtents(drawing.Polylines(facts.Name), facts.Position, Ratio(facts.Scale));
+            return ViewGeometry.DrawnExtents(numbers, facts.Position, Ratio(facts.Scale));
         }
         catch (FormatException e)
         {
-            throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS' polylines for {facts.Name} do not read as edges: {e.Message}",
-                new JsonObject { ["view"] = facts.Name });
+            throw Unreadable(facts, numbers, e);
         }
     }
 
     /// <summary>Every point a view draws, sheet mm (ViewGeometry.DrawnPoints); api_error when SOLIDWORKS' numbers do not read as polylines.</summary>
     public static System.Collections.Generic.List<SheetPoint> Points(ISwDrawing drawing, ViewFacts facts)
     {
+        var numbers = drawing.Polylines(facts.Name);
         try
         {
-            return ViewGeometry.DrawnPoints(drawing.Polylines(facts.Name), facts.Position, Ratio(facts.Scale));
+            return ViewGeometry.DrawnPoints(numbers, facts.Position, Ratio(facts.Scale));
         }
         catch (FormatException e)
         {
-            throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS' polylines for {facts.Name} do not read as edges: {e.Message}",
-                new JsonObject { ["view"] = facts.Name });
+            throw Unreadable(facts, numbers, e);
         }
+    }
+
+    /// <summary>The most of SOLIDWORKS' polyline numbers an unreadable view's error gives.</summary>
+    const int NumbersShown = 1200;
+
+    /// <summary>
+    /// api_error for polylines that do not read as edges, giving SOLIDWORKS' own numbers (up to <see cref="NumbersShown"/>)
+    /// so the add-in log says what it returned (5.B live run: a section view's did not read).
+    /// </summary>
+    static SwAgentException Unreadable(ViewFacts facts, System.Collections.Generic.IReadOnlyList<double> numbers, FormatException e)
+    {
+        string shown = string.Join(", ", System.Linq.Enumerable.Take(numbers, NumbersShown).Select(n => n.ToString("R", System.Globalization.CultureInfo.InvariantCulture)));
+        return new SwAgentException(ErrorCode.ApiError,
+            $"SOLIDWORKS' polylines for {facts.Name} do not read as edges: {e.Message}; IView.GetPolylines5 gave {numbers.Count} numbers: {shown}{(numbers.Count > NumbersShown ? ", …" : "")}",
+            new JsonObject { ["view"] = facts.Name });
     }
 
     /// <summary>A scale as a number: 1:2 is 0.5.</summary>

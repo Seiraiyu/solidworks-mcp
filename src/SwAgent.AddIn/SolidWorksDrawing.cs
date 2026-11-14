@@ -159,8 +159,12 @@ internal sealed class SolidWorksDrawing : ISwDrawing
     public ViewTransform? Transform(string view) =>
         ViewTransform.FromArrayData((View(view).ModelToViewTransform?.ArrayData as double[])?.ToList());
 
+    /// <summary>
+    /// The view's edges without its crosshatch (GetPolylines5's option 0): a section view's hatch lines did not read as
+    /// edges in the 5.B live run, and lie inside the faces they fill, so they add nothing to what a view draws.
+    /// </summary>
     public IReadOnlyList<double> Polylines(string view) =>
-        View(view).GetPolylines5(1) is double[] numbers ? numbers : new double[0];
+        View(view).GetPolylines5(0) is double[] numbers ? numbers : new double[0];
 
     public string? CreateModelView(string modelPath, string orientation, SheetPoint at)
     {
@@ -315,12 +319,27 @@ internal sealed class SolidWorksDrawing : ISwDrawing
         _doc.ClearSelection2(true);
         try
         {
-            return _doc.Extension.SelectByID2(line.GetName(), "SECTIONLINE", 0, 0, 0, false, 0, null, 0) && _doc.Extension.DeleteSelection2(0);
+            return DeleteNamed(line.GetName(), "SECTIONLINE", parent);
         }
         finally
         {
             _doc.ClearSelection2(true);
         }
+    }
+
+    /// <summary>
+    /// Selects a drawing item by its name and type (SelectByID2), as SOLIDWORKS names it and then qualified by its view
+    /// (name@view), and deletes the selection. False when neither selects or the delete is refused.
+    /// </summary>
+    bool DeleteNamed(string? name, string type, string view)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        foreach (string id in name!.Contains("@") ? new[] { name } : new[] { name, name + "@" + view })
+        {
+            _doc.ClearSelection2(true);
+            if (_doc.Extension.SelectByID2(id, type, 0, 0, 0, false, 0, null, 0)) return _doc.Extension.DeleteSelection2(0);
+        }
+        return false;
     }
 
     public string? DetailView(string parent, SheetPoint centre, double radiusMm, SheetPoint at, ScaleRatio scale, string label)
@@ -346,7 +365,10 @@ internal sealed class SolidWorksDrawing : ISwDrawing
         _doc.ClearSelection2(true);
         try
         {
-            return circle.Select(false, null) && _doc.Extension.DeleteSelection2(0);
+            // IDetailCircle.Select, then by its name (5.B live run: the first left the circle in the parent).
+            if (circle.Select(false, null) && _doc.Extension.DeleteSelection2(0) && !Details(v!).Any(d => string.Equals(d.GetLabel(), label, StringComparison.OrdinalIgnoreCase)))
+                return true;
+            return DeleteNamed(circle.GetName(), "DETAILCIRCLE", parent);
         }
         finally
         {

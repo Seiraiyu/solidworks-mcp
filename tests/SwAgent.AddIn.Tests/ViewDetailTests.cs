@@ -109,6 +109,35 @@ public class ViewDetailTests : DrawingTestBase
     }
 
     [Fact]
+    public void A_detail_SOLIDWORKS_puts_off_where_asked_is_moved_so_its_circles_centre_is_drawn_there()
+    {
+        // 5.B live run: SOLIDWORKS 2026 SP4 gives a detail's Position as its own origin, 20 mm (10 mm at 2:1) right of the
+        // circle's centre, and drew that centre about 0.34 mm off where it was asked.
+        Drw.AfterCreate = v =>
+        {
+            v.Facts.Position = new SheetPoint(v.Facts.Position.X + 20 - 0.344, v.Facts.Position.Y + 0.326);
+            for (int i = 9; i <= 21; i += 3) v.Drawn![i] -= 0.01;
+            var t = v.Transform!;
+            v.Transform = new SwAgent.AddIn.Core.ViewTransform(t.Rotation, t.TxMm - 0.344, t.TyMm + 0.326, t.TzMm, t.Scale);
+        };
+        var r = Detail(Hole, at: new SheetPoint(300, 100));
+        Assert.Equal(320, r.View.Position.X, 9);
+        Assert.Equal(100, r.View.Position.Y, 9);
+        var centre = SwAgent.AddIn.Core.ViewGeometry.ToSheet(Drw.Transform(r.View.Name)!, new Point3(20, 20, 10));
+        Assert.Equal(300, centre.X, 9);
+        Assert.Equal(100, centre.Y, 9);
+    }
+
+    [Fact]
+    public void Polylines_that_do_not_read_as_edges_are_api_error_giving_SOLIDWORKS_numbers()
+    {
+        Drw.AfterCreate = v => v.Drawn = new List<double> { 1, 0, 0, 1, 2, 3, 4, 5, 7, 0.25 };
+        var e = Fails(() => Detail(Hole));
+        Assert.Equal(ErrorCode.ApiError, e.Code);
+        Assert.Contains("10 numbers: 1, 0, 0, 1, 2, 3, 4, 5, 7, 0.25", e.Message);
+    }
+
+    [Fact]
     public void SOLIDWORKS_making_no_detail_is_operation_failed()
     {
         Drw.CreateFails = true;
