@@ -289,8 +289,19 @@ sealed class FakeDrawing : ISwDrawing
             if (Math.Abs(ViewGeometry.ToSheet(v.Transform!, origin).Y - ViewGeometry.ToSheet(parent.Transform!, origin).Y) < 1e-9) dy = 0;
             else dx = 0;
         }
+        // Views projected from it follow it along their centre lines, as SOLIDWORKS keeps them aligned.
+        foreach (var child in AllViews.Where(c => c.Facts.Parent == view && c.Facts.Type == ViewType.Projected && c.Transform != null && v.Transform != null).ToList())
+        {
+            var origin = new Point3(0, 0, 0);
+            bool horizontal = Math.Abs(ViewGeometry.ToSheet(child.Transform!, origin).Y - ViewGeometry.ToSheet(v.Transform!, origin).Y) < 1e-9;
+            Shift(child, horizontal ? 0 : dx, horizontal ? dy : 0);
+        }
         Shift(v, dx, dy);
+        AfterMove?.Invoke(view);
     }
+
+    /// <summary>Called with the name of each view SetPosition moved.</summary>
+    public Action<string>? AfterMove { get; set; }
 
     public void SetScale(string view, ScaleRatio? scale)
     {
@@ -299,7 +310,19 @@ sealed class FakeDrawing : ISwDrawing
         var v = View(view);
         v.Facts.SheetScale = scale == null;
         var sheet = Sheets.Single(s => s.Views.Contains(v));
-        Rescale(v, scale ?? new ScaleRatio(sheet.Facts.Scale.Numerator, sheet.Facts.Scale.Denominator));
+        var to = scale ?? new ScaleRatio(sheet.Facts.Scale.Numerator, sheet.Facts.Scale.Denominator);
+        Rescale(v, to);
+        // Views projected from it are drawn at its scale, and stay on its centre lines.
+        foreach (var child in AllViews.Where(c => c.Facts.Parent == view && c.Facts.Type == ViewType.Projected && c.Transform != null).ToList())
+        {
+            var origin = new Point3(0, 0, 0);
+            var before = (Parent: ViewGeometry.ToSheet(v.Transform!, origin), Child: ViewGeometry.ToSheet(child.Transform!, origin));
+            bool horizontal = Math.Abs(before.Parent.Y - before.Child.Y) <= 1e-9;
+            Rescale(child, to);
+            var p = ViewGeometry.ToSheet(v.Transform!, origin);
+            var c = ViewGeometry.ToSheet(child.Transform!, origin);
+            Shift(child, horizontal ? 0 : p.X - c.X, horizontal ? p.Y - c.Y : 0);
+        }
     }
 
     public void SetDisplay(string view, ViewDisplay display)

@@ -89,6 +89,106 @@ public class ViewProjectTests : DrawingTestBase
     }
 }
 
+public class ViewSetTests : DrawingTestBase
+{
+    readonly FakeView _front;
+    readonly string _right;
+
+    public ViewSetTests()
+    {
+        _front = Drw.AddView("Sheet1", Block, "front", new SheetPoint(100, 150));
+        _right = Drw.ProjectView(_front.Facts.Name, new SheetPoint(160, 150))!;
+        Drw.Calls.Clear();
+    }
+
+    ViewResult Set(ViewSetRequest request) => Run(new ViewSetOperation(Services), request);
+
+    [Fact]
+    public void A_model_view_moves_and_its_projected_view_follows_on_its_centre_line()
+    {
+        var result = Set(new ViewSetRequest { View = _front.Facts.Name, At = new SheetPoint(120, 200) });
+        Assert.Equal(200, result.View.Position.Y, 9);
+        Assert.Equal(200, Drw.ReadView(_right)!.Position.Y, 9);
+        var changed = result.Change.Changed.Single();
+        Assert.Equal("position", changed.Property);
+        Assert.Equal("(100, 150)", changed.Before);
+    }
+
+    [Fact]
+    public void A_projected_view_moves_along_its_alignment_and_not_off_it()
+    {
+        Assert.Equal(250, Set(new ViewSetRequest { View = _right, At = new SheetPoint(250, 150) }).View.Position.X, 9);
+        var e = Fails(() => Set(new ViewSetRequest { View = _right, At = new SheetPoint(250, 100) }));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal("/at/y", e.Error.Details!["field"]);
+        Assert.Contains(_front.Facts.Name, e.Message);
+    }
+
+    [Fact]
+    public void A_view_is_rescaled_about_its_centre_and_drawn_at_the_new_scale()
+    {
+        var v = Set(new ViewSetRequest { View = _front.Facts.Name, Scale = new ScaleRatio(2, 1) }).View;
+        Assert.Equal(120, v.Extents!.Max.X - v.Extents.Min.X, 9);
+        Assert.Equal(100, v.Position.X, 9);
+        Assert.False(v.SheetScale);
+        var back = Set(new ViewSetRequest { View = _front.Facts.Name, SheetScale = true }).View;
+        Assert.True(back.SheetScale);
+        Assert.Equal(1, back.Scale.Numerator);
+    }
+
+    [Fact]
+    public void Display_and_configuration_are_set_and_recorded()
+    {
+        Drw.Configurations[Block.Document.Path!] = new List<string> { "Default", "Long" };
+        var result = Set(new ViewSetRequest { View = _front.Facts.Name, Display = ViewDisplay.Wireframe, Configuration = "Long" });
+        Assert.Equal(ViewDisplay.Wireframe, result.View.Display);
+        Assert.Equal("Long", result.View.Configuration);
+        Assert.Equal(new[] { "configuration", "display" }, result.Change.Changed.Select(c => c.Property));
+    }
+
+    [Theory]
+    [InlineData("nothing", "/view")]
+    [InlineData("both scales", "/sheet_scale")]
+    [InlineData("projected scale", "/scale")]
+    [InlineData("projected configuration", "/configuration")]
+    [InlineData("off the sheet", "/at")]
+    public void Bad_requests_are_refused_naming_the_field(string what, string field)
+    {
+        var request = what switch
+        {
+            "nothing" => new ViewSetRequest { View = _front.Facts.Name },
+            "both scales" => new ViewSetRequest { View = _front.Facts.Name, Scale = new ScaleRatio(1, 2), SheetScale = true },
+            "projected scale" => new ViewSetRequest { View = _right, Scale = new ScaleRatio(1, 2) },
+            "projected configuration" => new ViewSetRequest { View = _right, Configuration = "Long" },
+            _ => new ViewSetRequest { View = _front.Facts.Name, At = new SheetPoint(100, -5) },
+        };
+        var e = Fails(() => Set(request));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal(field, e.Error.Details!["field"]);
+        Assert.Empty(Drw.Calls);
+    }
+
+    [Fact]
+    public void A_value_that_does_not_take_is_put_back_and_fails_verification()
+    {
+        Drw.ViewSetIgnored = true;
+        var e = Fails(() => Set(new ViewSetRequest { View = _front.Facts.Name, Display = ViewDisplay.Shaded }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("display", e.Error.Details!["check"]);
+        Assert.Equal(new object?[] { _front.Facts.Name }, (List<object?>)e.Error.Details["rolled_back"]!);
+    }
+
+    [Fact]
+    public void A_move_that_breaks_a_childs_alignment_is_put_back()
+    {
+        var child = Drw.View(_right);
+        Drw.AfterMove = moved => { if (moved == _front.Facts.Name) child.Transform = new SwAgent.AddIn.Core.ViewTransform(child.Transform!.Rotation, child.Transform.TxMm + 3, child.Transform.TyMm + 3, 0, 1); };
+        var e = Fails(() => Set(new ViewSetRequest { View = _front.Facts.Name, At = new SheetPoint(110, 140) }));
+        Assert.Equal("alignment", e.Error.Details!["check"]);
+        Assert.Equal(100, Drw.ReadView(_front.Facts.Name)!.Position.X, 9);
+    }
+}
+
 public class ViewCreateTests : DrawingTestBase
 {
     ViewResult Create(ViewCreateRequest request) => Run(new ViewCreateOperation(Services), request);

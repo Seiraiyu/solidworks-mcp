@@ -105,6 +105,128 @@ public sealed class ViewProjectOperation : DrawingChangeOperation<ViewProjectReq
     }
 }
 
+public sealed class ViewSetOperation : DrawingChangeOperation<ViewSetRequest, ViewResult>
+{
+    public ViewSetOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    ViewFacts _old = new ViewFacts();
+    SheetPoint _at = new SheetPoint();
+
+    protected override string? DocumentOf(ViewSetRequest request) => request.Document;
+
+    protected override ViewResult Change(ISwDocument doc, ISwDrawing drawing, ViewSetRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        string name = View(doc, drawing, request.View, "/view");
+        var old = drawing.ReadView(name)!;
+        _old = old;
+        if (request.At == null && request.Scale == null && request.SheetScale == null && request.Display == null && request.Configuration == null)
+            throw ViewRequests.Invalid("/view", "view.set changes nothing: give at, scale, sheet_scale, display or configuration");
+        if (request.Scale != null && request.SheetScale != null) throw ViewRequests.Invalid("/sheet_scale", "/sheet_scale: give scale or sheet_scale, not both");
+        if (request.SheetScale == false) throw ViewRequests.Invalid("/sheet_scale", "/sheet_scale: false is not a scale; give scale for the view's own");
+        ViewRequests.Scale(request.Scale, "/scale");
+        bool projected = old.Type == ViewType.Projected && old.Parent != null;
+        if (projected && (request.Scale != null || request.SheetScale != null))
+            throw ViewRequests.Invalid(request.Scale != null ? "/scale" : "/sheet_scale", $"{name} is projected from {old.Parent} and drawn at its scale; rescale {old.Parent}");
+        if (old.Type != ViewType.Model && request.Configuration != null)
+            throw ViewRequests.Invalid("/configuration", $"/configuration: {name} is a {WireNames.ForEnum(old.Type)} view and shows its parent's configuration; change {old.Parent ?? "its parent"}'s");
+        if (request.Configuration != null && request.Configuration.Trim().Length == 0) throw ViewRequests.Invalid("/configuration", "/configuration: give a configuration's name");
+        _at = request.At ?? old.Position;
+        if (request.At != null)
+        {
+            ViewRequests.OnSheet(request.At, drawing.ReadSheet(old.Sheet)!, "/at");
+            if (projected && Alignment(drawing, old.Parent!, name) is bool horizontal)
+            {
+                double off = horizontal ? request.At.Y - old.Position.Y : request.At.X - old.Position.X;
+                if (Math.Abs(off) > ViewGeometry.PositionToleranceMm)
+                {
+                    string axis = horizontal ? "y" : "x";
+                    throw ViewRequests.Invalid("/at/" + axis, FormattableString.Invariant(
+                        $"/at/{axis}: {name} is aligned with {old.Parent} and moves only along its {(horizontal ? "horizontal" : "vertical")} centre line, {axis} = {(horizontal ? old.Position.Y : old.Position.X):0.###} mm (SOLIDWORKS would keep that {axis} and say nothing)"));
+                }
+            }
+        }
+
+        if (request.Configuration != null && !string.Equals(request.Configuration, old.Configuration, StringComparison.Ordinal))
+        {
+            drawing.SetConfiguration(name, request.Configuration);
+            tx.Edited(new ChangedItem { Name = name, Property = "configuration", Before = old.Configuration ?? "", After = request.Configuration }, () =>
+            {
+                if (old.Configuration != null) drawing.SetConfiguration(name, old.Configuration);
+            });
+        }
+        if (request.Scale != null || request.SheetScale == true)
+        {
+            drawing.SetScale(name, request.Scale);
+            tx.Edited(new ChangedItem { Name = name, Property = "scale", Before = Scale(old), After = request.Scale?.ToString() ?? "the sheet's" }, () =>
+            {
+                drawing.SetScale(name, old.SheetScale ? null : old.Scale);
+                if (!(drawing.ReadView(name) is ViewFacts back) || !DrawingReader.SameScale(back.Scale, old.Scale))
+                    throw new SwAgentException(ErrorCode.OperationFailed, $"{name} did not take its old scale {Scale(old)} back");
+            });
+        }
+        if (request.Display != null)
+        {
+            drawing.SetDisplay(name, request.Display.Value);
+            tx.Edited(new ChangedItem { Name = name, Property = "display", Before = old.Display == null ? "" : WireNames.ForEnum(old.Display.Value), After = WireNames.ForEnum(request.Display.Value) }, () =>
+            {
+                if (old.Display != null) drawing.SetDisplay(name, old.Display.Value);
+            });
+        }
+        if (request.At != null || request.Scale != null || request.SheetScale == true)
+        {
+            drawing.SetPosition(name, _at);
+            tx.Edited(new ChangedItem { Name = name, Property = "position", Before = old.Position.ToString(), After = _at.ToString() }, () =>
+            {
+                drawing.SetPosition(name, old.Position);
+                if (!(drawing.ReadView(name) is ViewFacts back) || !ViewGeometry.Near(back.Position, old.Position))
+                    throw new SwAgentException(ErrorCode.OperationFailed, $"{name} did not go back to {old.Position}");
+            });
+        }
+        context.Log.Info($"view.set: {name}: {string.Join(", ", tx.Changed.Select(c => $"{c.Property} {c.Before} -> {c.After}"))}");
+        return new ViewResult { View = new ViewInfo { Name = name, Sheet = old.Sheet }, ModelUnsaved = drawing.ModelOf(name)?.Info().Dirty == true };
+    }
+
+    /// <summary>Every value reads back; what the view draws is its model's box at its scale; the views projected from it are still aligned.</summary>
+    protected override void Check(ISwDocument doc, ISwDrawing drawing, ViewSetRequest request, ViewResult result)
+    {
+        string name = result.View.Name;
+        var facts = drawing.ReadView(name) ?? throw ViewCreateOperation.Failed(name, "exists", "the view on its sheet", "no such view");
+        if (request.Configuration != null && !string.Equals(facts.Configuration, request.Configuration, StringComparison.OrdinalIgnoreCase))
+            throw ViewCreateOperation.Failed(name, "configuration", request.Configuration, facts.Configuration ?? "none");
+        if (request.Display != null && facts.Display != request.Display)
+            throw ViewCreateOperation.Failed(name, "display", WireNames.ForEnum(request.Display.Value), facts.Display == null ? "a mode the add-in does not name" : WireNames.ForEnum(facts.Display.Value));
+        if (!ViewGeometry.Near(facts.Position, _at)) throw ViewCreateOperation.Failed(name, "position", _at.ToString(), facts.Position.ToString());
+        var scale = request.Scale ?? (request.SheetScale == true ? drawing.ReadSheet(facts.Sheet)!.Scale : _old.Scale);
+        if (!DrawingReader.SameScale(facts.Scale, scale) || (request.Scale != null && facts.SheetScale) || (request.SheetScale == true && !facts.SheetScale))
+            throw ViewCreateOperation.Failed(name, "scale", request.SheetScale == true ? $"the sheet's, {scale}" : scale.ToString(), $"{facts.Scale}{(facts.SheetScale ? " (the sheet's)" : "")}");
+        string? orientation = facts.Orientation != null && ViewGeometry.Standard.Contains(facts.Orientation) && facts.Type == ViewType.Model ? facts.Orientation : null;
+        ViewChecks.Drawn(drawing, name, DrawingReader.Ratio(scale), orientation);
+        foreach (var child in drawing.SheetNames().SelectMany(drawing.ViewNames).Select(drawing.ReadView).Where(v => v != null && v.Parent == name && v.Type == ViewType.Projected))
+        {
+            if (Alignment(drawing, name, child!.Name) == null)
+                throw ViewCreateOperation.Failed(child.Name, "alignment", $"on {name}'s centre lines", "off both: SOLIDWORKS did not keep it aligned");
+        }
+        result.View = Describe(doc, drawing, name);
+    }
+
+    /// <summary>How a projected view is aligned with its parent: true on its horizontal centre line, false on its vertical one, null on neither (the model's origin drawn at the same y, or x, in both).</summary>
+    static bool? Alignment(ISwDrawing drawing, string parent, string child)
+    {
+        if (!(drawing.Transform(parent) is ViewTransform p) || !(drawing.Transform(child) is ViewTransform c)) return null;
+        var origin = new Point3(0, 0, 0);
+        var a = ViewGeometry.ToSheet(p, origin);
+        var b = ViewGeometry.ToSheet(c, origin);
+        if (Math.Abs(a.Y - b.Y) <= ViewGeometry.PositionToleranceMm) return true;
+        if (Math.Abs(a.X - b.X) <= ViewGeometry.PositionToleranceMm) return false;
+        return null;
+    }
+
+    static string Scale(ViewFacts v) => v.SheetScale ? $"the sheet's, {v.Scale}" : v.Scale.ToString();
+}
+
 public sealed class ViewCreateOperation : DrawingChangeOperation<ViewCreateRequest, ViewResult>
 {
     public ViewCreateOperation(AddInServices services)

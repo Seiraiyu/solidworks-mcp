@@ -53,6 +53,33 @@ public sealed class ViewProjectRequest
     public SheetPoint? At { get; set; }
 }
 
+[Operation("view.set", typeof(ViewResult))]
+[Description("Moves, rescales, restyles or reconfigures a drawing view in place: at (its centre, sheet mm), scale (its own) or sheet_scale (follow the sheet's), display, configuration (a model view's). Values not given stay; moved without at, a view keeps its centre. A projected view is drawn at its parent's scale and moves only along its parent's centre line (SOLIDWORKS silently keeps the aligned coordinate): moving it off that line is refused naming the parent. Each value is recorded before and put back on failure. Checked by measuring: every value reads back (the centre within 0.01 mm, the scale exactly), what it draws equals the model's box projected at its scale within 0.01 mm (orthographic views; inside it for others), the views projected from it are still on its centre lines, and the model is unchanged.")]
+public sealed class ViewSetRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The view: a reference (r1.view.…) or its name (Drawing View1).")]
+    public string View { get; set; } = "";
+
+    [Description("Where its centre goes, sheet mm from the sheet's lower-left corner.")]
+    public SheetPoint? At { get; set; }
+
+    [Description("Its own scale (a model view's). Not with sheet_scale.")]
+    public ScaleRatio? Scale { get; set; }
+
+    [Description("true to make it follow its sheet's scale. Not with scale.")]
+    public bool? SheetScale { get; set; }
+
+    [Description("hidden_lines_visible, hidden_lines_removed, wireframe, shaded or shaded_with_edges.")]
+    public ViewDisplay? Display { get; set; }
+
+    [Description("The model's configuration a model view shows.")]
+    public string? Configuration { get; set; }
+}
+
 [Description("The view made or changed.")]
 public sealed class ViewResult : IDrawingChangeResult
 {
