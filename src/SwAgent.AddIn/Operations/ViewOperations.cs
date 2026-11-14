@@ -435,6 +435,8 @@ public sealed class ViewEntitiesOperation : Operation<ViewEntitiesRequest, ViewE
             // Each reference from the model's own entity (a component's, in an assembly view), verified, and none two
             // entities would share (ShownEntities).
             var references = ShownEntities.References(_services.References, model, drawing, view, shown.Select(e => e.Entity).ToList(), component);
+            if (component != null && shown.Count > 0 && ShownEntities.Unmatched(model, component, shown.Select(e => e.Entity).ToList(), references) is string unmatched)
+                context.Log.Info($"view.entities: {view}: {component}: {references.Count(r => r != null)} of {shown.Count} with a reference; first without: {unmatched}");
             for (int i = 0; i < shown.Count; i++)
             {
                 var e = shown[i];

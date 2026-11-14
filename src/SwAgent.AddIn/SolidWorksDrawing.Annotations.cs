@@ -63,7 +63,8 @@ internal sealed partial class SolidWorksDrawing
             Position = a.GetPosition() is double[] p && p.Length >= 2 ? new SheetPoint(p[0] * Mm, p[1] * Mm) : null,
             Attached = a.GetAttachedEntities3() is object[] attached ? attached.Where(o => o != null).ToList() : new List<object>(),
         };
-        facts.Components = facts.Attached.Select(ComponentName).Where(n => n != null).Select(n => n!).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        string? root = inView == null ? null : RootOf(inView);
+        facts.Components = facts.Attached.Select(o => ComponentName(o, root)).Where(n => n != null).Select(n => n!).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         switch (a.GetSpecificAnnotation())
         {
             case IDisplayDimension d:
@@ -116,10 +117,10 @@ internal sealed partial class SolidWorksDrawing
     }
 
     /// <summary>The name of the component an attached entity belongs to (the component itself, or IEntity.GetComponent); null for none.</summary>
-    static string? ComponentName(object attached) => attached switch
+    static string? ComponentName(object attached, string? root) => attached switch
     {
-        IComponent2 c => c.Name2,
-        IEntity e => (Try(() => e.GetComponent()) as IComponent2)?.Name2,
+        IComponent2 c => NameIn(c, root),
+        IEntity e => NameIn(Try(() => e.GetComponent()) as IComponent2, root),
         _ => null,
     };
 

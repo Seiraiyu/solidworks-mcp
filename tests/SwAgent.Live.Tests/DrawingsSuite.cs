@@ -939,6 +939,14 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
 
     string Assembly => Path.Combine(_run.Guard.ScratchDirectory, "pinblock.SLDASM");
 
+    /// <summary>The assembly not marked as changed, and every other model the drawing shows as it was (an earlier case may have left one marked).</summary>
+    void Unmarked(IEnumerable<DrawingModelState> models)
+    {
+        var all = models.ToList();
+        Assert.Contains(all, m => string.Equals(m.Path, Assembly, StringComparison.OrdinalIgnoreCase));
+        Assert.All(all, m => Assert.False(m.DirtyAfter && (!m.DirtyBefore || string.Equals(m.Path, Assembly, StringComparison.OrdinalIgnoreCase)), $"{m.Path} marked as changed"));
+    }
+
     [SkippableFact, Step(30)]
     public Task The_pin_in_the_block_is_assembled_with_an_exploded_view() => _run.CaseAsync(30, "document.new assembly pinblock: the block fixed at the origin, case 24's pin (Ø10 x 30) at (20, 20, 0) standing in the hole; explode.create one step, the pin 40 mm along y; saved", async () =>
     {
@@ -973,7 +981,7 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
         Near(40, Math.Abs(pin.Moved.Y), "the pin's move along y");
         Assert.True(pin.Drawn != null, "the view draws none of the pin");
         Near(0, exploded.Images!.Single(i => i.Name == Made["block"]).Moved.Y, "the block's move");
-        Assert.All(exploded.Change.Models, m => Assert.False(m.DirtyAfter, $"{m.Path} marked as changed"));
+        Unmarked(exploded.Change.Models);
         string view = exploded.View.Name;
         var collapsed = await Call<ViewSetRequest, ViewResult>(new ViewSetRequest { Document = Drawing, View = view, Exploded = false });
         Assert.False(collapsed.View.Exploded);
@@ -1024,7 +1032,7 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
         Assert.Equal(2, t.Rows.Count);
         Assert.Equal(1, t.Rows.Single(r => string.Equals(r.Path, Block, StringComparison.OrdinalIgnoreCase)).Quantity);
         Assert.Equal(1, t.Rows.Single(r => string.Equals(r.Path, Pin, StringComparison.OrdinalIgnoreCase)).Quantity);
-        Assert.All(bom.Change.Models, m => Assert.False(m.DirtyAfter, $"{m.Path} marked as changed"));
+        Unmarked(bom.Change.Models);
         Made["bom"] = t.Reference!;
         return $"{t.Name} ({t.Feature}) in {took.TotalMilliseconds:0} ms on {t.Sheet}, view {t.View ?? "none"}, at {t.Position}: columns {string.Join(" | ", t.Columns)}; rows {string.Join("; ", t.Rows.Select(r => $"{r.ItemNumber}: {string.Join(" | ", r.Cells)} ({string.Join(", ", r.Components)})"))}";
     });

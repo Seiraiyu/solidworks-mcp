@@ -131,6 +131,25 @@ public sealed class ShownEntities
     public static IReadOnlyList<string?> References(ReferenceService references, ISwDocument model, ISwDrawing drawing, string view, IReadOnlyList<object> shown, string? component = null) =>
         References(references, model, drawing, view, shown, new Part(model, component));
 
+    /// <summary>
+    /// For the add-in log, when a view's proxies of a component found no reference: the first proxy's form and position,
+    /// and where the component's own entities of that form are, so the frame SP4 gives an assembly view's proxies can be
+    /// read from the log (5.D live run). Null when every proxy has a reference, or none can be described.
+    /// </summary>
+    public static string? Unmatched(ISwDocument model, string? component, IReadOnlyList<object> shown, IReadOnlyList<string?> refs)
+    {
+        var part = new Part(model, component);
+        for (int i = 0; i < shown.Count; i++)
+        {
+            if (refs[i] != null || !(part.Describe(shown[i]) is EntityInfo p)) continue;
+            var own = part.OfKind(p.Kind).Where(c => SameForm(c.Info, p)).Select(c => Where(c.Info.Origin)).ToList();
+            return $"{p.Kind} {p.Geometry} at {Where(p.Origin)} (r {p.RadiusMm?.ToString("0.###") ?? "-"}, length {p.LengthMm?.ToString("0.###") ?? "-"}); the component's own of its form: {(own.Count == 0 ? $"none of {part.OfKind(p.Kind).Count} {p.Kind}" : string.Join(", ", own.Take(6)))}";
+        }
+        return null;
+    }
+
+    static string Where(Point3? p) => p == null ? "-" : $"({p.X:0.###}, {p.Y:0.###}, {p.Z:0.###})";
+
     /// <summary>An entity as its model describes it: a part's own way, or a component's in the assembly's coordinates; null for one that is not a face, edge or vertex.</summary>
     public static EntityInfo? DescribeIn(ISwDocument model, string? component, object entity) => new Part(model, component).Describe(entity);
 

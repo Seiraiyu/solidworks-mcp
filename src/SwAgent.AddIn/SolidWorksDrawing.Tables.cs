@@ -22,12 +22,32 @@ internal sealed partial class SolidWorksDrawing
     static IEnumerable<IComponent2> Components(IView view) =>
         view.GetVisibleComponents() is object[] all ? all.OfType<IComponent2>() : Enumerable.Empty<IComponent2>();
 
-    /// <summary>The component a view shows of that name; null for none, or for no name.</summary>
-    static Component2? ComponentIn(IView view, string? name) =>
-        name == null ? null : Components(view).FirstOrDefault(c => string.Equals(c.Name2, name, StringComparison.OrdinalIgnoreCase)) as Component2;
+    /// <summary>
+    /// The root segment SP4 puts before the names of a view's components (pinblock-2 in pinblock-2/pin-1), or null:
+    /// names are given as the assembly names them, without it (ViewComponentNames).
+    /// </summary>
+    static string? RootOf(IView view) =>
+        ViewComponentNames.Root(Components(view).Select(c => c.Name2).Where(n => !string.IsNullOrEmpty(n)));
 
-    public IReadOnlyList<string> VisibleComponents(string view) =>
-        Components(View(view)).Select(c => c.Name2).Where(n => !string.IsNullOrEmpty(n)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    /// <summary>A component's name as the assembly names it, without the view's root.</summary>
+    static string? NameIn(IComponent2? component, string? root) =>
+        component?.Name2 is string name && name.Length > 0 ? ViewComponentNames.Unrooted(name, root) : null;
+
+    /// <summary>The component a view shows of that name (the assembly's, or SOLIDWORKS' own); null for none, or for no name.</summary>
+    static Component2? ComponentIn(IView view, string? name)
+    {
+        if (name == null) return null;
+        string? root = RootOf(view);
+        return Components(view).FirstOrDefault(c => string.Equals(NameIn(c, root), name, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(c.Name2, name, StringComparison.OrdinalIgnoreCase)) as Component2;
+    }
+
+    public IReadOnlyList<string> VisibleComponents(string view)
+    {
+        var v = View(view);
+        string? root = RootOf(v);
+        return Components(v).Select(c => NameIn(c, root)).Where(n => n != null).Select(n => n!).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
 
     public IReadOnlyDictionary<string, SheetBox> ComponentImages(string view)
     {
@@ -35,7 +55,8 @@ internal sealed partial class SolidWorksDrawing
         var facts = ReadView(view)!;
         var edges = v.GetPolylines7(0, out object polylines) as object[] ?? new object[0];
         var numbers = polylines as double[] ?? new double[0];
-        var owners = edges.Select(e => ((e as IEntity)?.GetComponent() as IComponent2)?.Name2).ToList();
+        string? root = RootOf(v);
+        var owners = edges.Select(e => NameIn((e as IEntity)?.GetComponent() as IComponent2, root)).ToList();
         try
         {
             return ExplodedImages.PerComponent(owners, numbers, facts.Position, facts.Scale.Numerator / facts.Scale.Denominator);
@@ -92,6 +113,7 @@ internal sealed partial class SolidWorksDrawing
             Name = name, Sheet = sheet, View = view,
             Position = table.GetAnnotation()?.GetPosition() is double[] p && p.Length >= 2 ? new SheetPoint(p[0] * Mm, p[1] * Mm) : null,
         };
+        string? root = view != null && Find(view) is IView anchored ? RootOf(anchored) : null;
         int rows = table.RowCount, columns = table.ColumnCount, header = table.GetHeaderCount();
         bool headerBelow = table.GetHeaderStyle() == (int)swTableHeaderPosition_e.swTableHeader_Bottom;
         for (int c = 0; c < columns; c++) facts.Columns.Add(table.GetColumnTitle2(c, false) ?? "");
@@ -123,7 +145,7 @@ internal sealed partial class SolidWorksDrawing
                 row.ItemNumber = !string.IsNullOrEmpty(itemNumber) ? itemNumber : item >= 0 ? row.Cells[item] : null;
                 row.Quantity = quantity >= 0 ? BomRows.ParseQuantity(row.Cells[quantity]) : null;
                 var parts = bom.GetComponents2(r, configuration) is object[] listed ? listed.OfType<IComponent2>().ToList() : new List<IComponent2>();
-                row.Components.AddRange(parts.Select(x => x.Name2));
+                row.Components.AddRange(parts.Select(x => NameIn(x, root) ?? ""));
                 var files = parts.Select(x => x.GetPathName() ?? "").Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                 var configurations = parts.Select(x => x.ReferencedConfiguration ?? "").Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                 row.Path = files.Count == 1 && files[0].Length > 0 ? files[0] : null;
