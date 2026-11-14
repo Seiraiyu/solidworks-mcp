@@ -22,7 +22,7 @@ public sealed class DrawingsSuiteRun : LiveRun
 
 /// <summary>
 /// The drawings live suite (design 611, Testing; plan 5.A covers drawing documents, session preferences, sheets and
-/// model and projected views): every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve
+/// model and projected views, plan 5.B sections, details and flat-pattern views in cases 15 to 19): every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve
 /// does, in [Step] order, and checks against exact values. It builds its own model first, a 60 x 40 x 20 mm block (x 0..60,
 /// y 0..40, z 0..20) with a Ø10 mm hole through it along z at (20, 20), and draws it on an A3 sheet at 1:1 in third-angle
 /// projection, so every view's drawn extents are known to 0.01 mm. It records each document before creating it, never
@@ -484,8 +484,170 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
         return string.Join("; ", notes);
     });
 
+    /// <summary>The hole's circular edge on the block's front face (z 20), as model.find issues it: centred on the hole's axis at (20, 20, 20).</summary>
+    async Task<string> HoleEdge()
+    {
+        var found = await Call<ModelFindRequest, ModelFindResult>(new ModelFindRequest { Document = Block, Kind = TopologyKind.Edge, Geometry = GeometryType.Circle, Near = new Point3(25, 20, 20), MaxDistanceMm = 0.001 });
+        return Assert.Single(found.Entities).Reference!;
+    }
+
     [SkippableFact, Step(15)]
-    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(15, "the suite's documents closed", async () =>
+    public Task A_section_through_the_holes_axis_hatches_the_block_either_side_of_the_hole() => _run.CaseAsync(15, "view.section of the front view, a horizontal line through the hole's axis: section A below the front on its centre line, 60 x 20 drawn, two hatched faces of (60 - 10) x 20 = 1000 mm² in the plane y 20; a line beside the block refused", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string hole = await HoleEdge();
+        var beside = await Refused(() => Call<ViewSectionRequest, ViewSectionResult>(new ViewSectionRequest
+        {
+            Document = Drawing, Parent = Views["front"], Cut = new SectionCut { Through = new ModelPlace { Point = new Point3(20, 45, 10) }, Orientation = CutOrientation.Horizontal },
+        }));
+        Assert.Equal("/cut/through", beside.Error.Details!["field"]);
+        var clock = Stopwatch.StartNew();
+        var section = await Call<ViewSectionRequest, ViewSectionResult>(new ViewSectionRequest
+        {
+            Document = Drawing, Parent = Views["front"], Cut = new SectionCut { Through = new ModelPlace { Reference = hole }, Orientation = CutOrientation.Horizontal },
+        });
+        long ms = clock.ElapsedMilliseconds;
+        Assert.Equal("A", section.Label);
+        Assert.Equal(ViewType.Section, section.View.Type);
+        Assert.Equal(Views["front"], section.View.Parent);
+        Near(20, section.Through.Y, "the cut's y, the hole's axis");
+        Assert.Equal(2, section.HatchedFaces);
+        Near(1000, section.HatchedAreaMm2, "the hatched area, (60 - 10) x 20 mm²: the hole's two edges 10 mm apart");
+        var e = section.View.Extents!;
+        Near(100, e.Min.X, "section min x, the front's");
+        Near(160, e.Max.X, "section max x, the front's");
+        Near(20, e.Max.Y - e.Min.Y, "section height, the block's 20 mm depth");
+        Near(130, section.View.Position.X, "on the front's vertical centre line");
+        Assert.False(section.Change.Models.Single().DirtyAfter);
+        Views["section"] = section.View.Name;
+        return $"refused beside the block ({beside.Message}); {section.View.Name} ({section.Label}-{section.Label}, reversed {section.Reversed}) through {section.ThroughIs} at {section.View.Position}, drew {section.View.Extents}; " +
+               FormattableString.Invariant($"{section.HatchedFaces} hatched faces, {section.HatchedAreaMm2:0.###} mm²; {ms} ms");
+    });
+
+    [SkippableFact, Step(16)]
+    public Task A_detail_around_the_hole_shows_it_at_2_to_1_or_is_refused_as_the_known_gap() => _run.CaseAsync(16, "view.detail of the front view around the hole, r 8 at 2:1 at (330, 90): detail B whose drawn edges lie in its circle and show the hole as a circle of r 10 at its centre; or, if SP4 makes it empty, refused with check empty and nothing left (the stated gap)", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string hole = await HoleEdge();
+        int before = (await Read()).Sheets.Sum(s => s.Views.Count);
+        ViewDetailResult detail;
+        try
+        {
+            detail = await Call<ViewDetailRequest, ViewDetailResult>(new ViewDetailRequest
+            {
+                Document = Drawing, Parent = Views["front"], Centre = new ModelPlace { Reference = hole }, RadiusMm = 8, Scale = new ScaleRatio(2, 1), At = new SheetPoint(330, 90),
+            });
+        }
+        catch (SwAgentException e) when (e.Code == ErrorCode.VerificationFailed && e.Error.Details?["check"] as string == "empty")
+        {
+            Assert.Equal(before, (await Read()).Sheets.Sum(s => s.Views.Count));
+            return $"KNOWN GAP: SOLIDWORKS made an empty detail through the add-in; refused and rolled back, nothing left ({e.Message})";
+        }
+        Assert.Equal("B", detail.Label);
+        Assert.Equal(2, detail.View.Scale.Numerator);
+        Near(330, detail.View.Position.X, "detail x");
+        Near(90, detail.View.Position.Y, "detail y");
+        Assert.True(detail.PointsInside > 0, "the detail draws edges");
+        var shown = await Call<ViewEntitiesRequest, ViewEntitiesResult>(new ViewEntitiesRequest { Document = Drawing, View = detail.View.Name });
+        var circle = Assert.Single(shown.Entities, x => x.Shape == DrawnShape.Circle && Math.Abs(x.RadiusMm!.Value - 10) <= Tol);
+        Near(330, circle.Centre!.X, "the hole's centre in the detail, x");
+        Near(90, circle.Centre.Y, "the hole's centre in the detail, y");
+        Views["detail"] = detail.View.Name;
+        return $"{detail.View.Name} ({detail.Label}) around {detail.CentreIs}, {detail.PointsInside} drawn points inside its circle, extents {detail.View.Extents}; the hole drawn r {circle.RadiusMm} at {circle.Centre}";
+    });
+
+    /// <summary>The tab's straight edge on its base face nearest (x, y), as model.find gives it within 1 µm at the face's level.</summary>
+    async Task<string> TabEdge(string path, double x, double y)
+    {
+        var face = (await Call<SheetMetalReadRequest, SheetMetalReadResult>(new SheetMetalReadRequest { Document = path })).BaseFace!;
+        var n = face.Normal!;
+        double level = n.X * face.Origin!.X + n.Y * face.Origin.Y + n.Z * face.Origin.Z;
+        var found = await Call<ModelFindRequest, ModelFindResult>(new ModelFindRequest { Document = path, Kind = TopologyKind.Edge, Near = new Point3(x, y, level * n.Z), MaxDistanceMm = 0.001 });
+        return Assert.Single(found.Entities).Reference!;
+    }
+
+    string Tab => Path.Combine(_run.Guard.ScratchDirectory, "tab.SLDPRT");
+
+    [SkippableFact, Step(17)]
+    public Task The_tabs_flat_pattern_is_drawn_at_its_flat_size_with_one_bend_line() => _run.CaseAsync(17, "view.flat_pattern of phase 6's tab (100 x 60, 2 mm, R 3, a 25 mm flange, saved and closed) on Details at 1:1 at (105, 150): opened for it, 100 x 83.2832 drawn, one bend line, bend notes shown, still folded; the block refused as not sheet metal", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string path = New("tab", ".SLDPRT");
+        await Call<DocumentNewRequest, DocumentNewResult>(new DocumentNewRequest { Path = path });
+        var outline = await Call<SketchCreateRequest, SketchCreateResult>(new SketchCreateRequest
+        {
+            Document = path, On = "front", Rectangles = new List<SketchRectangle> { new SketchRectangle { Id = "sheet", Corner1 = new Point2(0, 0), Corner2 = new Point2(100, 60) } },
+        });
+        await Call<SheetMetalBaseFlangeRequest, SheetMetalFeatureResult>(new SheetMetalBaseFlangeRequest { Document = path, Sketch = outline.Sketch.Name, ThicknessMm = 2, BendRadiusMm = 3 });
+        await Call<SheetMetalEdgeFlangeRequest, SheetMetalFeatureResult>(new SheetMetalEdgeFlangeRequest
+        {
+            Document = path, Edges = new List<string> { await TabEdge(path, 50, 60) }, LengthMm = 25, LengthFrom = FlangeLengthFrom.InnerVirtualSharp,
+        });
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = path });
+        await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = path });
+
+        var notSheet = await Refused(() => Call<ViewFlatPatternRequest, ViewFlatPatternResult>(new ViewFlatPatternRequest { Document = Drawing, Sheet = "Details", Model = Block, At = new SheetPoint(105, 150) }));
+        Assert.Equal(ErrorCode.WrongDocumentType, notSheet.Code);
+        Assert.Equal("sheet_metal", notSheet.Error.Details!["needs"]);
+        var clock = Stopwatch.StartNew();
+        var flat = await Call<ViewFlatPatternRequest, ViewFlatPatternResult>(new ViewFlatPatternRequest
+        {
+            Document = Drawing, Sheet = "Details", Model = path, At = new SheetPoint(105, 150), Scale = new ScaleRatio(1, 1),
+        });
+        long ms = clock.ElapsedMilliseconds;
+        Assert.Equal(ViewType.FlatPattern, flat.View.Type);
+        Assert.True(flat.Opened, "the tab was closed, so the view opened it");
+        var e = flat.View.Extents!;
+        double w = e.Max.X - e.Min.X, h = e.Max.Y - e.Min.Y;
+        Assert.True(Math.Abs(Math.Max(w, h) - 100) <= 0.01 + 0.005, $"the flat pattern's long side: {Math.Max(w, h)}");
+        Assert.True(Math.Abs(Math.Min(w, h) - 83.2832) <= 0.01 + 0.005, $"the flat pattern's short side: {Math.Min(w, h)}");
+        Assert.Equal(1, flat.BendLines);
+        Assert.True(flat.BendNotes);
+        Assert.Equal(SheetState.Folded, flat.State);
+        Views["flat"] = flat.View.Name;
+        return FormattableString.Invariant($"refused the block ({notSheet.Message}); {flat.View.Name} on Details: drew {w:0.####} x {h:0.####} ({flat.View.Extents}), flat {flat.Flat.LengthMm:0.####} x {flat.Flat.WidthMm:0.####}, ") +
+               $"{flat.BendLines} bend line, bend notes {flat.BendNotes}, {WireNames.ForEnum(flat.State)}, opened {flat.Opened}; configuration {flat.View.Configuration}; added {string.Join(", ", flat.ConfigurationsAdded.DefaultIfEmpty("none"))}; marked_dirty {flat.MarkedDirty}; tab dirty {flat.ModelUnsaved}; {ms} ms";
+    });
+
+    [SkippableFact, Step(18)]
+    public Task A_section_moves_along_its_centre_line_and_a_detail_is_deleted_with_its_circle() => _run.CaseAsync(18, "view.set moves section A 10 mm down its centre line, drawing what it drew; off the line refused; view.delete of detail B (and its circle); the front refused while its section remains", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var was = await View(Views["section"]);
+        var moved = await Call<ViewSetRequest, ViewResult>(new ViewSetRequest { Document = Drawing, View = Views["section"], At = new SheetPoint(was.Position.X, was.Position.Y - 10) });
+        Near(was.Extents!.Min.Y - 10, moved.View.Extents!.Min.Y, "the section moved 10 mm down");
+        Near(was.Extents.Min.X, moved.View.Extents.Min.X, "the section kept its x");
+        var off = await Refused(() => Call<ViewSetRequest, ViewResult>(new ViewSetRequest { Document = Drawing, View = Views["section"], At = new SheetPoint(was.Position.X + 10, was.Position.Y) }));
+        Assert.Equal("/at/x", off.Error.Details!["field"]);
+        string detail = "no detail (case 16 recorded the gap)";
+        if (Views.TryGetValue("detail", out var d))
+        {
+            var gone = await Call<ViewDeleteRequest, ViewDeleteResult>(new ViewDeleteRequest { Document = Drawing, Views = { d } });
+            Assert.Equal(new[] { d }, gone.Deleted);
+            detail = $"{d} deleted with its circle";
+        }
+        var parent = await Refused(() => Call<ViewDeleteRequest, ViewDeleteResult>(new ViewDeleteRequest { Document = Drawing, Views = { Views["front"] } }));
+        Assert.Contains(Views["section"], ((List<object?>)parent.Error.Details!["dependents"]!).Cast<string>());
+        return $"section moved to {moved.View.Position} ({moved.View.Extents}); off its line refused ({off.Message}); {detail}; the front refused ({parent.Message})";
+    });
+
+    [SkippableFact, Step(19)]
+    public Task Drawing_read_shows_the_section_and_the_flat_pattern() => _run.CaseAsync(19, "drawing.read: Sheet1 holds section A of the front, Details the tab's flat pattern; the block and the tab its models, neither changed by the drawing", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var read = await Read();
+        var section = read.Sheets.Single(s => s.Name == "Sheet1").Views.Single(v => v.Name == Views["section"]);
+        Assert.Equal(ViewType.Section, section.Type);
+        Assert.Equal(Views["front"], section.Parent);
+        var flat = read.Sheets.Single(s => s.Name == "Details").Views.Single(v => v.Name == Views["flat"]);
+        Assert.Equal(ViewType.FlatPattern, flat.Type);
+        Assert.Contains(read.Models, m => string.Equals(m.Path, Tab, StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(read.Models, m => string.Equals(m.Path, Block, StringComparison.OrdinalIgnoreCase));
+        return $"Sheet1: {string.Join(", ", read.Sheets.Single(s => s.Name == "Sheet1").Views.Select(v => $"{v.Name} ({WireNames.ForEnum(v.Type)})"))}; Details: {flat.Name} ({WireNames.ForEnum(flat.Type)}, {flat.Configuration}); models {string.Join(", ", read.Models.Select(m => $"{Path.GetFileName(m.Path)} dirty {m.Dirty}"))}";
+    });
+
+    [SkippableFact, Step(20)]
+    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(20, "the suite's documents closed", async () =>
     {
         var state = await _run.RequireOnlyOwnDocumentsAsync();
         int closed = 0;
