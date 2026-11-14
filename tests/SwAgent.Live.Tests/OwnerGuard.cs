@@ -105,9 +105,16 @@ public sealed class OwnerGuard
         File.AppendAllText(Path.Combine(ScratchDirectory, "created.txt"), full + Environment.NewLine);
     }
 
-    /// <summary>The open documents this run did not create; a document never saved has no path, so it is never ours.</summary>
+    /// <summary>
+    /// The open documents this run did not create; a document never saved has no path, so it is never ours. A document with
+    /// no window under this run's scratch directory is ours too: SOLIDWORKS loaded it hidden for a drawing or assembly the
+    /// run made (plan 5.A), and only this run writes there.
+    /// </summary>
     public IReadOnlyList<DocumentInfo> Foreign(AddinStateResult state) =>
-        state.Documents.Where(d => d.Path == null || !_created.Contains(Path.GetFullPath(d.Path))).ToList();
+        state.Documents.Where(d => d.Path == null || !(_created.Contains(Path.GetFullPath(d.Path)) || (!d.Visible && InScratch(d.Path)))).ToList();
+
+    bool InScratch(string path) =>
+        Path.GetFullPath(path).StartsWith(Path.GetFullPath(ScratchDirectory).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Ends SOLIDWORKS process <paramref name="processId"/> at once, after checking again. Only while the suite's
