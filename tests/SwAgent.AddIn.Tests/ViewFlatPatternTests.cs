@@ -11,22 +11,6 @@ namespace SwAgent.AddIn.Tests;
 /// <summary>Flat-pattern views of phase 6's tab: 100 mm wide with a 25 mm flange, one 90° bend at R 3, 2 mm, K 0.5, so flat 100 × 83.2832.</summary>
 public class ViewFlatPatternTests : DrawingTestBase
 {
-    /// <summary>The tab, saved at tab.SLDPRT; open unless told otherwise, when SOLIDWORKS opens it on request.</summary>
-    internal FakeDocument Tab(bool open = true)
-    {
-        var tab = FakeDocument.Part("tab.SLDPRT", PathOf("tab.SLDPRT"));
-        File.WriteAllText(tab.Document.Path!, "part");
-        tab.AddFeature("Sheet-Metal1", SheetMetalParts.SheetMetalType);
-        tab.AddFeature("Flat-Pattern1", SheetMetalParts.FlatPatternType, suppressed: true);
-        tab.Sheet = new SheetDefaults { ThicknessMm = 2, BendRadiusMm = 3, Allowance = new BendAllowance { KFactor = 0.5 } };
-        tab.FlatStraightMm = 77;
-        tab.FlatWidthMm = 100;
-        tab.FakeBends.Add(new FakeBend { Feature = tab.AddFeature("EdgeBend1", "OneBend", parent: "Edge-Flange1"), Owner = "Edge-Flange1", AngleDeg = 90, RadiusMm = 3 });
-        if (open) Sw.Track(tab);
-        else Sw.OpenWith = p => new OpenOutcome(string.Equals(p, tab.Document.Path, StringComparison.OrdinalIgnoreCase) ? tab : null, 0, 0);
-        return tab;
-    }
-
     ViewFlatPatternResult Flat(string model, ScaleRatio? scale = null, bool? bendNotes = null, string? configuration = null) =>
         Run(new ViewFlatPatternOperation(Services), new ViewFlatPatternRequest { Model = model, At = new SheetPoint(200, 150), Scale = scale, BendNotes = bendNotes, Configuration = configuration });
 

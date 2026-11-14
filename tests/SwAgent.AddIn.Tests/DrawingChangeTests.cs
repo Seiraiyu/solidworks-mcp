@@ -81,6 +81,25 @@ public abstract class DrawingTestBase : DocumentTestBase
         Sw.CurrentDoc = Doc;
         Services.Runtime.DocumentOpened(Doc.Document.Path!, owned: true);
     }
+
+    /// <summary>
+    /// Phase 6's tab, saved at tab.SLDPRT: 100 mm wide with a 25 mm flange, one 90° bend at R 3, 2 mm, K 0.5, so flat
+    /// 100 × 83.2832. Open unless told otherwise, when SOLIDWORKS opens it on request.
+    /// </summary>
+    internal FakeDocument Tab(bool open = true)
+    {
+        var tab = FakeDocument.Part("tab.SLDPRT", PathOf("tab.SLDPRT"));
+        System.IO.File.WriteAllText(tab.Document.Path!, "part");
+        tab.AddFeature("Sheet-Metal1", SheetMetalParts.SheetMetalType);
+        tab.AddFeature("Flat-Pattern1", SheetMetalParts.FlatPatternType, suppressed: true);
+        tab.Sheet = new SheetDefaults { ThicknessMm = 2, BendRadiusMm = 3, Allowance = new BendAllowance { KFactor = 0.5 } };
+        tab.FlatStraightMm = 77;
+        tab.FlatWidthMm = 100;
+        tab.FakeBends.Add(new FakeBend { Feature = tab.AddFeature("EdgeBend1", "OneBend", parent: "Edge-Flange1"), Owner = "Edge-Flange1", AngleDeg = 90, RadiusMm = 3 });
+        if (open) Sw.Track(tab);
+        else Sw.OpenWith = p => new OpenOutcome(string.Equals(p, tab.Document.Path, StringComparison.OrdinalIgnoreCase) ? tab : null, 0, 0);
+        return tab;
+    }
 }
 
 public class DrawingChangeTests : DrawingTestBase
