@@ -117,6 +117,7 @@ public class DrawingContractTests
     [InlineData("annotation.set", "annotation", false)]
     [InlineData("annotation.delete", "annotation", false)]
     [InlineData("drawing.properties", "drawing", false)]
+    [InlineData("annotation.balloons", "annotation", false)]
     [InlineData("table.bom", "table", false)]
     [InlineData("table.read", "table", true)]
     [InlineData("table.delete", "table", false)]

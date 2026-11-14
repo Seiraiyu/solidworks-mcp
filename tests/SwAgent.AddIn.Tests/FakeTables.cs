@@ -141,6 +141,9 @@ sealed partial class FakeDrawing
     /// <summary>When true, Auto Balloon puts a balloon on every instance rather than one per item.</summary>
     public bool BalloonsEveryInstance { get; set; }
 
+    /// <summary>When true, balloons come attached to nothing.</summary>
+    public bool BalloonsUnattached { get; set; }
+
     public void AutoBalloon(string view, BalloonLayout layout)
     {
         Calls.Add($"balloons {view} {WireNames.ForEnum(layout)}");
@@ -163,7 +166,7 @@ sealed partial class FakeDrawing
             {
                 Name = "DetailItem" + ++_annotations, Sheet = v.Facts.Sheet, View = view, Kind = AnnotationKind.Balloon, Text = number, ItemNumber = number,
                 Position = new SheetPoint(v.Facts.Position.X + 30, v.Facts.Position.Y + 10 * numbers.Count),
-                Attached = edge == null ? new List<object>() : new List<object> { edge }, Components = new List<string> { c.Info.Name },
+                Attached = edge == null || BalloonsUnattached ? new List<object>() : new List<object> { edge }, Components = BalloonsUnattached ? new List<string>() : new List<string> { c.Info.Name },
             });
         }
     }

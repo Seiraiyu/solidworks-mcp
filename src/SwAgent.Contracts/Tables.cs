@@ -205,6 +205,42 @@ public sealed class TableDeleteResult : IDrawingChangeResult
     public DrawingChange Change { get; set; } = new DrawingChange();
 }
 
+[Operation("annotation.balloons", typeof(AnnotationBalloonsResult))]
+[Description("Balloons the components a view of an assembly shows (IDrawingDoc.AutoBalloon5 with the view selected by its name, never picked by sheet coordinates): one balloon on one instance of each item (a component file and configuration, as a bill of materials groups them), numbered as the view's bill of materials numbers its rows when the view has one (table.bom), laid out square, circular, top, bottom, left or right of the view. An item already ballooned in the view is skipped (already). Checked by walking the view's annotations, not by SOLIDWORKS' answer: every item the view shows has a balloon, no item gained two, each balloon made is attached to one component the view shows, and its item number is that component's row's in the bill (without a bill, an item's balloons share a number and two items never do); the model is unchanged. Otherwise the balloons made are deleted again (rolled back). The view's configuration must be the assembly's active one." + DrawingChangeText.Waits)]
+public sealed class AnnotationBalloonsRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The view of the assembly: a reference (r1.view.…) or its name (Drawing View1).")]
+    public string View { get; set; } = "";
+
+    [Description("square, circular, top, bottom, left or right; square when absent.")]
+    public BalloonLayout? Layout { get; set; }
+}
+
+[Description("The balloons made.")]
+public sealed class AnnotationBalloonsResult : IDrawingChangeResult
+{
+    [Required]
+    [Description("Each balloon made, as read back: its item number and component.")]
+    public List<AnnotationInfo> Made { get; set; } = new List<AnnotationInfo>();
+
+    [Description("How many items (component files and configurations) the view shows.")]
+    public int Items { get; set; }
+
+    [Description("How many of those already had a balloon in the view, and were skipped.")]
+    public int Already { get; set; }
+
+    [Description("The bill of materials the numbers are checked against (its name); absent when the view has none.")]
+    public string? Bom { get; set; }
+
+    [Required]
+    [Description("What changed in the drawing: created holds each balloon made; annotations before and after; models each model shown, unchanged.")]
+    public DrawingChange Change { get; set; } = new DrawingChange();
+}
+
 [Description("Where an exploded view draws one component, against where its explode steps put it.")]
 public sealed class ExplodedImage
 {
