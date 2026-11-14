@@ -304,6 +304,13 @@ public interface ISwDrawing
 
     /// <summary>Sets one of <see cref="DrawingSettings.All"/> on this drawing (IModelDocExtension.SetUserPreferenceToggle).</summary>
     void SetSetting(string name, bool value);
+
+    /// <summary>
+    /// Writes these sheets, by name, as one PDF at <paramref name="path"/> (IModelDocExtension.SaveAs3 as a copy, silently,
+    /// with IExportPdfData.SetSheets naming them: an array of strings, never of objects). The drawing keeps its own path.
+    /// DXF and DWG go through ISwDocument.Export, which writes the sheet shown.
+    /// </summary>
+    SaveOutcome ExportPdf(string path, IReadOnlyList<string> sheets);
 }
 
 /// <summary>A sheet as SOLIDWORKS holds it, or the values to give one. Sheet mm.</summary>

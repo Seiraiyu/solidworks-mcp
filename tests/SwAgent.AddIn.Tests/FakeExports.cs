@@ -98,7 +98,7 @@ sealed partial class FakeDocument
             Document.Title = Path.GetFileName(path);
         }
         if (ExportWritesNothing) return new SaveOutcome(true, 0, 0);
-        File.WriteAllBytes(path, ExportWrites ?? Bytes(path, prefs));
+        File.WriteAllBytes(path, ExportWrites ?? (Drw != null ? Drw.ExportBytes(path) : Bytes(path, prefs)));
         string extension = Path.GetExtension(path).ToLowerInvariant();
         if (StepOccurrences > 0 && ExportWrites == null && (extension == ".step" || extension == ".stp"))
         {
