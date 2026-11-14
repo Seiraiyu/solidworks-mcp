@@ -93,6 +93,17 @@ public class DrawingContractTests
     }
 
     [Theory]
+    [InlineData("drawing.read", "drawing", true)]
+    public void The_operations_are_catalogued_in_their_families(string method, string family, bool readOnly)
+    {
+        var op = OperationCatalog.Find(method);
+        Assert.NotNull(op);
+        Assert.Equal(family, op!.Family);
+        Assert.Equal(readOnly, op.ReadOnly);
+        Assert.False(op.Internal);
+    }
+
+    [Theory]
     [InlineData("drawing", 60)]
     [InlineData("sheet", 30)]
     [InlineData("view", 60)]

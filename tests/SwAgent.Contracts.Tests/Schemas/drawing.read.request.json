@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "description": "Reads a drawing as a drafter reads it: every sheet (name, reference, size in sheet mm and the standard size it is, scale, projection, sheet format) and every view on it (reference, name, type, model, configuration, orientation, parent, centre and drawn extents in sheet mm, scale, display, exploded, annotation and table counts), the drawing's unsaved-changes flag, and each model it shows with its own. Sheets and views are named by reference (r1.sheet.…, r1.view.…) or by name (Sheet1, Drawing View1). Changes nothing.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    }
+  },
+  "additionalProperties": false
+}
