@@ -92,6 +92,24 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         });
     }
 
+    /// <summary>The annotation <paramref name="text"/> names, by reference or name, as SOLIDWORKS holds it now.</summary>
+    protected AnnotationFacts Annotation(ISwDocument doc, ISwDrawing drawing, string text, string field) => Services.References.ResolveAnnotation(doc, drawing, text, field);
+
+    /// <summary>
+    /// Records an annotation the change made, with its reference; a rollback deletes it by selection (its sheet shown) and
+    /// checks it is gone.
+    /// </summary>
+    protected void MadeAnnotation(ISwDocument doc, ISwDrawing drawing, ModelTransaction tx, AnnotationFacts made) =>
+        tx.Made(new CreatedItem { Name = made.Name, Kind = ReferenceKind.Annotation, Reference = Services.References.IssueAnnotation(doc, made) }, () =>
+        {
+            if (!drawing.DeleteAnnotations(made.Sheet, made.View, new[] { made.Name }) || DrawingAnnotations.Read(drawing, made.Sheet, made.View, made.Name) != null)
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not delete the annotation {made.Name} from {DrawingAnnotations.Where(made)}");
+        });
+
+    /// <summary>An annotation as results report it.</summary>
+    protected AnnotationInfo DescribeAnnotation(ISwDocument doc, ISwDrawing drawing, AnnotationFacts annotation) =>
+        DrawingAnnotations.Info(Services.References, doc, drawing, annotation);
+
     /// <summary>A view as results report it, read now.</summary>
     protected ViewInfo Describe(ISwDocument doc, ISwDrawing drawing, string view) =>
         DrawingReader.View(Services.References, doc, drawing, drawing.ReadView(view) ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"the view {view} is not on the drawing",
@@ -108,7 +126,7 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         var (doc, drawing) = DocumentLocator.FindDrawing(Services.SolidWorks, DocumentOf(request), Name);
         DrawingChangeGuard.Require(Services.SolidWorks, doc, drawing, Name);
         var models = ModelStates.Take(Services.SolidWorks, doc);
-        int sheetsBefore = drawing.SheetNames().Count, viewsBefore = DrawingReader.ViewCount(drawing);
+        int sheetsBefore = drawing.SheetNames().Count, viewsBefore = DrawingReader.ViewCount(drawing), annotationsBefore = DrawingAnnotations.Count(drawing);
         var tx = new ModelTransaction();
         TResult result;
         try
@@ -123,7 +141,7 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         try
         {
             Check(doc, drawing, request, result);
-            result.Change = Evidence(doc, drawing, tx, sheetsBefore, viewsBefore, models);
+            result.Change = Evidence(doc, drawing, tx, sheetsBefore, viewsBefore, annotationsBefore, models);
         }
         catch (Exception e)
         {
@@ -154,7 +172,7 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         }
     }
 
-    static DrawingChange Evidence(ISwDocument doc, ISwDrawing drawing, ModelTransaction tx, int sheetsBefore, int viewsBefore, ModelStates before) => new DrawingChange
+    static DrawingChange Evidence(ISwDocument doc, ISwDrawing drawing, ModelTransaction tx, int sheetsBefore, int viewsBefore, int annotationsBefore, ModelStates before) => new DrawingChange
     {
         Document = doc.Info(),
         Created = tx.Created.ToList(),
@@ -163,6 +181,8 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         SheetsAfter = drawing.SheetNames().Count,
         ViewsBefore = viewsBefore,
         ViewsAfter = DrawingReader.ViewCount(drawing),
+        AnnotationsBefore = annotationsBefore,
+        AnnotationsAfter = DrawingAnnotations.Count(drawing),
         Models = before.Shown(ModelStates.Take(before.Sw, doc)),
     };
 

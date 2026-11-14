@@ -49,6 +49,21 @@ public static class ViewEntities
         return new ResolvedViewEntity(view, model, entity, kind);
     }
 
+    /// <summary>
+    /// <paramref name="given"/> resolved as <see cref="Resolve"/> does, and shown by its view (design 611, Dimensions and
+    /// annotations): an entity the view does not show is invalid_argument naming the view and the entity, never
+    /// "nothing found".
+    /// </summary>
+    public static ResolvedViewEntity ResolveShown(ReferenceService references, ISwDocument doc, ISwDrawing drawing, ViewEntity given, string field, params ReferenceKind[] accepted)
+    {
+        var e = Resolve(references, doc, drawing, given, field, accepted);
+        if (drawing.Shows(e.View, e.Entity, references.ComponentOf(e.Model, e.Entity))) return e;
+        string what = Core.EntityFilter.Describe(references.Describe(e.Model, e.Entity));
+        throw new SwAgentException(ErrorCode.InvalidArgument,
+            $"{field}: {e.View} does not show the {what}; view.entities lists what it shows (an edge hidden behind the model is not shown)",
+            new JsonObject { ["field"] = field, ["view"] = e.View, ["entity"] = what });
+    }
+
     static SwAgentException Invalid(string field, string message) =>
         new SwAgentException(ErrorCode.InvalidArgument, message, new JsonObject { ["field"] = field });
 }
