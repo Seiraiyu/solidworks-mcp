@@ -67,6 +67,13 @@ again from the 3DEXPERIENCE dashboard so it loads the new add-in; until then eve
 - For contributors: some MCP handshake tests fail now and then in CI (#34); a rerun passes. The released binaries are
   not affected.
 
+### Fixed before release
+
+- A document named by its file name with an extension (`plate.SLDDRW`) now names only a document of that type: a
+  drawing named so is no longer taken for its part, so `sw_document_close` no longer closes the part instead. A name
+  without an extension that fits more than one open document, such as a part and its drawing, is refused with the
+  candidates in `details.candidates` (#36).
+
 ## 0.2.0 (2026-11-13)
 
 The assemblies release: an agent can now mate, pattern, check, explode and export assemblies, and sheet metal goes

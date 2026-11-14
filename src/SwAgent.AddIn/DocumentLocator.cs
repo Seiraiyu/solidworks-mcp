@@ -10,8 +10,9 @@ namespace SwAgent.AddIn;
 
 /// <summary>
 /// Finds the document an operation acts on from its optional <c>document</c> field (design 371, Protocol and
-/// contracts): absent means the active document; otherwise its full path, its title, or its title without the extension
-/// (SOLIDWORKS shows titles with or without it, as Windows is set).
+/// contracts): absent means the active document; otherwise its full path, its title, or its file name with or without
+/// the extension. An extension names the type too, and a name that fits more than one open document is refused, never
+/// resolved to one of them (issue #36).
 /// </summary>
 public static class DocumentLocator
 {
@@ -25,9 +26,6 @@ public static class DocumentLocator
         }
         var open = sw.Documents();
         var matches = open.Where(d => Names(d.Info(), document!)).ToList();
-        // A drawing is usually named as its model (block.SLDDRW shows block.SLDPRT): a full title names one of them exactly.
-        if (matches.Count > 1 && matches.Count(d => string.Equals(d.Info().Title, document, StringComparison.OrdinalIgnoreCase)) == 1)
-            matches = matches.Where(d => string.Equals(d.Info().Title, document, StringComparison.OrdinalIgnoreCase)).ToList();
         if (matches.Count == 1) return matches[0];
         var details = new JsonObject
         {
@@ -37,7 +35,12 @@ public static class DocumentLocator
         };
         if (matches.Count == 0)
             throw new SwAgentException(ErrorCode.InvalidArgument, $"no open document is '{document}'; open documents are listed in details.open", details);
-        throw new SwAgentException(ErrorCode.InvalidArgument, $"more than one open document is called '{document}'; name it by its full path", details);
+        // Issue #36: never pick one of several (a part and its drawing share a name); the caller names which.
+        var candidates = matches.Select(d => Label(d.Info())).ToList();
+        details["candidates"] = candidates.Select(c => (object?)c).ToList();
+        throw new SwAgentException(ErrorCode.InvalidArgument,
+            $"'{document}' names more than one open document ({string.Join(", ", candidates)}); name one by its full path, or by its file name with the extension (.SLDPRT, .SLDASM or .SLDDRW)",
+            details);
     }
 
     /// <summary>As <see cref="Find"/>, and wrong_document_type for a drawing: the part or assembly a model, selection or configuration operation reads (plan 4.B).</summary>
@@ -138,21 +141,46 @@ public static class DocumentLocator
         _ => "a part",
     };
 
+    /// <summary>
+    /// Whether <paramref name="name"/> names the document (issue #36): a full path names the file at it; otherwise the
+    /// document's exact title, or its file name. A file name with an extension names only a document of that type, and
+    /// one without names every document whose file name it is less the extension.
+    /// </summary>
     static bool Names(DocumentInfo info, string name)
     {
-        if (info.Path != null && Path.IsPathRooted(name) && DocumentKeys.Same(Path.GetFullPath(name), Path.GetFullPath(info.Path))) return true;
+        if (Path.IsPathRooted(name))
+            return info.Path != null && DocumentKeys.Same(Path.GetFullPath(name), Path.GetFullPath(info.Path));
         if (string.Equals(info.Title, name, StringComparison.OrdinalIgnoreCase)) return true;
-        return string.Equals(StripExtension(info.Title), StripExtension(name), StringComparison.OrdinalIgnoreCase);
+        var named = TypeOf(Path.GetExtension(name));
+        if (named != null && named != info.Type) return false;
+        string stem = named == null ? name : name.Substring(0, name.Length - Path.GetExtension(name).Length);
+        return string.Equals(Stem(info), stem, StringComparison.OrdinalIgnoreCase);
     }
 
-    static string StripExtension(string title)
+    /// <summary>
+    /// The document's file name without its extension: from its path once saved, else from its title, which for a
+    /// drawing ends in " - " and the active sheet's name, and shows the extension or not as Windows is set.
+    /// </summary>
+    static string Stem(DocumentInfo info)
     {
-        string ext = Path.GetExtension(title);
-        return ext.Equals(".SLDPRT", StringComparison.OrdinalIgnoreCase) || ext.Equals(".SLDASM", StringComparison.OrdinalIgnoreCase)
-            || ext.Equals(".SLDDRW", StringComparison.OrdinalIgnoreCase)
-            ? title.Substring(0, title.Length - ext.Length)
-            : title;
+        if (info.Path != null) return Path.GetFileNameWithoutExtension(info.Path);
+        string title = info.Title;
+        if (info.Type == DocumentType.Drawing)
+        {
+            int sheet = title.LastIndexOf(" - ", StringComparison.Ordinal);
+            if (sheet > 0) title = title.Substring(0, sheet);
+        }
+        return TypeOf(Path.GetExtension(title)) != null ? title.Substring(0, title.Length - Path.GetExtension(title).Length) : title;
     }
+
+    /// <summary>The document type a SOLIDWORKS file extension says, or null for any other extension.</summary>
+    static DocumentType? TypeOf(string extension) => extension.ToUpperInvariant() switch
+    {
+        ".SLDPRT" => DocumentType.Part,
+        ".SLDASM" => DocumentType.Assembly,
+        ".SLDDRW" => DocumentType.Drawing,
+        _ => null,
+    };
 
     internal static string Label(DocumentInfo info) => info.Path ?? info.Title;
 }
