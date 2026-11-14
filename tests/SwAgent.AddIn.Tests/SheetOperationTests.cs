@@ -91,6 +91,68 @@ public class SheetSetTests : DrawingTestBase
     }
 }
 
+public class SheetDeleteTests : DrawingTestBase
+{
+    SheetDeleteResult Delete(params string[] sheets) => Run(new SheetDeleteOperation(Services), new SheetDeleteRequest { Sheets = sheets.ToList() });
+
+    public SheetDeleteTests()
+    {
+        Drw.AddSheet(new SheetFacts { Name = "Sheet2", WidthMm = 420, HeightMm = 297 });
+        Drw.AddSheet(new SheetFacts { Name = "Sheet3", WidthMm = 420, HeightMm = 297 });
+        Drw.AddView("Sheet2", Block, "front", new SheetPoint(100, 150));
+        Drw.Calls.Clear();
+    }
+
+    [Fact]
+    public void Deletes_sheets_with_their_views_by_name_or_reference()
+    {
+        var result = Delete("Sheet2", Services.References.IssueSheet(Doc, "Sheet3"));
+        Assert.Equal(new[] { "Sheet2", "Sheet3" }, result.Deleted);
+        Assert.Equal(1, result.Views);
+        Assert.Equal(new[] { "Sheet1" }, Drw.SheetNames());
+        Assert.Equal((3, 1, 1, 0), (result.Change.SheetsBefore, result.Change.SheetsAfter, result.Change.ViewsBefore, result.Change.ViewsAfter));
+        Assert.Equal(new[] { "delete sheet Sheet2", "delete sheet Sheet3" }, Drw.Calls);
+    }
+
+    [Fact]
+    public void The_last_sheet_is_never_deleted()
+    {
+        var e = Fails(() => Delete("Sheet1", "Sheet2", "Sheet3"));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal("/sheets", e.Error.Details!["field"]);
+        Assert.Contains("at least one sheet", e.Message);
+        Assert.Empty(Drw.Calls);
+    }
+
+    [Theory]
+    [InlineData("Sheet9", "/sheets/1")]
+    [InlineData("sheet2", "/sheets/1")]
+    public void An_unknown_or_repeated_sheet_names_its_place(string second, string field)
+    {
+        var e = Fails(() => Delete("Sheet2", second));
+        Assert.Equal(field, e.Error.Details!["field"]);
+        Assert.Empty(Drw.Calls);
+    }
+
+    [Fact]
+    public void A_sheet_SOLIDWORKS_will_not_delete_is_operation_failed()
+    {
+        Drw.DeleteFails = true;
+        var e = Fails(() => Delete("Sheet2"));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.Equal("Sheet2", e.Error.Details!["sheet"]);
+    }
+
+    [Fact]
+    public void A_stale_sheet_reference_is_unresolved()
+    {
+        string reference = Services.References.IssueSheet(Doc, "Sheet2");
+        Delete("Sheet2");
+        var e = Fails(() => Delete(reference));
+        Assert.Equal(ErrorCode.ReferenceUnresolved, e.Code);
+    }
+}
+
 public class SheetActivateTests : DrawingTestBase
 {
     SheetActivateResult Activate(string sheet) => Run(new SheetActivateOperation(Services), new SheetActivateRequest { Sheet = sheet });

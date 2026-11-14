@@ -112,6 +112,33 @@ public sealed class SheetActivateResult
     public string? Before { get; set; }
 }
 
+[Operation("sheet.delete", typeof(SheetDeleteResult))]
+[Description("Deletes sheets of a drawing, and every view on them, by selecting each (SelectByID2 \"SHEET\") and deleting the selection. A drawing keeps at least one sheet: deleting its last is refused. Checked: each sheet is gone and every other sheet is still there. Not rolled back (a deleted sheet's views cannot be made again as they were): a failed check says what is left.")]
+public sealed class SheetDeleteRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The sheets to delete: each a reference (r1.sheet.…) or a name (Sheet2).")]
+    public List<string> Sheets { get; set; } = new List<string>();
+}
+
+[Description("The sheets deleted.")]
+public sealed class SheetDeleteResult : IDrawingChangeResult
+{
+    [Required]
+    [Description("The names of the sheets deleted.")]
+    public List<string> Deleted { get; set; } = new List<string>();
+
+    [Description("How many views were on them, deleted with them.")]
+    public int Views { get; set; }
+
+    [Required]
+    [Description("What changed in the drawing: sheets and views before and after.")]
+    public DrawingChange Change { get; set; } = new DrawingChange();
+}
+
 [Description("The sheet added or changed.")]
 public sealed class SheetResult : IDrawingChangeResult
 {

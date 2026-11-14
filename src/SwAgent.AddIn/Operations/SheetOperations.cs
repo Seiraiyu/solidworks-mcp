@@ -136,6 +136,66 @@ public sealed class SheetSetOperation : DrawingChangeOperation<SheetSetRequest, 
     static string Describe(SheetFacts s) => $"{s.Name}: {SheetSetups.Describe(s)}";
 }
 
+public sealed class SheetDeleteOperation : DrawingChangeOperation<SheetDeleteRequest, SheetDeleteResult>
+{
+    public SheetDeleteOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    System.Collections.Generic.List<string> _kept = new System.Collections.Generic.List<string>();
+
+    protected override string? DocumentOf(SheetDeleteRequest request) => request.Document;
+
+    protected override SheetDeleteResult Change(ISwDocument doc, ISwDrawing drawing, SheetDeleteRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        if (request.Sheets.Count == 0)
+            throw new SwAgentException(ErrorCode.InvalidArgument, "/sheets: name at least one sheet to delete", new JsonObject { ["field"] = "/sheets" });
+        var sheets = new System.Collections.Generic.List<string>();
+        for (int i = 0; i < request.Sheets.Count; i++)
+        {
+            string name = Sheet(doc, drawing, request.Sheets[i], $"/sheets/{i}");
+            if (sheets.Contains(name))
+                throw new SwAgentException(ErrorCode.InvalidArgument, $"/sheets/{i}: {name} is named twice", new JsonObject { ["field"] = $"/sheets/{i}" });
+            sheets.Add(name);
+        }
+        var all = drawing.SheetNames();
+        if (sheets.Count >= all.Count)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"/sheets: a drawing keeps at least one sheet, and this would delete {(all.Count == 1 ? $"its last, {all[0]}" : "all of them")}; add a sheet first (sheet.add) or delete fewer",
+                new JsonObject { ["field"] = "/sheets", ["sheets"] = all.Select(s => (object?)s).ToList() });
+        }
+        _kept = all.Except(sheets).ToList();
+        int views = sheets.Sum(s => drawing.ViewNames(s).Count);
+        var deleted = new System.Collections.Generic.List<string>();
+        foreach (var name in sheets)
+        {
+            if (!drawing.DeleteSheet(name))
+            {
+                throw new SwAgentException(ErrorCode.OperationFailed,
+                    $"SOLIDWORKS did not delete the sheet {name}{(deleted.Count == 0 ? "" : $"; {string.Join(", ", deleted)} were deleted already and cannot be put back")}",
+                    new JsonObject { ["sheet"] = name, ["deleted"] = deleted.Select(d => (object?)d).ToList() });
+            }
+            deleted.Add(name);
+        }
+        context.Log.Info($"sheet.delete: {string.Join(", ", deleted)} with {views} views");
+        return new SheetDeleteResult { Deleted = deleted, Views = views };
+    }
+
+    /// <summary>Each deleted sheet is gone, and each other sheet is still there.</summary>
+    protected override void Check(ISwDocument doc, ISwDrawing drawing, SheetDeleteRequest request, SheetDeleteResult result)
+    {
+        var now = drawing.SheetNames();
+        var left = result.Deleted.Where(now.Contains).ToList();
+        var lost = _kept.Where(k => !now.Contains(k)).ToList();
+        if (left.Count == 0 && lost.Count == 0) return;
+        throw new SwAgentException(ErrorCode.VerificationFailed,
+            left.Count > 0 ? $"SOLIDWORKS reported the sheets deleted, but {string.Join(", ", left)} {(left.Count == 1 ? "is" : "are")} still there" : $"deleting went too far: {string.Join(", ", lost)} went too",
+            new JsonObject { ["check"] = "sheets", ["left"] = left.Select(l => (object?)l).ToList(), ["lost"] = lost.Select(l => (object?)l).ToList() });
+    }
+}
+
 public sealed class SheetActivateOperation : Operation<SheetActivateRequest, SheetActivateResult>
 {
     readonly AddInServices _services;
