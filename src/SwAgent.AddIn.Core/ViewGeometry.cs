@@ -299,9 +299,17 @@ public static class ViewGeometry
     /// <see cref="DrawnExtents"/> reads them (an arc's points lie on it, so a detail view's drawn edges can be held to
     /// its circle). Empty when the view draws no point. FormatException when the numbers run short.
     /// </summary>
-    public static List<SheetPoint> DrawnPoints(IReadOnlyList<double> polylines, SheetPoint position, double scale)
+    public static List<SheetPoint> DrawnPoints(IReadOnlyList<double> polylines, SheetPoint position, double scale) =>
+        DrawnPolylines(polylines, position, scale).SelectMany(p => p).ToList();
+
+    /// <summary>
+    /// The points of each polyline (one per edge) a view draws, sheet mm, in SOLIDWORKS' order, read as
+    /// <see cref="DrawnPoints"/> reads them; an edge drawn with no point is an empty list. FormatException when the
+    /// numbers run short.
+    /// </summary>
+    public static List<List<SheetPoint>> DrawnPolylines(IReadOnlyList<double> polylines, SheetPoint position, double scale)
     {
-        var drawn = new List<SheetPoint>();
+        var lines = new List<List<SheetPoint>>();
         int i = 0;
         while (i < polylines.Count)
         {
@@ -310,10 +318,12 @@ public static class ViewGeometry
             int points = Count(polylines, i, "points");
             i++;
             if (i + 3 * points > polylines.Count) throw new FormatException($"the polylines end inside an edge's {points} points (at number {i})");
+            var drawn = new List<SheetPoint>();
             for (int p = 0; p < points; p++, i += 3)
                 drawn.Add(new SheetPoint(position.X + polylines[i] * 1000 * scale, position.Y + polylines[i + 1] * 1000 * scale));
+            lines.Add(drawn);
         }
-        return drawn;
+        return lines;
     }
 
     static int Count(IReadOnlyList<double> numbers, int at, string what)
