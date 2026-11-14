@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.InteropServices;
 using SolidWorks.Interop.sldworks;
 using SolidWorks.Interop.swconst;
 using SwAgent.AddIn.Core;
@@ -84,8 +85,34 @@ internal sealed partial class SolidWorksDrawing
             case IGtol gtol:
                 facts.Gtol = FrameOf(gtol.GetFrameValues(1), gtol.GetFrameSymbols(1));
                 break;
+            case ICenterMark mark:
+                // The 5.C live run: IAnnotation.GetPosition put the hole's mark at (117.226, 175.84) for a centre at
+                // (120, 180), so a centre mark is placed by its own position (ICenterMark.GetPosition), and both are kept.
+                var (index, own) = MarkPosition(mark);
+                facts.PositionNote = FormattableString.Invariant($"IAnnotation.GetPosition {facts.Position?.ToString() ?? "nothing"}; ICenterMark.GetPosition({index}) {own?.ToString() ?? "nothing"}");
+                if (own != null) facts.Position = own;
+                break;
         }
         return facts;
+    }
+
+    /// <summary>A centre mark's own position, sheet mm (ICenterMark.GetPosition, index 0, else 1), with the index that gave it.</summary>
+    static (int Index, SheetPoint? Position) MarkPosition(ICenterMark mark)
+    {
+        foreach (int index in new[] { 0, 1 })
+        {
+            try
+            {
+                if (mark.GetPosition(index) is double[] p && p.Length >= 2) return (index, new SheetPoint(p[0] * Mm, p[1] * Mm));
+            }
+            catch (COMException)
+            {
+            }
+            catch (ArgumentException)
+            {
+            }
+        }
+        return (0, null);
     }
 
     /// <summary>

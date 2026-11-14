@@ -65,7 +65,7 @@ public sealed class AnnotationCentreMarksOperation : DrawingChangeOperation<Anno
         {
             var a = Annotating.Reread(drawing, mark);
             if (a.Kind != AnnotationKind.CentreMark) throw Annotating.Failed(a.Name, "kind", "a centre mark", WireNames.ForEnum(a.Kind));
-            if (a.Position == null || !ViewGeometry.Near(a.Position, centre)) throw Annotating.Failed(a.Name, "position", $"the circle's centre {centre}", a.Position?.ToString() ?? "none");
+            if (a.Position == null || !ViewGeometry.Near(a.Position, centre)) throw Annotating.Failed(a.Name, "position", $"the circle's centre {centre}", (a.Position?.ToString() ?? "none") + (a.PositionNote == null ? "" : $" ({a.PositionNote})"));
             result.Made.Add(DescribeAnnotation(doc, drawing, a));
         }
         string sheet = drawing.ReadView(_view)!.Sheet;

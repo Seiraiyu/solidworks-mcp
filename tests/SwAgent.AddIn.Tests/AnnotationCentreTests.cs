@@ -66,8 +66,10 @@ public class AnnotationCentreTests : AnnotationTestBase
     public void A_mark_SOLIDWORKS_put_off_the_centre_is_refused_and_deleted()
     {
         Drw.AnnotationLandsOffByMm = 0.02;
+        Drw.PositionNote = "IAnnotation.GetPosition (117.226, 175.84); ICenterMark.GetPosition(0) (120.02, 180)";
         var e = Fails(() => Marks());
         Assert.Equal("position", e.Error.Details!["check"]);
+        Assert.Contains("ICenterMark.GetPosition(0) (120.02, 180)", e.Message);
         Assert.Empty(Drw.Annotated);
     }
 

@@ -43,6 +43,9 @@ sealed partial class FakeDrawing
     /// <summary>When set, an annotation made lands this far (sheet mm, x) from where it was put.</summary>
     public double AnnotationLandsOffByMm { get; set; }
 
+    /// <summary>When set, what each annotation read back says of how its position was read (AnnotationFacts.PositionNote).</summary>
+    public string? PositionNote { get; set; }
+
     /// <summary>When true, a note asked for in a view lands on the sheet.</summary>
     public bool NotesLandOnSheet { get; set; }
 
@@ -119,6 +122,7 @@ sealed partial class FakeDrawing
         facts.View ??= view;
         facts.Attached = AttachIgnored ? new List<object>() : entities.ToList();
         if (facts.Position != null) facts.Position = new SheetPoint(facts.Position.X + AnnotationLandsOffByMm, facts.Position.Y);
+        facts.PositionNote ??= PositionNote;
         Annotated.Add(facts);
         if (AnnotatingDirtiesModel && v?.Model != null) v.Model.Document.Dirty = true;
         return facts.Name;

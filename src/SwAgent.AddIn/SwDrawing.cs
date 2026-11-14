@@ -398,6 +398,12 @@ public sealed class AnnotationFacts
 
     public SheetPoint? Position { get; set; }
 
+    /// <summary>
+    /// How <see cref="Position"/> was read, when more than one reading was taken (a centre mark: IAnnotation.GetPosition
+    /// and ICenterMark.GetPosition), so a failed position check says what SOLIDWORKS gave each way.
+    /// </summary>
+    public string? PositionNote { get; set; }
+
     /// <summary>A note's text as shown (INote.GetText), linked properties resolved.</summary>
     public string? Text { get; set; }
 
@@ -424,7 +430,7 @@ public sealed class AnnotationFacts
 
     public AnnotationFacts Copy() => new AnnotationFacts
     {
-        Name = Name, Sheet = Sheet, View = View, Kind = Kind, Position = Position == null ? null : new SheetPoint(Position.X, Position.Y), Text = Text, LinkedText = LinkedText,
+        Name = Name, Sheet = Sheet, View = View, Kind = Kind, Position = Position == null ? null : new SheetPoint(Position.X, Position.Y), PositionNote = PositionNote, Text = Text, LinkedText = LinkedText,
         DimensionKind = DimensionKind, Value = Value, DimensionName = DimensionName, Driven = Driven, Label = Label,
         Gtol = Gtol == null ? null : new GtolFrame { Characteristic = Gtol.Characteristic, ToleranceMm = Gtol.ToleranceMm, Diameter = Gtol.Diameter, MaterialCondition = Gtol.MaterialCondition, Datums = new List<string>(Gtol.Datums) },
         Attached = new List<object>(Attached),
