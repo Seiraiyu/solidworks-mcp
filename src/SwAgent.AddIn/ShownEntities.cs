@@ -41,8 +41,13 @@ public static class ShownEntities
     {
         var part = new Part(model);
         var seen = shown.Select(s => Describe(model, s)).ToList();
-        var forms = seen.Select(p => p == null ? new List<(object, EntityInfo)>() : part.OfKind(p.Kind).Where(c => SameForm(c.Info, p)).ToList()).ToList();
-        var offset = Offset(seen, forms);
+        var forms = seen.Select(p => p == null ? new List<(object, EntityInfo Info)>() : part.OfKind(p.Kind).Where(c => SameForm(c.Info, p)).ToList()).ToList();
+        // Where the proxy is as given wins; only proxies with no entity of their form there vote for the view's offset,
+        // which lies in the view's plane (round 4: (130, 180, 0) for the front view), so a front edge and the back edge
+        // behind it are never taken for one another.
+        var exact = seen.Select((p, i) => p == null ? new List<(object, EntityInfo Info)>() : forms[i].Where(c => At(c.Info, p, null)).ToList()).ToList();
+        var facing = drawing.Transform(view) is Core.ViewTransform t ? Cross(Core.ViewGeometry.Right(t), Core.ViewGeometry.Up(t)) : null;
+        var offset = facing == null ? null : Offset(seen, forms, exact, facing);
         var refs = new List<string?>();
         for (int i = 0; i < shown.Count; i++)
         {
@@ -52,7 +57,7 @@ public static class ShownEntities
                 refs.Add(null);
                 continue;
             }
-            var at = forms[i].Where(c => At(c.Item2, p, offset)).ToList();
+            var at = exact[i].Count > 0 ? exact[i] : offset == null ? exact[i] : forms[i].Where(c => Shifted(c.Info, p, offset)).ToList();
             refs.Add(at.Count == 1 ? Verified(references, model, at[0].Item1, at[0].Item2) : null);
         }
         var twins = new HashSet<string>(refs.Where(r => r != null).GroupBy(r => r!, StringComparer.Ordinal).Where(g => g.Count() > 1).Select(g => g.Key), StringComparer.Ordinal);
@@ -91,19 +96,19 @@ public static class ShownEntities
     /// The offset the view's proxies share with the part, beyond none: the most common difference between a proxy's
     /// position and that of a part entity of its form, when more proxies agree on it than on any other; null otherwise.
     /// </summary>
-    static Point3? Offset(IReadOnlyList<EntityInfo?> seen, IReadOnlyList<List<(object, EntityInfo Info)>> forms)
+    static Point3? Offset(IReadOnlyList<EntityInfo?> seen, IReadOnlyList<List<(object, EntityInfo Info)>> forms, IReadOnlyList<List<(object, EntityInfo Info)>> exact, Vector3 facing)
     {
         var votes = new List<(Point3 D, int Count)>();
         for (int i = 0; i < seen.Count; i++)
         {
             var p = seen[i]?.Origin;
-            if (p == null) continue;
+            if (p == null || exact[i].Count > 0) continue;
             var mine = new List<Point3>();
             foreach (var (_, c) in forms[i])
             {
                 if (c.Origin == null) continue;
                 var d = new Point3(p.X - c.Origin.X, p.Y - c.Origin.Y, p.Z - c.Origin.Z);
-                if (Zero(d) || mine.Any(m => Same(m, d))) continue;
+                if (Zero(d) || !InPlane(d, facing) || mine.Any(m => Same(m, d))) continue;
                 mine.Add(d);
             }
             foreach (var d in mine)
@@ -118,12 +123,25 @@ public static class ShownEntities
         return best[0].Count >= 2 && (best.Count == 1 || best[1].Count < best[0].Count) ? best[0].D : null;
     }
 
-    /// <summary>True when the proxy <paramref name="p"/> is where the part entity <paramref name="c"/> is: as given, or shifted by the view's offset.</summary>
+    /// <summary>True when the proxy <paramref name="p"/> is where the part entity <paramref name="c"/> is, as given.</summary>
     static bool At(EntityInfo c, EntityInfo p, Point3? offset)
     {
         if (c.Origin == null || p.Origin == null) return true;
         var d = new Point3(p.Origin.X - c.Origin.X, p.Origin.Y - c.Origin.Y, p.Origin.Z - c.Origin.Z);
         return Zero(d) || (offset != null && Same(d, offset));
+    }
+
+    /// <summary>True when the proxy <paramref name="p"/> is where the part entity <paramref name="c"/> is, shifted by the view's offset.</summary>
+    static bool Shifted(EntityInfo c, EntityInfo p, Point3 offset) =>
+        c.Origin != null && p.Origin != null && Same(new Point3(p.Origin.X - c.Origin.X, p.Origin.Y - c.Origin.Y, p.Origin.Z - c.Origin.Z), offset);
+
+    static Vector3 Cross(Vector3 a, Vector3 b) => new Vector3(a.Y * b.Z - a.Z * b.Y, a.Z * b.X - a.X * b.Z, a.X * b.Y - a.Y * b.X);
+
+    /// <summary>True when <paramref name="d"/> lies in the view's plane: nothing of it along the view's facing.</summary>
+    static bool InPlane(Point3 d, Vector3 facing)
+    {
+        double l = Math.Sqrt(facing.X * facing.X + facing.Y * facing.Y + facing.Z * facing.Z);
+        return l > 0 && Math.Abs((d.X * facing.X + d.Y * facing.Y + d.Z * facing.Z) / l) <= 1e-3;
     }
 
     /// <summary>The reference issued for the part's own <paramref name="entity"/> when it resolves back to an entity of its form at its position; null otherwise.</summary>

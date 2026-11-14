@@ -348,6 +348,9 @@ public class ViewEntitiesTests : DrawingTestBase
         var left = Block.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, Origin = new Point3(0, 20, 20), Axis = new Vector3(0, 1, 0), LengthMm = 40 });
         var right = Block.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, Origin = new Point3(60, 20, 20), Axis = new Vector3(0, 1, 0), LengthMm = 40 });
         var bottom = Block.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, Origin = new Point3(30, 0, 20), Axis = new Vector3(1, 0, 0), LengthMm = 60 });
+        // The back face's edges, the same as the front's but at z = 0: round 5 took them for the front's.
+        foreach (var x in new[] { 0.0, 60.0 }) Block.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, Origin = new Point3(x, 20, 0), Axis = new Vector3(0, 1, 0), LengthMm = 40 });
+        Block.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, Origin = new Point3(30, 0, 0), Axis = new Vector3(1, 0, 0), LengthMm = 60 });
         var shownRight = Drw.ShowAsProxy(side, right, corresponds: false, shiftedBy: shift);
         foreach (var e in new[] { left, bottom }) Drw.ShowAsProxy(side, e, corresponds: false, shiftedBy: shift);
         Drw.ShowAsProxy(side, _hole, corresponds: false);
@@ -361,6 +364,29 @@ public class ViewEntitiesTests : DrawingTestBase
         var resolved = ViewEntities.ResolveShown(Services.References, Doc, Drw, new ViewEntity { View = side.Facts.Name, Reference = onRight.Reference }, "/entities/0");
         Assert.Same(shownRight, resolved.Entity);
         Assert.Same(right, resolved.Own);
+    }
+
+    [Fact]
+    public void View_proxies_in_the_parts_frame_are_named_by_the_front_edges_not_the_identical_back_edges()
+    {
+        // The 5.C live run (round 5): the front and back edges differ only by z = 20, and an offset of (0, 0, 20) won a
+        // vote, so every line matched two edges and none got a reference.
+        var front = Drw.AddView("Sheet1", Block, "front", new SheetPoint(300, 150));
+        var shown = new List<FakeEntity>();
+        foreach (var z in new[] { 20.0, 0.0 })
+        {
+            foreach (var x in new[] { 0.0, 60.0 })
+            {
+                var e = Block.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, Origin = new Point3(x, 20, z), Axis = new Vector3(0, 1, 0), LengthMm = 40 });
+                if (z == 20) shown.Add(e);
+            }
+            var b = Block.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, Origin = new Point3(30, 0, z), Axis = new Vector3(1, 0, 0), LengthMm = 60 });
+            if (z == 20) shown.Add(b);
+        }
+        foreach (var e in shown) Drw.ShowAsProxy(front, e, corresponds: false);
+        var result = Entities(new ViewEntitiesRequest { View = front.Facts.Name, Kinds = new List<ViewEntityKind> { ViewEntityKind.Edge } });
+        Assert.All(result.Entities, e => Assert.NotNull(e.Reference));
+        Assert.Equal(shown.Cast<object>(), result.Entities.Select(e => Services.References.Resolve(Block, e.Reference!, "edge").Entity));
     }
 
     [Fact]
