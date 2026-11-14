@@ -132,7 +132,7 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         finally
         {
             // A view the add-in activated for this change is let go of when it ends, however it ends (ViewActivations).
-            drawing.Settle();
+            drawing.Settle(adopt: true);
         }
     }
 

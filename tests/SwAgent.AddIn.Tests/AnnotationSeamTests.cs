@@ -36,6 +36,15 @@ public class SolidWorksAnnotationTests
     }
 
     [Fact]
+    public void A_radial_dimension_shown_as_a_diameter_is_a_diameter()
+    {
+        // The 5.C live run (round 6): SP4's AddDiameterDimension2 on the hole read back as radial (swRadialDimension).
+        Assert.Equal(DimensionKind.Diameter, SolidWorksDrawing.DimensionKindOf((int)swDimensionType_e.swRadialDimension, diametric: true));
+        Assert.Equal(DimensionKind.Radius, SolidWorksDrawing.DimensionKindOf((int)swDimensionType_e.swRadialDimension, diametric: false));
+        Assert.Equal(DimensionKind.Diameter, SolidWorksDrawing.DimensionKindOf((int)swDimensionType_e.swDiameterDimension, diametric: false));
+    }
+
+    [Fact]
     public void Each_characteristic_has_its_SOLIDWORKS_symbol_both_ways()
     {
         foreach (GtolCharacteristic c in System.Enum.GetValues(typeof(GtolCharacteristic)))

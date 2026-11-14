@@ -224,12 +224,13 @@ public interface ISwDrawing
     IReadOnlyList<object> VisibleFaces(string view);
 
     /// <summary>
-    /// Puts the drawing back at rest when a drawing operation ends: when the add-in activated a view during it
-    /// (ViewActivations), shows the current sheet again (IDrawingDoc.ActivateSheet) so that no view stays activated,
-    /// and forgets the view once its sketch is no longer the active one; when SOLIDWORKS keeps it active, the add-in
-    /// keeps it as its own, so the next operation is not refused for it.
+    /// Puts the drawing back at rest (ViewActivations.Settle): when a drawing change ends (<paramref name="adopt"/>), the
+    /// view active then is the add-in's, and is let go of by activating the sheet's own view, then forgotten once the
+    /// drawing is at rest (kept as the add-in's when SOLIDWORKS keeps it active, so the next change is not refused for it).
+    /// Without adopt (before view.entities reads a view) only a view the add-in already holds is let go of; a view the
+    /// user activated is never touched.
     /// </summary>
-    void Settle();
+    void Settle(bool adopt);
 
     /// <summary>
     /// The model's own entity for an entity the view shows, as candidates in the order to try (IView.GetCorresponding,
@@ -438,6 +439,9 @@ public sealed class AnnotationFacts
     /// <summary>True for a driven (reference) dimension (IDimension.DrivenState).</summary>
     public bool Driven { get; set; }
 
+    /// <summary>What SOLIDWORKS gave for a dimension's type (IDisplayDimension.GetType, Type2, Diametric), for a failed kind or value check to say.</summary>
+    public string? DimensionNote { get; set; }
+
     /// <summary>A datum tag's label.</summary>
     public string? Label { get; set; }
 
@@ -449,7 +453,7 @@ public sealed class AnnotationFacts
     public AnnotationFacts Copy() => new AnnotationFacts
     {
         Name = Name, Sheet = Sheet, View = View, Kind = Kind, Position = Position == null ? null : new SheetPoint(Position.X, Position.Y), PositionNote = PositionNote, Text = Text, LinkedText = LinkedText,
-        DimensionKind = DimensionKind, Value = Value, DimensionName = DimensionName, Driven = Driven, Label = Label,
+        DimensionKind = DimensionKind, DimensionNote = DimensionNote, Value = Value, DimensionName = DimensionName, Driven = Driven, Label = Label,
         Gtol = Gtol == null ? null : new GtolFrame { Characteristic = Gtol.Characteristic, ToleranceMm = Gtol.ToleranceMm, Diameter = Gtol.Diameter, MaterialCondition = Gtol.MaterialCondition, Datums = new List<string>(Gtol.Datums) },
         Attached = new List<object>(Attached),
     };

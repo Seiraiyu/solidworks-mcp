@@ -69,4 +69,22 @@ public static class ViewActivations
     public static string? ByAddIn(string drawing) => Views.TryGetValue(drawing, out var view) ? view : null;
 
     public static void Clear(string drawing) => Views.Remove(drawing);
+
+    /// <summary>
+    /// Puts a drawing back at rest (ISwDrawing.Settle). With <paramref name="adopt"/> (a drawing change ending: nothing but
+    /// the add-in runs on SOLIDWORKS' UI thread while one does, and the guard refused it if the user had a view open), the
+    /// view active now is the add-in's, whether it activated it or SOLIDWORKS did while inserting into it (the 5.C live run,
+    /// round 6: a dimension inserted into Drawing View1 left it activated). The add-in's view is let go of by activating
+    /// the sheet's own view (<paramref name="activate"/>), and forgotten once the drawing is at rest; a view the user
+    /// activated is never touched.
+    /// </summary>
+    public static void Settle(string drawing, string? activeView, string sheetView, bool adopt, Func<string, bool> activate, Func<bool> atRest)
+    {
+        bool aView = activeView != null && !string.Equals(activeView, sheetView, StringComparison.Ordinal);
+        if (adopt && aView) Record(drawing, activeView!);
+        var mine = ByAddIn(drawing);
+        if (mine == null) return;
+        if (aView && string.Equals(activeView, mine, StringComparison.Ordinal)) activate(sheetView);
+        if (atRest()) Clear(drawing);
+    }
 }

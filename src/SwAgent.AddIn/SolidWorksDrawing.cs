@@ -42,19 +42,13 @@ internal sealed partial class SolidWorksDrawing : ISwDrawing
         return true;
     }
 
-    public void Settle()
+    public void Settle(bool adopt)
     {
-        string title = _doc.GetTitle();
-        if (ViewActivations.ByAddIn(title) == null) return;
-        // Activating the current sheet's own view leaves no drawing view activated (as AddNote does for a note on the sheet).
-        if (_drawing.GetFirstView() is IView sheetView)
-        {
-            if (!(_drawing.ActiveDrawingView is IView active) || !string.Equals(active.GetName2(), sheetView.GetName2(), StringComparison.Ordinal))
-                _drawing.ActivateView(sheetView.GetName2());
-            bool atRest = !(_doc.GetActiveSketch2() is ISketch sketch) || ReferenceEquals(sketch, sheetView.GetSketch())
-                || string.Equals((sketch as IFeature)?.Name, (sheetView.GetSketch() as IFeature)?.Name, StringComparison.Ordinal);
-            if (atRest) ViewActivations.Clear(title);
-        }
+        if (!(_drawing.GetFirstView() is IView sheetView)) return;
+        string? active = (_drawing.ActiveDrawingView as IView)?.GetName2();
+        ViewActivations.Settle(_doc.GetTitle(), active, sheetView.GetName2(), adopt, view => _drawing.ActivateView(view), () =>
+            !(_doc.GetActiveSketch2() is ISketch sketch) || ReferenceEquals(sketch, sheetView.GetSketch())
+            || string.Equals((sketch as IFeature)?.Name, (sheetView.GetSketch() as IFeature)?.Name, StringComparison.Ordinal));
     }
 
     public SheetFacts? ReadSheet(string name)

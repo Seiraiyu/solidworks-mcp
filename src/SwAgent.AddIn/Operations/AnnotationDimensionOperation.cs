@@ -56,12 +56,12 @@ public sealed class AnnotationDimensionOperation : DrawingChangeOperation<Annota
         var a = Annotating.Reread(drawing, _made);
         if (a.Kind != AnnotationKind.Dimension) throw Annotating.Failed(a.Name, "kind", "a dimension", WireNames.ForEnum(a.Kind));
         if (a.DimensionKind is DimensionKind read && !Compatible(read, request.Kind))
-            throw Annotating.Failed(a.Name, "kind", WireNames.ForEnum(request.Kind), WireNames.ForEnum(read));
+            throw Annotating.Failed(a.Name, "kind", WireNames.ForEnum(request.Kind), WireNames.ForEnum(read) + (a.DimensionNote == null ? "" : $" ({a.DimensionNote})"));
         bool angle = request.Kind == DimensionKind.Angle;
         if (a.Value == null || !AnnotationGeometry.Matches(_expected, a.Value.Value, angle))
         {
             string expected = FormattableString.Invariant($"{_expected.Value:0.######}{(_expected.Alternative is double other ? $" or {other:0.######}" : "")}{(angle ? "°" : " mm")} ({_expected.Quantity}, on the model)");
-            throw Annotating.Failed(a.Name, "value", expected, a.Value == null ? "no value" : FormattableString.Invariant($"{a.Value.Value:0.######}"));
+            throw Annotating.Failed(a.Name, "value", expected, (a.Value == null ? "no value" : FormattableString.Invariant($"{a.Value.Value:0.######}")) + (a.DimensionNote == null ? "" : $" ({a.DimensionNote})"));
         }
         if (!a.Driven) throw Annotating.Failed(a.Name, "driven", "a reference (driven) dimension", "a driving dimension");
         var info = DescribeAnnotation(doc, drawing, a);

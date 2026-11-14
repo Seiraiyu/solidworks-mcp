@@ -46,7 +46,7 @@ sealed partial class FakeDrawing
     /// <summary>How many times a drawing operation put the drawing back at rest when it ended (Settle).</summary>
     public int Settled { get; private set; }
 
-    public void Settle() => Settled++;
+    public void Settle(bool adopt) => Settled++;
 
     /// <summary>When set, what each annotation read back says of how its position was read (AnnotationFacts.PositionNote).</summary>
     public string? PositionNote { get; set; }

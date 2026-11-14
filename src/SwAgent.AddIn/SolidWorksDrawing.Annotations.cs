@@ -67,7 +67,11 @@ internal sealed partial class SolidWorksDrawing
         {
             case IDisplayDimension d:
                 int type = d.GetType();
-                facts.DimensionKind = DimensionKindOf(type);
+                // The 5.C live run (round 6): SP4's AddDiameterDimension2 on a hole read back as radial; a radial
+                // dimension shown as a diameter (IDisplayDimension.Diametric) is one. What SOLIDWORKS gave is kept.
+                bool diametric = Try(() => d.Diametric) is true;
+                facts.DimensionKind = DimensionKindOf(type, diametric);
+                facts.DimensionNote = FormattableString.Invariant($"IDisplayDimension.GetType {type}, Type2 {Try(() => d.Type2) ?? "none"}, Diametric {diametric}");
                 if (d.GetDimension2(0) is IDimension dim)
                 {
                     facts.Value = dim.SystemValue * (type == (int)swDimensionType_e.swAngularDimension ? 180 / Math.PI : Mm);
@@ -406,8 +410,9 @@ internal sealed partial class SolidWorksDrawing
     };
 
     /// <summary>swDimensionType_e as design 611 names it; null for a kind it does not name.</summary>
-    internal static DimensionKind? DimensionKindOf(int swType) => swType switch
+    internal static DimensionKind? DimensionKindOf(int swType, bool diametric = false) => swType switch
     {
+        (int)swDimensionType_e.swRadialDimension when diametric => DimensionKind.Diameter,
         (int)swDimensionType_e.swLinearDimension => DimensionKind.Linear,
         (int)swDimensionType_e.swHorLinearDimension => DimensionKind.Horizontal,
         (int)swDimensionType_e.swVertLinearDimension => DimensionKind.Vertical,
