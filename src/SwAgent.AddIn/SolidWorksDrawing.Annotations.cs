@@ -140,15 +140,36 @@ internal sealed partial class SolidWorksDrawing
     string? ShownComponentOf(IView view, object entity, string? root)
     {
         string? found = null;
+        string? before = RunningCommand();
         foreach (var c in Components(view))
         {
-            if (!(Try(() => ShowsOf(view, c, entity)) is true)) continue;
+            bool shows = Try(() => ShowsOf(view, c, entity)) is true;
+            // SP4 can open a view's PropertyManager on these reads (5.D live run, round 4). That path is then unusable:
+            // refuse, saying what SOLIDWORKS was left in, rather than leave it busy unannounced.
+            if (before == null && RunningCommand() is string left)
+            {
+                _doc.ClearSelection2(true);
+                string? still = RunningCommand();
+                throw new SwAgentException(ErrorCode.OperationFailed,
+                    $"reading which component an annotation in {view.GetName2()} is attached to (IView.GetVisibleEntities2 per component) left SOLIDWORKS in '{left}'"
+                    + (still == null ? "; it was cleared. " : $"; it is still open: close it in SOLIDWORKS. ")
+                    + "This way of reading an assembly view's attachments is not usable here",
+                    new SwAgent.Contracts.Serialization.JsonObject { ["view"] = view.GetName2(), ["command"] = left });
+            }
+            if (!shows) continue;
             string? name = NameIn(c, root);
             if (name == null) continue;
             if (found != null && !string.Equals(found, name, StringComparison.OrdinalIgnoreCase)) return null;
             found = name;
         }
         return found;
+    }
+
+    /// <summary>The title of the command (PropertyManager) SOLIDWORKS has open, or null (ISldWorks.GetRunningCommandInfo, a plain read).</summary>
+    string? RunningCommand()
+    {
+        _sw.GetRunningCommandInfo(out int _, out string title, out bool _);
+        return string.IsNullOrEmpty(title) ? null : title;
     }
 
     bool ShowsOf(IView view, IComponent2 component, object entity)
