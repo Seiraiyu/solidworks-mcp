@@ -106,6 +106,17 @@ public class DrawingContractTests
     [InlineData("view.section", "view", false)]
     [InlineData("view.detail", "view", false)]
     [InlineData("view.flat_pattern", "view", false)]
+    [InlineData("annotation.import", "annotation", false)]
+    [InlineData("annotation.dimension", "annotation", false)]
+    [InlineData("annotation.note", "annotation", false)]
+    [InlineData("annotation.centre_marks", "annotation", false)]
+    [InlineData("annotation.centre_lines", "annotation", false)]
+    [InlineData("annotation.datum", "annotation", false)]
+    [InlineData("annotation.gtol", "annotation", false)]
+    [InlineData("annotation.list", "annotation", true)]
+    [InlineData("annotation.set", "annotation", false)]
+    [InlineData("annotation.delete", "annotation", false)]
+    [InlineData("drawing.properties", "drawing", false)]
     public void The_operations_are_catalogued_in_their_families(string method, string family, bool readOnly)
     {
         var op = OperationCatalog.Find(method);

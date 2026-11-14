@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "description": "Reads the drawing's own custom properties, which its title block shows (a title, a part number, a material, a drafter), and with set writes them first, each as text (ICustomPropertyManager.Set2 for one it has, Add3 for a new one); a value may link another property ($PRP:\"PartNo\"). Read back through ICustomPropertyManager.Get2, the getter CADapter measured resolving where Get5 does not. Checked: each property written reads back as written, and resolved gives its value as shown. On failure each old value is put back and each new property deleted (rolled back). The drawing's own properties only: not a configuration's, not the model's; the title block's geometry is not edited. Waits, changing nothing (busy, user_editing), while the user edits a view's sketch or the sheet format (sheet_format: true) or has a command open. After the user exits a view's sketch, SOLIDWORKS keeps that view activated and changes keep waiting until the user lets go of it: ask them to double-click the sheet outside every view.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "set": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A custom property to write: its name, and its value as text.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The property's name, for example Title, PartNo, Material or DrawnBy."
+          },
+          "value": {
+            "type": "string",
+            "description": "Its value as text; $PRP:\"name\" links another property of the drawing."
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "description": "The properties to write first, each by name (a name it has is overwritten). Nothing is written when absent."
+    }
+  },
+  "additionalProperties": false
+}

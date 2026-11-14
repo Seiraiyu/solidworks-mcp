@@ -390,11 +390,28 @@ public sealed class ViewEntitiesOperation : Operation<ViewEntitiesRequest, ViewE
         var t = drawing.Transform(view) ?? throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS gives no transform for {view}");
         var kinds = request.Kinds == null || request.Kinds.Count == 0 ? new[] { ViewEntityKind.Edge, ViewEntityKind.Vertex }.ToList() : request.Kinds;
         var result = new ViewEntitiesResult { View = view, Model = info.Path ?? info.Title, Scale = t.Scale };
-        foreach (var e in drawing.VisibleEntities(view, kinds.Contains(ViewEntityKind.Edge), kinds.Contains(ViewEntityKind.Vertex)).OrderBy(e => e.Vertex))
+        // Read with no view of the add-in's activated: SP4 gives an activated view's proxies positions in another frame
+        // (5.C live run, round 4). A view the user activated is left as it is; ShownEntities then matches by the view's offset.
+        // A failure to let go of it is not the read's failure: the offset vote is what covers an activated view.
+        try
         {
-            var described = _services.References.Describe(model, e.Entity);
+            drawing.Settle(adopt: false);
+        }
+        catch (System.Runtime.InteropServices.COMException e)
+        {
+            context.Log.Warn($"view.entities: letting go of the add-in's view before reading {view} failed ({e.Message}); read as it is");
+        }
+        var shown = drawing.VisibleEntities(view, kinds.Contains(ViewEntityKind.Edge), kinds.Contains(ViewEntityKind.Vertex)).OrderBy(e => e.Vertex).ToList();
+        // Each reference from the model's own entity, verified, and none two entities would share (ShownEntities).
+        var references = ShownEntities.References(_services.References, model, drawing, view, shown.Select(e => e.Entity).ToList());
+        for (int i = 0; i < shown.Count; i++)
+        {
+            var e = shown[i];
+            // Described as the part has it when a reference names it: SP4 can give a view's proxy its position in
+            // another frame (5.C live run, round 4).
+            var described = model.Describe(Own(model, references[i]) ?? e.Entity);
             var drawn = ViewGeometry.Draw(t, described, e.Vertex);
-            drawn.Reference = described.Reference;
+            drawn.Reference = references[i];
             drawn.Kind = e.Vertex ? ReferenceKind.Vertex : ReferenceKind.Edge;
             drawn.Silhouette = e.Silhouette;
             described.Reference = null;
@@ -403,6 +420,19 @@ public sealed class ViewEntitiesOperation : Operation<ViewEntitiesRequest, ViewE
         }
         context.Log.Info($"view.entities: {view}: {result.Entities.Count} entities, {result.Entities.Count(x => x.Reference != null)} with a model reference");
         return result;
+    }
+
+    object? Own(ISwDocument model, string? reference)
+    {
+        if (reference == null) return null;
+        try
+        {
+            return _services.References.Resolve(model, reference, "").Entity;
+        }
+        catch (SwAgentException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The view still shows as many entities: nothing changed it while it was read.</summary>

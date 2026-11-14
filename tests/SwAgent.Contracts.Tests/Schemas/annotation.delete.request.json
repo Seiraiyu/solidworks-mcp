@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "description": "Deletes annotations by selecting each (IAnnotation.Select3, its sheet shown) and deleting the selection (IModelDoc2.EditDelete), a view or sheet at a time. Deleting an imported model dimension removes it from the drawing only: the model keeps it, with its value (checked). Checked: each is gone, every other annotation is still there, and the model is unchanged. Not rolled back (a deleted annotation cannot be made again as it was): a failed check says what is left, and when SOLIDWORKS refuses one view's annotations after deleting another's, operation_failed gives what is left with rollback_failed. A reference to a deleted annotation no longer resolves. Waits, changing nothing (busy, user_editing), while the user edits a view's sketch or the sheet format (sheet_format: true) or has a command open. After the user exits a view's sketch, SOLIDWORKS keeps that view activated and changes keep waiting until the user lets go of it: ask them to double-click the sheet outside every view.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "annotations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The annotations to delete: each a reference (r1.annotation.…) or a name (with @view when names repeat)."
+    }
+  },
+  "required": [
+    "annotations"
+  ],
+  "additionalProperties": false
+}

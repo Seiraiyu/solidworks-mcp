@@ -32,17 +32,14 @@ internal sealed partial class SolidWorksDocument : ISwDocument
     {
         if (!(Doc.GetActiveSketch2() is ISketch sketch)) return null;
         var active = new DrawingSketches.Sketch(sketch, (sketch as IFeature)?.Name);
-        return Doc is IDrawingDoc drawing ? DrawingSketches.UserEditing(active, AtRest(drawing)) : active.Name ?? "a sketch";
+        if (!(Doc is IDrawingDoc drawing)) return active.Name ?? "a sketch";
+        // At rest: the current sheet's own sketch, and the activated view's own only when the add-in activated that view.
+        var activeView = drawing.ActiveDrawingView as IView;
+        return DrawingSketches.UserEditing(active, Own(drawing.GetFirstView() as IView), activeView?.GetName2(), Own(activeView), ViewActivations.ByAddIn(Doc.GetTitle()));
     }
 
-    /// <summary>A drawing's sketches at rest (DrawingSketches): the current sheet's own and the activated view's own.</summary>
-    static IEnumerable<DrawingSketches.Sketch> AtRest(IDrawingDoc drawing)
-    {
-        foreach (var view in new[] { drawing.GetFirstView() as IView, drawing.ActiveDrawingView as IView })
-        {
-            if (view?.GetSketch() is ISketch own) yield return new DrawingSketches.Sketch(own, (own as IFeature)?.Name);
-        }
-    }
+    static DrawingSketches.Sketch? Own(IView? view) =>
+        view?.GetSketch() is ISketch own ? new DrawingSketches.Sketch(own, (own as IFeature)?.Name) : (DrawingSketches.Sketch?)null;
 
     public void Activate()
     {

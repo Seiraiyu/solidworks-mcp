@@ -8,7 +8,7 @@ public class ViewCutContractTests
     [Fact]
     public void Protocol_14_speaks_sections_details_and_flat_patterns()
     {
-        Assert.Equal(14, Protocol.Version);
+        Assert.True(Protocol.Version >= 14, $"protocol {Protocol.Version} speaks sections, details and flat patterns from 14 on");
     }
 
     [Fact]

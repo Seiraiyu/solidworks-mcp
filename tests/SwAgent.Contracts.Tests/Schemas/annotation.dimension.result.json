@@ -1,0 +1,410 @@
+{
+  "type": "object",
+  "description": "The reference dimension made.",
+  "properties": {
+    "annotation": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Its name in its view (or on its sheet), as SOLIDWORKS names it."
+        },
+        "reference": {
+          "type": "string",
+          "description": "Its reference (r1.annotation.…). It names the annotation by its sheet, view and name: one deleted, or whose view is renamed or deleted, no longer resolves. References are opaque: pass one back exactly as it was given, and never build or change one."
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "dimension",
+            "note",
+            "centre_mark",
+            "centre_line",
+            "datum",
+            "gtol",
+            "other"
+          ],
+          "description": "dimension, note, centre_mark, centre_line, datum, gtol or other."
+        },
+        "sheet": {
+          "type": "string",
+          "description": "The sheet it is on."
+        },
+        "view": {
+          "type": "string",
+          "description": "The view it belongs to; absent for one on the sheet itself."
+        },
+        "position": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number",
+              "description": "Mm to the right of the sheet's lower-left corner."
+            },
+            "y": {
+              "type": "number",
+              "description": "Mm above the sheet's lower-left corner."
+            }
+          },
+          "required": [
+            "x",
+            "y"
+          ],
+          "additionalProperties": false,
+          "description": "Where it is on the sheet, sheet mm (its text's position); absent when SOLIDWORKS gives none."
+        },
+        "text": {
+          "type": "string",
+          "description": "A note's text as shown, with linked properties resolved; absent for other kinds."
+        },
+        "linked_text": {
+          "type": "string",
+          "description": "A note's text as written, with any $PRP:\"…\" links unresolved; absent for other kinds."
+        },
+        "dimension_kind": {
+          "type": "string",
+          "enum": [
+            "linear",
+            "horizontal",
+            "vertical",
+            "radius",
+            "diameter",
+            "angle"
+          ],
+          "description": "A dimension's kind: linear, horizontal, vertical, radius, diameter or angle; absent for another kind of dimension, or another annotation."
+        },
+        "value": {
+          "type": "number",
+          "description": "A dimension's value: model mm, or degrees for an angle."
+        },
+        "dimension_name": {
+          "type": "string",
+          "description": "A dimension's name: the model's (D1@Sketch2) for a model dimension, the drawing's (RD1@Drawing View1) for a reference dimension."
+        },
+        "model_dimension": {
+          "type": "boolean",
+          "description": "For a dimension: true for one of the model's (it drives the model, and is changed with dimension.set on the model), false for a reference dimension made on the drawing."
+        },
+        "label": {
+          "type": "string",
+          "description": "A datum tag's label."
+        },
+        "gtol": {
+          "type": "object",
+          "properties": {
+            "characteristic": {
+              "type": "string",
+              "enum": [
+                "straightness",
+                "flatness",
+                "circularity",
+                "cylindricity",
+                "profile_of_a_line",
+                "profile_of_a_surface",
+                "angularity",
+                "perpendicularity",
+                "parallelism",
+                "position",
+                "concentricity",
+                "symmetry",
+                "circular_runout",
+                "total_runout"
+              ],
+              "description": "Its geometric characteristic; absent when SOLIDWORKS gives one the add-in does not name."
+            },
+            "tolerance_mm": {
+              "type": "number",
+              "description": "Its tolerance, mm; absent when its text is not a number."
+            },
+            "diameter": {
+              "type": "boolean",
+              "description": "True when the tolerance carries the diameter symbol (Ø): a cylindrical tolerance zone."
+            },
+            "material_condition": {
+              "type": "string",
+              "enum": [
+                "none",
+                "mmc",
+                "lmc"
+              ],
+              "description": "The tolerance's material condition; absent when SOLIDWORKS gives one the add-in does not name."
+            },
+            "datums": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Its datum references, primary first (up to three); empty for none."
+            }
+          },
+          "required": [
+            "diameter",
+            "datums"
+          ],
+          "additionalProperties": false,
+          "description": "A geometric tolerance frame's contents."
+        },
+        "attached": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "An entity of a model as one drawing view shows it: the view, and the entity in exactly one of the forms the model tools take (a reference issued in the view's model, a {component, entity} pair, or a name such as Boss-Extrude1 or Axis1@pin-1). It is resolved in the view's model and selected through that view.",
+            "properties": {
+              "view": {
+                "type": "string",
+                "description": "The view: a reference (r1.view.…) or its name (Drawing View1)."
+              },
+              "reference": {
+                "type": "string",
+                "description": "A reference issued in the view's model (model.find, view.entities), alone. One of reference or entity."
+              },
+              "component": {
+                "type": "string",
+                "description": "With entity in an assembly view: the component, by reference or name; entity is then a reference issued in the component's own part, or a name there."
+              },
+              "entity": {
+                "type": "string",
+                "description": "A name in the view's model (Boss-Extrude1, front, Axis1@pin-1), or with component an entity of that component. One of reference or entity."
+              }
+            },
+            "required": [
+              "view"
+            ],
+            "additionalProperties": false
+          },
+          "description": "The model entities it is attached to, each as its view shows it (view and the reference issued in the view's model; reference is absent when SOLIDWORKS gives none). Empty when it is attached to none."
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "sheet",
+        "attached"
+      ],
+      "additionalProperties": false,
+      "description": "The dimension, as read back."
+    },
+    "value": {
+      "type": "number",
+      "description": "Its value as read back: model mm, or degrees for an angle."
+    },
+    "model_value": {
+      "type": "number",
+      "description": "The same quantity measured on the model, which its value equals."
+    },
+    "measured": {
+      "type": "string",
+      "description": "What was measured on the model: the distance between the two parallel lines, the circle's diameter, …."
+    },
+    "change": {
+      "type": "object",
+      "properties": {
+        "document": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "The document's title as SOLIDWORKS shows it."
+            },
+            "path": {
+              "type": "string",
+              "description": "The full path, absent while the document has never been saved."
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "part",
+                "assembly",
+                "drawing"
+              ],
+              "description": "Part, assembly or drawing."
+            },
+            "dirty": {
+              "type": "boolean",
+              "description": "True when the document has unsaved changes."
+            },
+            "visible": {
+              "type": "boolean",
+              "description": "False for a document SOLIDWORKS loaded only because an open assembly uses it: it has no window of its own."
+            }
+          },
+          "required": [
+            "title",
+            "type",
+            "dirty",
+            "visible"
+          ],
+          "additionalProperties": false,
+          "description": "The drawing it acted on."
+        },
+        "created": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "Something a model-changing operation made.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Its name, for example Sketch3 or Line2."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "face",
+                  "edge",
+                  "vertex",
+                  "feature",
+                  "sketch",
+                  "sketch_entity",
+                  "sketch_point",
+                  "plane",
+                  "axis",
+                  "point",
+                  "dimension",
+                  "component",
+                  "mate",
+                  "sheet",
+                  "view",
+                  "annotation",
+                  "table"
+                ],
+                "description": "What it is: feature, sketch, sketch_entity, sketch_point, dimension, plane, axis or point; component or mate in an assembly; sheet or view on a drawing."
+              },
+              "reference": {
+                "type": "string",
+                "description": "Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one."
+              }
+            },
+            "required": [
+              "name",
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          "description": "What it made (sheets, views, annotations), in the order it made them."
+        },
+        "changed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A value a model-changing operation edited.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "What was edited, for example D1@Sketch1."
+              },
+              "property": {
+                "type": "string",
+                "description": "Which of its properties: value, or suppressed."
+              },
+              "before": {
+                "type": "string",
+                "description": "Its value before, with its unit, for example 40 mm."
+              },
+              "after": {
+                "type": "string",
+                "description": "Its value after, with its unit."
+              }
+            },
+            "required": [
+              "name",
+              "property",
+              "before",
+              "after"
+            ],
+            "additionalProperties": false
+          },
+          "description": "What it edited, each with its value before and after."
+        },
+        "sheets_before": {
+          "type": "integer",
+          "description": "Sheets before the change."
+        },
+        "sheets_after": {
+          "type": "integer",
+          "description": "Sheets after the change."
+        },
+        "views_before": {
+          "type": "integer",
+          "description": "Views before the change, on every sheet."
+        },
+        "views_after": {
+          "type": "integer",
+          "description": "Views after the change, on every sheet."
+        },
+        "annotations_before": {
+          "type": "integer",
+          "description": "Annotations before the change, on every sheet and in every view."
+        },
+        "annotations_after": {
+          "type": "integer",
+          "description": "Annotations after the change, on every sheet and in every view."
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A model a drawing shows, as it is in memory.",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Full path of the model."
+              },
+              "dirty_before": {
+                "type": "boolean",
+                "description": "True when it had unsaved changes before the change."
+              },
+              "dirty_after": {
+                "type": "boolean",
+                "description": "True when it has unsaved changes after the change."
+              },
+              "rebuild_errors_before": {
+                "type": "integer",
+                "description": "How many of its features had a rebuild error before the change."
+              },
+              "rebuild_errors_after": {
+                "type": "integer",
+                "description": "How many of its features have a rebuild error after the change."
+              }
+            },
+            "required": [
+              "path",
+              "dirty_before",
+              "dirty_after",
+              "rebuild_errors_before",
+              "rebuild_errors_after"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Each model the drawing shows, before and after: unsaved changes and rebuild errors, which must not have changed."
+        },
+        "not_at_rest": {
+          "type": "string",
+          "description": "Set only when the drawing could not be put back at rest after the change: the view SOLIDWORKS keeps activated, or what failed in letting go of it. The change itself stands. Ask the user to double-click the sheet outside every view. A failed change reports the same in its error's details as not_at_rest."
+        }
+      },
+      "required": [
+        "document",
+        "created",
+        "changed",
+        "sheets_before",
+        "sheets_after",
+        "views_before",
+        "views_after",
+        "annotations_before",
+        "annotations_after",
+        "models"
+      ],
+      "additionalProperties": false,
+      "description": "What changed in the drawing: created holds the dimension; models each model shown, unchanged."
+    }
+  },
+  "required": [
+    "annotation",
+    "value",
+    "model_value",
+    "measured",
+    "change"
+  ],
+  "additionalProperties": false
+}

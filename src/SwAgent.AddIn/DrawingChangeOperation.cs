@@ -92,6 +92,24 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         });
     }
 
+    /// <summary>The annotation <paramref name="text"/> names, by reference or name, as SOLIDWORKS holds it now.</summary>
+    protected AnnotationFacts Annotation(ISwDocument doc, ISwDrawing drawing, string text, string field) => Services.References.ResolveAnnotation(doc, drawing, text, field);
+
+    /// <summary>
+    /// Records an annotation the change made, with its reference; a rollback deletes it by selection (its sheet shown) and
+    /// checks it is gone.
+    /// </summary>
+    protected void MadeAnnotation(ISwDocument doc, ISwDrawing drawing, ModelTransaction tx, AnnotationFacts made) =>
+        tx.Made(new CreatedItem { Name = made.Name, Kind = ReferenceKind.Annotation, Reference = Services.References.IssueAnnotation(doc, made) }, () =>
+        {
+            if (!drawing.DeleteAnnotations(made.Sheet, made.View, new[] { made.Name }) || DrawingAnnotations.Read(drawing, made.Sheet, made.View, made.Name) != null)
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not delete the annotation {made.Name} from {DrawingAnnotations.Where(made)}");
+        });
+
+    /// <summary>An annotation as results report it.</summary>
+    protected AnnotationInfo DescribeAnnotation(ISwDocument doc, ISwDrawing drawing, AnnotationFacts annotation) =>
+        DrawingAnnotations.Info(Services.References, doc, drawing, annotation);
+
     /// <summary>A view as results report it, read now.</summary>
     protected ViewInfo Describe(ISwDocument doc, ISwDrawing drawing, string view) =>
         DrawingReader.View(Services.References, doc, drawing, drawing.ReadView(view) ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"the view {view} is not on the drawing",
@@ -107,8 +125,50 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         _pending = null;
         var (doc, drawing) = DocumentLocator.FindDrawing(Services.SolidWorks, DocumentOf(request), Name);
         DrawingChangeGuard.Require(Services.SolidWorks, doc, drawing, Name);
+        // A view the add-in activated for this change is let go of when it ends, however it ends (ViewActivations). What
+        // that leaves undone, or a failure in it, is reported beside the change's own result or error, never in its place.
+        TResult result;
+        try
+        {
+            result = RunChange(doc, drawing, request, context);
+        }
+        catch (Exception e)
+        {
+            if (Settle(drawing, context) is string left && e is SwAgentException failed)
+            {
+                failed.Error.Details ??= new JsonObject();
+                failed.Error.Details["not_at_rest"] = left;
+            }
+            throw;
+        }
+        result.Change.NotAtRest = Settle(drawing, context);
+        return result;
+    }
+
+    /// <summary>
+    /// Puts the drawing back at rest (ISwDrawing.Settle): null when it is, otherwise what is left (the view SOLIDWORKS keeps
+    /// activated, or what failed), logged. Never throws: it runs after the change has its outcome.
+    /// </summary>
+    static string? Settle(ISwDrawing drawing, IOperationContext context)
+    {
+        string? left;
+        try
+        {
+            var view = drawing.Settle(adopt: true);
+            left = view == null ? null : $"SOLIDWORKS keeps {view} activated after the change; until it is let go of (double-click the sheet outside every view), a user editing {view}'s sketch is not told apart from the drawing at rest";
+        }
+        catch (Exception e)
+        {
+            left = $"letting go of a view the add-in activated failed ({e.GetType().Name}: {e.Message}); a view may stay activated: double-click the sheet outside every view to let go of it";
+        }
+        if (left != null) context.Log.Warn($"drawing change ended not at rest: {left}");
+        return left;
+    }
+
+    TResult RunChange(ISwDocument doc, ISwDrawing drawing, TRequest request, IOperationContext context)
+    {
         var models = ModelStates.Take(Services.SolidWorks, doc);
-        int sheetsBefore = drawing.SheetNames().Count, viewsBefore = DrawingReader.ViewCount(drawing);
+        int sheetsBefore = drawing.SheetNames().Count, viewsBefore = DrawingReader.ViewCount(drawing), annotationsBefore = DrawingAnnotations.Count(drawing);
         var tx = new ModelTransaction();
         TResult result;
         try
@@ -123,7 +183,7 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         try
         {
             Check(doc, drawing, request, result);
-            result.Change = Evidence(doc, drawing, tx, sheetsBefore, viewsBefore, models);
+            result.Change = Evidence(doc, drawing, tx, sheetsBefore, viewsBefore, annotationsBefore, models);
         }
         catch (Exception e)
         {
@@ -154,7 +214,7 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         }
     }
 
-    static DrawingChange Evidence(ISwDocument doc, ISwDrawing drawing, ModelTransaction tx, int sheetsBefore, int viewsBefore, ModelStates before) => new DrawingChange
+    static DrawingChange Evidence(ISwDocument doc, ISwDrawing drawing, ModelTransaction tx, int sheetsBefore, int viewsBefore, int annotationsBefore, ModelStates before) => new DrawingChange
     {
         Document = doc.Info(),
         Created = tx.Created.ToList(),
@@ -163,6 +223,8 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         SheetsAfter = drawing.SheetNames().Count,
         ViewsBefore = viewsBefore,
         ViewsAfter = DrawingReader.ViewCount(drawing),
+        AnnotationsBefore = annotationsBefore,
+        AnnotationsAfter = DrawingAnnotations.Count(drawing),
         Models = before.Shown(ModelStates.Take(before.Sw, doc)),
     };
 
@@ -250,18 +312,21 @@ public sealed class ModelStates
 }
 
 /// <summary>
-/// The precondition of every drawing change (design 611, Drawing changes): phase 3's (no sketch being edited, here a
-/// view's sketch; no command open), and the user is not editing the sheet format. Otherwise busy with user_editing,
-/// before anything is changed; nothing of the user's is closed.
+/// The precondition of every drawing change (design 611, Drawing changes): the user is not editing the sheet format, and
+/// phase 3's (no sketch being edited, here a view's sketch; no command open). Otherwise busy with user_editing, before
+/// anything is changed; nothing of the user's is closed. The sheet format is asked first: while it is edited SOLIDWORKS
+/// has the format's own sketch active, which phase 3's check would report as a sketch rather than as the sheet format.
 /// </summary>
 public static class DrawingChangeGuard
 {
     public static void Require(ISolidWorksApplication sw, ISwDocument doc, ISwDrawing drawing, string operation)
     {
+        if (drawing.EditingSheetFormat())
+        {
+            throw new SwAgentException(ErrorCode.Busy,
+                $"{operation} was not started: the user is editing the sheet format of {doc.Info().Title}. That is the user's to finish (Edit Sheet); wait for it (or ask them), then try again. Nothing was changed",
+                new JsonObject { ["reason"] = "user_editing", ["detected"] = "before", ["started"] = false, ["sheet_format"] = true });
+        }
         ModelChangeGuard.Require(sw, doc, operation);
-        if (!drawing.EditingSheetFormat()) return;
-        throw new SwAgentException(ErrorCode.Busy,
-            $"{operation} was not started: the user is editing the sheet format of {doc.Info().Title}. That is the user's to finish (Edit Sheet); wait for it (or ask them), then try again. Nothing was changed",
-            new JsonObject { ["reason"] = "user_editing", ["detected"] = "before", ["started"] = false, ["sheet_format"] = true });
     }
 }

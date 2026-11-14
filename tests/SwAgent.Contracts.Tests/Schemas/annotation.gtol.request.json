@@ -1,0 +1,105 @@
+{
+  "type": "object",
+  "description": "Adds a single geometric tolerance frame (IModelDoc2.InsertGtol) to a model entity a view shows, an edge or a face, selected through its view (attach_to, a ViewEntity), never picked by sheet coordinates: characteristic one of the fourteen (straightness … total_runout), tolerance_mm (mm, more than 0) with the diameter symbol when diameter is true and material_condition none, mmc or lmc, and up to three datums, primary first, each the label of a datum tag already on the drawing (annotation.datum makes them; a form tolerance, straightness, flatness, circularity or cylindricity, takes none). The frame is set with IGtol.SetFrameSymbols (SOLIDWORKS' numbers; CADapter measured the string variant wanting font codes) and SetFrameValues2; at (sheet mm) moves it. Checked: the frame reads back its characteristic, tolerance, diameter symbol, material condition and datums, is attached to that entity, and is at at within 0.01 mm when given; the model is unchanged. Otherwise the frame is deleted again (rolled back). Composite and multi-frame tolerances are out of scope. Waits, changing nothing (busy, user_editing), while the user edits a view's sketch or the sheet format (sheet_format: true) or has a command open. After the user exits a view's sketch, SOLIDWORKS keeps that view activated and changes keep waiting until the user lets go of it: ask them to double-click the sheet outside every view.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "characteristic": {
+      "type": "string",
+      "enum": [
+        "straightness",
+        "flatness",
+        "circularity",
+        "cylindricity",
+        "profile_of_a_line",
+        "profile_of_a_surface",
+        "angularity",
+        "perpendicularity",
+        "parallelism",
+        "position",
+        "concentricity",
+        "symmetry",
+        "circular_runout",
+        "total_runout"
+      ],
+      "description": "straightness, flatness, circularity, cylindricity, profile_of_a_line, profile_of_a_surface, angularity, perpendicularity, parallelism, position, concentricity, symmetry, circular_runout or total_runout."
+    },
+    "tolerance_mm": {
+      "type": "number",
+      "description": "The tolerance, mm, more than 0."
+    },
+    "attach_to": {
+      "type": "object",
+      "properties": {
+        "view": {
+          "type": "string",
+          "description": "The view: a reference (r1.view.…) or its name (Drawing View1)."
+        },
+        "reference": {
+          "type": "string",
+          "description": "A reference issued in the view's model (model.find, view.entities), alone. One of reference or entity."
+        },
+        "component": {
+          "type": "string",
+          "description": "With entity in an assembly view: the component, by reference or name; entity is then a reference issued in the component's own part, or a name there."
+        },
+        "entity": {
+          "type": "string",
+          "description": "A name in the view's model (Boss-Extrude1, front, Axis1@pin-1), or with component an entity of that component. One of reference or entity."
+        }
+      },
+      "required": [
+        "view"
+      ],
+      "additionalProperties": false,
+      "description": "The edge or face the frame is attached to, as a view shows it."
+    },
+    "datums": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Up to three datum labels, primary first, each a datum tag's already on the drawing. None when absent."
+    },
+    "diameter": {
+      "type": "boolean",
+      "description": "True to give the tolerance the diameter symbol (Ø), a cylindrical tolerance zone."
+    },
+    "material_condition": {
+      "type": "string",
+      "enum": [
+        "none",
+        "mmc",
+        "lmc"
+      ],
+      "description": "none, mmc or lmc; none when absent."
+    },
+    "at": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "Mm to the right of the sheet's lower-left corner."
+        },
+        "y": {
+          "type": "number",
+          "description": "Mm above the sheet's lower-left corner."
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false,
+      "description": "Where the frame goes, sheet mm. Where SOLIDWORKS puts it when absent."
+    }
+  },
+  "required": [
+    "characteristic",
+    "tolerance_mm",
+    "attach_to"
+  ],
+  "additionalProperties": false
+}

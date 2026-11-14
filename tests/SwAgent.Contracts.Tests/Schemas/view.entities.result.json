@@ -22,7 +22,7 @@
         "properties": {
           "reference": {
             "type": "string",
-            "description": "Its model reference, issued in the part; absent when SOLIDWORKS gives none for it. References are opaque: pass one back exactly as it was given, and never build or change one."
+            "description": "Its model reference, issued in the part from the part's own entity and checked to name exactly this one; absent when SOLIDWORKS gives none that can be checked (a silhouette edge, or a view proxy SOLIDWORKS maps to no entity of the part), never one another entity shares. References are opaque: pass one back exactly as it was given, and never build or change one."
           },
           "kind": {
             "type": "string",

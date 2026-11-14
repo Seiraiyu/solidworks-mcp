@@ -14,7 +14,7 @@ namespace SwAgent.AddIn;
 /// read SOLIDWORKS' arrays). Sheets and views are selected by name, never passed to SOLIDWORKS in an array. Covered by the
 /// drawings live suite, not by unit tests.
 /// </summary>
-internal sealed class SolidWorksDrawing : ISwDrawing
+internal sealed partial class SolidWorksDrawing : ISwDrawing
 {
     const double Mm = 1000.0;
 
@@ -33,6 +33,23 @@ internal sealed class SolidWorksDrawing : ISwDrawing
         _drawing.GetSheetNames() is object[] names ? names.OfType<string>().ToList() : new List<string>();
 
     public string? ActiveSheet() => (_drawing.GetCurrentSheet() as ISheet)?.GetName();
+
+    /// <summary>Activates a view for the add-in's own use (a note in it, a line in its sketch), remembering that the add-in activated it (ViewActivations).</summary>
+    bool Activate(string view)
+    {
+        if (!_drawing.ActivateView(view)) return false;
+        ViewActivations.Record(_doc.GetTitle(), view);
+        return true;
+    }
+
+    public string? Settle(bool adopt)
+    {
+        if (!(_drawing.GetFirstView() is IView sheetView)) return null;
+        string? active = (_drawing.ActiveDrawingView as IView)?.GetName2();
+        return ViewActivations.Settle(_doc.GetTitle(), active, sheetView.GetName2(), adopt, view => _drawing.ActivateView(view), () =>
+            !(_doc.GetActiveSketch2() is ISketch sketch) || ReferenceEquals(sketch, sheetView.GetSketch())
+            || string.Equals((sketch as IFeature)?.Name, (sheetView.GetSketch() as IFeature)?.Name, StringComparison.Ordinal));
+    }
 
     public SheetFacts? ReadSheet(string name)
     {
@@ -438,7 +455,7 @@ internal sealed class SolidWorksDrawing : ISwDrawing
     ISketchSegment? DrawInView(string view, Func<ISketchManager, SheetPoint, double, SketchSegment?> draw)
     {
         var v = View(view);
-        if (!_drawing.ActivateView(view)) return null;
+        if (!Activate(view)) return null;
         var position = v.Position as double[];
         var ratio = v.ScaleRatio as double[];
         if (position == null || position.Length < 2) return null;

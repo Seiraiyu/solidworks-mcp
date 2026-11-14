@@ -194,6 +194,33 @@ public class DrawingChangeTests : DrawingTestBase
     }
 
     [Fact]
+    public void The_sheet_format_is_named_rather_than_the_formats_own_sketch_SOLIDWORKS_has_active()
+    {
+        Drw.EditingFormat = true;
+        Doc.EditingSketchName = "Sheet Format1";
+        var e = Fails(() => Change(new TestDrawingChangeRequest()));
+        Assert.Equal(ErrorCode.Busy, e.Code);
+        Assert.Equal(true, e.Error.Details!["sheet_format"]);
+        Assert.False(e.Error.Details.ContainsKey("sketch"));
+        Assert.Contains("editing the sheet format", e.Message);
+    }
+
+    [Fact]
+    public void Diag_editing_reads_a_drawings_sheet_format_and_view_sketch_as_its_guard_does()
+    {
+        var services = new AddInServices(Sw, "0.1.0-test", new AgentRuntime("0.1.0-test", 1, NullLog.Instance, diagnosticsEnabled: true));
+        var op = new SwAgent.AddIn.Operations.DiagEditingOperation(services);
+        var idle = Run(op, new DiagEditingRequest());
+        Assert.False(idle.SheetFormat);
+        Assert.Null(idle.Sketch);
+        Drw.EditingFormat = true;
+        Doc.EditingSketchName = "Section Line1";
+        var busy = Run(op, new DiagEditingRequest { Document = Doc.Document.Path });
+        Assert.True(busy.SheetFormat);
+        Assert.Equal("Section Line1", busy.Sketch);
+    }
+
+    [Fact]
     public void A_part_or_assembly_is_the_wrong_document_type_naming_the_drawing_tools()
     {
         Sw.Track(FakeDocument.Part("plate.SLDPRT", PathOf("plate.SLDPRT")));

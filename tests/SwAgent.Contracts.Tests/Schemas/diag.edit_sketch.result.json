@@ -4,12 +4,19 @@
   "properties": {
     "sketch": {
       "type": "string",
-      "description": "The sketch the user is editing in the part; absent when none."
+      "description": "The sketch the user is editing in the part or drawing; absent when none."
     },
     "command": {
       "type": "string",
       "description": "The title of the command (PropertyManager) the user has open; absent when none."
+    },
+    "sheet_format": {
+      "type": "boolean",
+      "description": "True while the user edits a drawing's sheet format (Edit Sheet Format)."
     }
   },
+  "required": [
+    "sheet_format"
+  ],
   "additionalProperties": false
 }

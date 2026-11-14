@@ -16,7 +16,8 @@ public static class Protocol
     /// 12: exploded views and assembly export: explode.create, explode.list, explode.show, explode.delete, export.assembly; diag.arm_dialog stops assembly changes too.
     /// 13: drawings: document.new makes drawings; the drawing, sheet and view families; sheet and view references.
     /// 14: sections, details and flat patterns: view.section, view.detail, view.flat_pattern.
-    public const int Version = 14;
+    /// 15: dimensions and annotations: annotation.import, annotation.dimension, annotation.note, annotation.centre_marks, annotation.centre_lines, annotation.datum, annotation.gtol, annotation.list, annotation.set, annotation.delete, drawing.properties; annotation references.
+    public const int Version = 15;
 
     public const string PipeNamePrefix = "solidworks-mcp-";
 

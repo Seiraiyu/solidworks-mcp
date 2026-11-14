@@ -314,6 +314,62 @@ public sealed class ReferenceService
     public string ResolveView(ISwDocument doc, ISwDrawing drawing, string text, string field) =>
         ResolveByName(doc, text, field, ReferenceKind.View, drawing.SheetNames().SelectMany(drawing.ViewNames).ToList(), "drawing.read lists its views");
 
+    /// <summary>
+    /// A reference to an annotation of <paramref name="drawing"/> (design 611, plan 5.C): its persistent-id block holds
+    /// its sheet, its view (empty for one on the sheet itself) and its name, which is unique in its view; described by its
+    /// kind, name and view.
+    /// </summary>
+    public string IssueAnnotation(ISwDocument drawing, AnnotationFacts annotation)
+    {
+        string where = annotation.View ?? "sheet " + annotation.Sheet;
+        string description = $"{WireNames.ForEnum(annotation.Kind).Replace('_', ' ')} {annotation.Name} in {where}";
+        byte[] id = Encoding.UTF8.GetBytes(annotation.Sheet + "\n" + (annotation.View ?? "") + "\n" + annotation.Name);
+        return References.Encode(new ReferenceData(ReferenceKind.Annotation, DocumentKeys.Of(drawing.Info()), id, description));
+    }
+
+    /// <summary>
+    /// The annotation <paramref name="text"/> names in <paramref name="drawing"/>, as SOLIDWORKS holds it now: an annotation
+    /// reference issued in this drawing, or a name: one no other annotation of the drawing has, or name@view (or
+    /// name@sheet for one on the sheet itself) when names repeat. reference_unresolved for one deleted, or whose view or
+    /// sheet was renamed or deleted, since; invalid_argument for a name no annotation has, or one that names several.
+    /// </summary>
+    public AnnotationFacts ResolveAnnotation(ISwDocument doc, ISwDrawing drawing, string text, string field)
+    {
+        const string hint = "annotation.list lists them";
+        var all = DrawingAnnotations.All(drawing);
+        if (!References.IsReference(text))
+        {
+            var named = all.Where(a => string.Equals(a.Name, text, StringComparison.Ordinal)).ToList();
+            int at = text.LastIndexOf('@');
+            if (named.Count == 0 && at > 0)
+            {
+                string name = text.Substring(0, at), owner = text.Substring(at + 1);
+                named = all.Where(a => string.Equals(a.Name, name, StringComparison.Ordinal) && string.Equals(a.View ?? a.Sheet, owner, StringComparison.Ordinal)).ToList();
+            }
+            if (named.Count == 1) return named[0];
+            string what = named.Count == 0
+                ? $"{doc.Info().Title} has no annotation named '{text}' ({hint})"
+                : $"'{text}' names {named.Count} annotations ({string.Join(", ", named.Select(a => a.Name + "@" + (a.View ?? a.Sheet)))}); give its reference, or name@view";
+            throw new SwAgentException(ErrorCode.InvalidArgument, $"{field}: {what}", new JsonObject { ["field"] = field, ["name"] = text });
+        }
+        var data = References.Decode(text, field);
+        if (data.Kind != ReferenceKind.Annotation)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{field} names a {Wire(data.Kind)}, but this needs an annotation",
+                new JsonObject { ["field"] = field, ["kind"] = Wire(data.Kind), ["accepted"] = new List<object?> { Wire(ReferenceKind.Annotation) } });
+        }
+        string docKey = DocumentKeys.Of(doc.Info());
+        string now = _renames.Current(data.DocumentKey);
+        if (!DocumentKeys.Same(now, docKey))
+            throw Unresolved(text, field, data, "other_document", $"it belongs to {now}, not {docKey}", hint);
+        var parts = Encoding.UTF8.GetString(data.PersistId).Split('\n');
+        if (parts.Length != 3) throw Unresolved(text, field, data, "not_found", "it does not name an annotation's sheet, view and name", hint);
+        string? view = parts[1].Length == 0 ? null : parts[1];
+        var found = all.FirstOrDefault(a => a.Sheet == parts[0] && a.View == view && a.Name == parts[2]);
+        return found ?? throw Unresolved(text, field, data, "not_found", "no annotation of that name is in that view now: it, or its view or sheet, was deleted or renamed", hint);
+    }
+
     string ResolveByName(ISwDocument doc, string text, string field, ReferenceKind kind, IReadOnlyList<string> names, string hint)
     {
         if (!References.IsReference(text))

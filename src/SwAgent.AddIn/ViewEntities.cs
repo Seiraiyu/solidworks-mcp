@@ -1,3 +1,4 @@
+using System.Linq;
 using SwAgent.Contracts;
 using SwAgent.Contracts.Serialization;
 
@@ -6,13 +7,20 @@ namespace SwAgent.AddIn;
 /// <summary>A <see cref="ViewEntity"/> resolved: the view's name, its model's document, and the entity in that model.</summary>
 public sealed class ResolvedViewEntity
 {
-    public ResolvedViewEntity(string view, ISwDocument model, object entity, ReferenceKind kind)
+    public ResolvedViewEntity(string view, ISwDocument model, object entity, ReferenceKind kind, object? own = null)
     {
         View = view;
         Model = model;
         Entity = entity;
         Kind = kind;
+        Own = own ?? entity;
     }
+
+    /// <summary>
+    /// The entity as the part has it, which is what is described and measured: SP4 can give a view's proxy (Entity)
+    /// its position in another frame (5.C live run, round 4).
+    /// </summary>
+    public object Own { get; }
 
     public string View { get; }
 
@@ -30,7 +38,11 @@ public sealed class ResolvedViewEntity
 /// </summary>
 public static class ViewEntities
 {
-    public static ResolvedViewEntity Resolve(ReferenceService references, ISwDocument doc, ISwDrawing drawing, ViewEntity given, string field, params ReferenceKind[] accepted)
+    public static ResolvedViewEntity Resolve(ReferenceService references, ISwDocument doc, ISwDrawing drawing, ViewEntity given, string field, params ReferenceKind[] accepted) =>
+        Resolve(new ShownEntities(references, drawing), references, doc, drawing, given, field, accepted);
+
+    /// <summary>As the overload without <paramref name="shown"/>, reading each view through <paramref name="shown"/>, which a call resolving several entities shares.</summary>
+    public static ResolvedViewEntity Resolve(ShownEntities shown, ReferenceService references, ISwDocument doc, ISwDrawing drawing, ViewEntity given, string field, params ReferenceKind[] accepted)
     {
         if (given.Reference != null && given.Entity != null)
             throw Invalid(field + "/reference", $"{field} gives both reference and entity; give one");
@@ -46,7 +58,30 @@ public static class ViewEntities
             : given.Component != null
                 ? references.ResolveInComponent(model, given.Entity!, given.Component, field + "/entity", field + "/component", accepted)
                 : references.Resolve(model, given.Entity!, field + "/entity", accepted);
-        return new ResolvedViewEntity(view, model, entity, kind);
+        // The entity as the view shows it (ShownEntities.InView: the one shown entity whose verified reference, matched by
+        // form and position, is the part entity's own), which is what is selected through the view and what SOLIDWORKS
+        // attaches an annotation to; the model's own when the view gives none (ResolveShown then refuses what the view
+        // does not show).
+        return new ResolvedViewEntity(view, model, shown.InView(model, view, entity) ?? entity, kind, entity);
+    }
+
+    /// <summary>
+    /// <paramref name="given"/> resolved as <see cref="Resolve"/> does, and shown by its view (design 611, Dimensions and
+    /// annotations): an entity the view does not show is invalid_argument naming the view and the entity, never
+    /// "nothing found".
+    /// </summary>
+    public static ResolvedViewEntity ResolveShown(ReferenceService references, ISwDocument doc, ISwDrawing drawing, ViewEntity given, string field, params ReferenceKind[] accepted) =>
+        ResolveShown(new ShownEntities(references, drawing), references, doc, drawing, given, field, accepted);
+
+    /// <summary>As the overload without <paramref name="shown"/>, reading each view through <paramref name="shown"/>, which a call resolving several entities shares.</summary>
+    public static ResolvedViewEntity ResolveShown(ShownEntities shown, ReferenceService references, ISwDocument doc, ISwDrawing drawing, ViewEntity given, string field, params ReferenceKind[] accepted)
+    {
+        var e = Resolve(shown, references, doc, drawing, given, field, accepted);
+        if (drawing.Shows(e.View, e.Entity, references.ComponentOf(e.Model, e.Entity))) return e;
+        string what = Core.EntityFilter.Describe(references.Describe(e.Model, e.Entity));
+        throw new SwAgentException(ErrorCode.InvalidArgument,
+            $"{field}: {e.View} does not show the {what}; view.entities lists what it shows (an edge hidden behind the model is not shown)",
+            new JsonObject { ["field"] = field, ["view"] = e.View, ["entity"] = what });
     }
 
     static SwAgentException Invalid(string field, string message) =>

@@ -94,7 +94,7 @@
             ],
             "additionalProperties": false
           },
-          "description": "What it made (sheets, views), in the order it made them."
+          "description": "What it made (sheets, views, annotations), in the order it made them."
         },
         "changed": {
           "type": "array",
@@ -145,6 +145,14 @@
           "type": "integer",
           "description": "Views after the change, on every sheet."
         },
+        "annotations_before": {
+          "type": "integer",
+          "description": "Annotations before the change, on every sheet and in every view."
+        },
+        "annotations_after": {
+          "type": "integer",
+          "description": "Annotations after the change, on every sheet and in every view."
+        },
         "models": {
           "type": "array",
           "items": {
@@ -182,6 +190,10 @@
             "additionalProperties": false
           },
           "description": "Each model the drawing shows, before and after: unsaved changes and rebuild errors, which must not have changed."
+        },
+        "not_at_rest": {
+          "type": "string",
+          "description": "Set only when the drawing could not be put back at rest after the change: the view SOLIDWORKS keeps activated, or what failed in letting go of it. The change itself stands. Ask the user to double-click the sheet outside every view. A failed change reports the same in its error's details as not_at_rest."
         }
       },
       "required": [
@@ -192,6 +204,8 @@
         "sheets_after",
         "views_before",
         "views_after",
+        "annotations_before",
+        "annotations_after",
         "models"
       ],
       "additionalProperties": false,

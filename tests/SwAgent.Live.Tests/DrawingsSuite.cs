@@ -22,7 +22,9 @@ public sealed class DrawingsSuiteRun : LiveRun
 
 /// <summary>
 /// The drawings live suite (design 611, Testing; plan 5.A covers drawing documents, session preferences, sheets and
-/// model and projected views, plan 5.B sections, details and flat-pattern views in cases 15 to 19): every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve
+/// model and projected views, plan 5.B sections, details and flat-pattern views in cases 15 to 19, plan 5.C properties,
+/// notes, imported and reference dimensions, centre marks and lines, datums and tolerance frames in cases 20 to 27 and
+/// the user editing the sheet format or a view's sketch, by hand, in cases 28 and 29): every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve
 /// does, in [Step] order, and checks against exact values. It builds its own model first, a 60 x 40 x 20 mm block (x 0..60,
 /// y 0..40, z 0..20) with a Ø10 mm hole through it along z at (20, 20), and draws it on an A3 sheet at 1:1 in third-angle
 /// projection, so every view's drawn extents are known to 0.01 mm. It records each document before creating it, never
@@ -661,8 +663,280 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
         return $"Sheet1: {string.Join(", ", read.Sheets.Single(s => s.Name == "Sheet1").Views.Select(v => $"{v.Name} ({WireNames.ForEnum(v.Type)})"))}; Details: {flat.Name} ({WireNames.ForEnum(flat.Type)}, {flat.Configuration}); models {string.Join(", ", read.Models.Select(m => $"{Path.GetFileName(m.Path)} dirty {m.Dirty}"))}";
     });
 
+    /// <summary>The annotations cases 21 to 26 make, by role: their references.</summary>
+    static readonly Dictionary<string, string> Made = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>The front view's left, right and bottom edges (its drawn extremes) and the hole's circle, as view.entities gives them, each with a reference.</summary>
+    async Task<(ViewEntityInfo Left, ViewEntityInfo Right, ViewEntityInfo Bottom, ViewEntityInfo Hole)> FrontEdges()
+    {
+        var shown = (await Call<ViewEntitiesRequest, ViewEntitiesResult>(new ViewEntitiesRequest { Document = Drawing, View = Views["front"], Kinds = new List<ViewEntityKind> { ViewEntityKind.Edge } })).Entities;
+        var lines = shown.Where(e => e.Shape == DrawnShape.Line && e.Reference != null).ToList();
+        var vertical = lines.Where(e => Math.Abs(e.Start!.X - e.End!.X) <= Tol).OrderBy(e => e.Start!.X).ToList();
+        var horizontal = lines.Where(e => Math.Abs(e.Start!.Y - e.End!.Y) <= Tol).OrderBy(e => e.Start!.Y).ToList();
+        Assert.True(vertical.Count >= 2 && horizontal.Count >= 1, $"the front shows {vertical.Count} vertical and {horizontal.Count} horizontal edges with references");
+        var hole = Assert.Single(shown, e => e.Shape == DrawnShape.Circle && e.Reference != null && Math.Abs(e.RadiusMm!.Value - 5) <= Tol);
+        return (vertical.First(), vertical.Last(), horizontal.First(), hole);
+    }
+
+    ViewEntity InFront(ViewEntityInfo e) => new ViewEntity { View = Views["front"], Reference = e.Reference };
+
+    Task<ModelDimensionsResult> BlockDimensions() => Call<ModelDimensionsRequest, ModelDimensionsResult>(new ModelDimensionsRequest { Document = Block });
+
+    /// <summary>The block as the drawing's last change left it: not marked as changed by it.</summary>
+    void BlockUnchanged(DrawingChange change)
+    {
+        var block = change.Models.Single(m => string.Equals(m.Path, Block, StringComparison.OrdinalIgnoreCase));
+        Assert.True(block.DirtyBefore == block.DirtyAfter && block.RebuildErrorsBefore == block.RebuildErrorsAfter, "the block changed");
+    }
+
     [SkippableFact, Step(20)]
-    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(20, "the suite's documents closed", async () =>
+    public Task The_title_block_properties_are_written_and_read_back_resolved() => _run.CaseAsync(20, "drawing.properties: Title, PartNo and a Description linking PartNo written, each read back as written (Get2) and resolved; read again without writing", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var r = await Call<DrawingPropertiesRequest, DrawingPropertiesResult>(new DrawingPropertiesRequest
+        {
+            Document = Drawing,
+            Set = new List<DrawingPropertyValue>
+            {
+                new DrawingPropertyValue { Name = "Title", Value = "SWMCP BLOCK" },
+                new DrawingPropertyValue { Name = "PartNo", Value = "BLK-060" },
+                new DrawingPropertyValue { Name = "Description", Value = "$PRP:\"PartNo\" test block" },
+            },
+        });
+        Assert.Equal(new[] { "Title", "PartNo", "Description" }, r.Written);
+        Assert.Equal("BLK-060 test block", r.Properties.Single(p => p.Name == "Description").Resolved);
+        var read = await Call<DrawingPropertiesRequest, DrawingPropertiesResult>(new DrawingPropertiesRequest { Document = Drawing });
+        Assert.Empty(read.Written);
+        Assert.Equal("SWMCP BLOCK", read.Properties.Single(p => p.Name == "Title").Value);
+        return $"wrote {string.Join(", ", r.Written)}; read {string.Join("; ", read.Properties.Select(p => $"{p.Name} = '{p.Value}' -> '{p.Resolved}'"))}";
+    });
+
+    [SkippableFact, Step(21)]
+    public Task Notes_show_linked_properties_and_point_at_the_hole() => _run.CaseAsync(21, "annotation.note: TITLE: $PRP:\"Title\" on Sheet1 at (300, 30) shown resolved; THRU ALL in the front view at (150, 215) with a leader to the hole's edge (by reference); annotation.set moves the sheet note to (310, 30) and gives it new text", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var title = await Call<AnnotationNoteRequest, AnnotationNoteResult>(new AnnotationNoteRequest { Document = Drawing, Sheet = "Sheet1", Text = "TITLE: $PRP:\"Title\"", At = new SheetPoint(300, 30) });
+        Assert.Equal("TITLE: SWMCP BLOCK", title.Shown);
+        Assert.Null(title.Annotation.View);
+        var (_, _, _, hole) = await FrontEdges();
+        var thru = await Call<AnnotationNoteRequest, AnnotationNoteResult>(new AnnotationNoteRequest { Document = Drawing, Text = "THRU ALL", At = new SheetPoint(150, 215), AttachTo = InFront(hole) });
+        Assert.Equal(Views["front"], thru.Annotation.View);
+        Assert.Single(thru.Annotation.Attached);
+        BlockUnchanged(thru.Change);
+        var moved = await Call<AnnotationSetRequest, AnnotationResult>(new AnnotationSetRequest { Document = Drawing, Annotation = title.Annotation.Reference!, At = new SheetPoint(310, 30), Text = "DRAWING: $PRP:\"Title\"" });
+        Near(310, moved.Annotation.Position!.X, "the title note's x after the move");
+        Assert.Equal("DRAWING: SWMCP BLOCK", moved.Annotation.Text);
+        Made["title"] = moved.Annotation.Reference!;
+        Made["thru"] = thru.Annotation.Reference!;
+        return $"{title.Annotation.Name} on Sheet1 shows '{title.Shown}' at {title.Annotation.Position}; {thru.Annotation.Name} in {thru.Annotation.View} at {thru.Annotation.Position}, attached to {thru.Annotation.Attached[0].Reference?.Length ?? 0}-character reference; moved to {moved.Annotation.Position}, now '{moved.Annotation.Text}'";
+    });
+
+    [SkippableFact, Step(22)]
+    public Task The_blocks_own_dimensions_come_in_equal_to_the_models() => _run.CaseAsync(22, "annotation.import of the block's dimensions into the front, top and right views: each one of model.dimensions' with its value to 0.001 mm; what SOLIDWORKS put into other views removed; the block unchanged", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var model = await BlockDimensions();
+        var clock = Stopwatch.StartNew();
+        var r = await Call<AnnotationImportRequest, AnnotationImportResult>(new AnnotationImportRequest { Document = Drawing, Views = new List<string> { Views["front"], Views["top"], Views["right"] } });
+        long ms = clock.ElapsedMilliseconds;
+        Assert.NotEmpty(r.Dimensions);
+        foreach (var d in r.Dimensions)
+        {
+            var m = model.Dimensions.SingleOrDefault(x => string.Equals(x.Name, d.Dimension, StringComparison.OrdinalIgnoreCase));
+            Assert.True(m != null, $"{d.Dimension} is not one of the block's ({string.Join(", ", model.Dimensions.Select(x => x.Name))})");
+            Assert.True(Math.Abs(m!.Value - d.Value) <= 0.001, $"{d.Dimension}: {d.Value} on the drawing, {m.Value} in the model");
+        }
+        Assert.All(r.Annotations.Where(a => a.Kind == AnnotationKind.Dimension), a => Assert.True(a.ModelDimension == true, a.Name));
+        BlockUnchanged(r.Change);
+        Made["imported"] = r.Annotations.First(a => a.Kind == AnnotationKind.Dimension).Reference!;
+        return FormattableString.Invariant($"{r.Annotations.Count} brought ({string.Join(", ", r.Dimensions.Select(d => $"{d.Dimension} = {d.Value:0.###} in {d.View}"))}); removed from other views {r.Removed}; duplicates {(r.Duplicates.Count == 0 ? "none" : string.Join("; ", r.Duplicates))}; model {string.Join(", ", model.Dimensions.Select(x => $"{x.Name} = {x.Value:0.###}"))}; {ms} ms");
+    });
+
+    [SkippableFact, Step(23)]
+    public Task Reference_dimensions_read_the_blocks_width_the_holes_diameter_and_the_corners_angle() => _run.CaseAsync(23, "annotation.dimension in the front view, by reference: horizontal between the sides 60.000, the hole's diameter 10.000, the angle at the bottom-left corner 90.00°; each driven, the drawing's own; the block unchanged", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var (left, right, bottom, hole) = await FrontEdges();
+        async Task<AnnotationDimensionResult> Dimension(DimensionKind kind, SheetPoint at, params ViewEntityInfo[] entities) =>
+            await Call<AnnotationDimensionRequest, AnnotationDimensionResult>(new AnnotationDimensionRequest { Document = Drawing, Kind = kind, Entities = entities.Select(InFront).ToList(), At = at });
+        var clock = Stopwatch.StartNew();
+        var width = await Dimension(DimensionKind.Horizontal, new SheetPoint(130, 150), left, right);
+        long ms = clock.ElapsedMilliseconds;
+        var diameter = await Dimension(DimensionKind.Diameter, new SheetPoint(90, 205), hole);
+        var angle = await Dimension(DimensionKind.Angle, new SheetPoint(92, 155), bottom, left);
+        Assert.True(Math.Abs(width.Value - 60) <= 0.001, $"width {width.Value}");
+        Assert.True(Math.Abs(diameter.Value - 10) <= 0.001, $"diameter {diameter.Value}");
+        Assert.True(Math.Abs(angle.Value - 90) <= 0.01, $"angle {angle.Value}");
+        Assert.All(new[] { width, diameter, angle }, d => Assert.False(d.Annotation.ModelDimension));
+        BlockUnchanged(angle.Change);
+        Made["width"] = width.Annotation.Reference!;
+        return FormattableString.Invariant($"{width.Annotation.Name} {width.Value:0.######} ({width.Annotation.DimensionKind}), {diameter.Annotation.Name} {diameter.Value:0.######}, {angle.Annotation.Name} {angle.Value:0.####}°; names {width.Annotation.DimensionName}, {diameter.Annotation.DimensionName}, {angle.Annotation.DimensionName}; first {ms} ms");
+    });
+
+    string Pin => Path.Combine(_run.Guard.ScratchDirectory, "pin.SLDPRT");
+
+    [SkippableFact, Step(24)]
+    public Task The_hole_takes_a_centre_mark_and_a_pin_seen_from_the_side_a_centre_line() => _run.CaseAsync(24, "annotation.centre_marks on the front: one, at the hole's centre (120, 180); again: already marked; a Ø10 x 30 pin (saved, closed) viewed from the top on Details: annotation.centre_lines makes one, attached to its cylinder; annotation.set refuses to move the mark (it sits on its circle), which stays at (120, 180)", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var marks = await Call<AnnotationCentreMarksRequest, AnnotationCentresResult>(new AnnotationCentreMarksRequest { Document = Drawing, View = Views["front"] });
+        Assert.Equal(1, marks.Eligible);
+        var mark = Assert.Single(marks.Made);
+        Near(120, mark.Position!.X, "the centre mark's x");
+        Near(180, mark.Position.Y, "the centre mark's y");
+        var again = await Call<AnnotationCentreMarksRequest, AnnotationCentresResult>(new AnnotationCentreMarksRequest { Document = Drawing, View = Views["front"] });
+        Assert.Equal((1, 1), (again.Eligible, again.Already));
+        Assert.Empty(again.Made);
+
+        string pin = New("pin", ".SLDPRT");
+        await Call<DocumentNewRequest, DocumentNewResult>(new DocumentNewRequest { Path = pin });
+        var circle = await Call<SketchCreateRequest, SketchCreateResult>(new SketchCreateRequest
+        {
+            Document = pin, On = "front", Circles = new List<SketchCircle> { new SketchCircle { Id = "pin", Center = new Point2(0, 0), RadiusMm = 5 } },
+        });
+        await Call<FeatureExtrudeRequest, FeatureResult>(new FeatureExtrudeRequest { Document = pin, Sketch = circle.Sketch.Name, DepthMm = 30 });
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = pin });
+        await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = pin });
+        var view = await Call<ViewCreateRequest, ViewResult>(new ViewCreateRequest { Document = Drawing, Sheet = "Details", Model = pin, Orientation = "top", At = new SheetPoint(105, 50), Scale = new ScaleRatio(1, 1) });
+        Views["pin"] = view.View.Name;
+        var lines = await Call<AnnotationCentreLinesRequest, AnnotationCentresResult>(new AnnotationCentreLinesRequest { Document = Drawing, View = view.View.Name });
+        Assert.Equal(1, lines.Eligible);
+        var line = Assert.Single(lines.Made);
+        Assert.NotEmpty(line.Attached);
+
+        // Round 8 measured SP4 keeping a centre mark on its circle whatever SetPosition2 is given, so annotation.set
+        // refuses to move one; it is still where it was, at the hole's centre.
+        var stuck = await Refused(() => Call<AnnotationSetRequest, AnnotationResult>(new AnnotationSetRequest { Document = Drawing, Annotation = mark.Reference!, At = new SheetPoint(125, 185) }));
+        Assert.Equal(ErrorCode.InvalidArgument, stuck.Code);
+        Assert.Equal("/at", stuck.Error.Details!["field"]);
+        var listed = (await Call<AnnotationListRequest, AnnotationListResult>(new AnnotationListRequest { Document = Drawing, View = Views["front"] })).Annotations.Single(a => a.Name == mark.Name);
+        Near(120, listed.Position!.X, "the centre mark's x after the refused move");
+        Near(180, listed.Position.Y, "the centre mark's y after the refused move");
+        return $"{mark.Name} at {mark.Position}; again {again.Eligible} circle, {again.Already} already marked; pin top view {view.View.Name} on Details drew {view.View.Extents}; {line.Name} attached to {line.Attached.Count} entities; annotation.set at (125, 185) on it refused ({stuck.Message}), still at {listed.Position}";
+    });
+
+    [SkippableFact, Step(25)]
+    public Task Datum_A_on_the_base_edge_and_a_position_tolerance_of_the_hole_to_it() => _run.CaseAsync(25, "annotation.datum A on the front's bottom edge at (140, 150), by reference; annotation.gtol position Ø0.1 to A on the hole's edge at (75, 215), its frame read back; a frame to datum B refused (none on the drawing); flatness to A refused (a form tolerance)", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var (_, _, bottom, hole) = await FrontEdges();
+        var datum = await Call<AnnotationDatumRequest, AnnotationResult>(new AnnotationDatumRequest { Document = Drawing, Label = "A", AttachTo = InFront(bottom), At = new SheetPoint(140, 150) });
+        Assert.Equal("A", datum.Annotation.Label);
+        Assert.Single(datum.Annotation.Attached);
+        var gtol = await Call<AnnotationGtolRequest, AnnotationResult>(new AnnotationGtolRequest
+        {
+            Document = Drawing, Characteristic = GtolCharacteristic.Position, ToleranceMm = 0.1, Diameter = true, Datums = new List<string> { "A" }, AttachTo = InFront(hole), At = new SheetPoint(75, 215),
+        });
+        var frame = gtol.Annotation.Gtol!;
+        Assert.Equal(GtolCharacteristic.Position, frame.Characteristic);
+        Assert.Equal(0.1, frame.ToleranceMm);
+        Assert.True(frame.Diameter);
+        Assert.Equal(new[] { "A" }, frame.Datums);
+        BlockUnchanged(gtol.Change);
+        var noB = await Refused(() => Call<AnnotationGtolRequest, AnnotationResult>(new AnnotationGtolRequest { Document = Drawing, Characteristic = GtolCharacteristic.Position, ToleranceMm = 0.1, Datums = new List<string> { "B" }, AttachTo = InFront(hole) }));
+        Assert.Equal("/datums/0", noB.Error.Details!["field"]);
+        var flatness = await Refused(() => Call<AnnotationGtolRequest, AnnotationResult>(new AnnotationGtolRequest { Document = Drawing, Characteristic = GtolCharacteristic.Flatness, ToleranceMm = 0.05, Datums = new List<string> { "A" }, AttachTo = InFront(bottom) }));
+        Assert.Equal("/datums", flatness.Error.Details!["field"]);
+        return $"{datum.Annotation.Name} label {datum.Annotation.Label} at {datum.Annotation.Position}; {gtol.Annotation.Name}: {WireNames.ForEnum(frame.Characteristic!.Value)} Ø{frame.ToleranceMm} {WireNames.ForEnum(frame.MaterialCondition ?? MaterialCondition.None)} | {string.Join(" | ", frame.Datums)} at {gtol.Annotation.Position}; B refused ({noB.Message}); flatness to A refused";
+    });
+
+    [SkippableFact, Step(26)]
+    public Task The_list_reads_everything_and_deletes_leave_the_models_dimension_in_the_model() => _run.CaseAsync(26, "annotation.list of Sheet1 by kind; annotation.delete of the width dimension, the THRU note and an imported model dimension: gone from the drawing, the model keeps its dimension with its value; the THRU note's reference no longer resolves", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var list = await Call<AnnotationListRequest, AnnotationListResult>(new AnnotationListRequest { Document = Drawing, Sheet = "Sheet1" });
+        var kinds = list.Annotations.GroupBy(a => a.Kind).ToDictionary(g => g.Key, g => g.Count());
+        Assert.True(kinds.GetValueOrDefault(AnnotationKind.Note) >= 2, "notes");
+        Assert.True(kinds.GetValueOrDefault(AnnotationKind.Dimension) >= 4, "dimensions");
+        Assert.Equal(1, kinds.GetValueOrDefault(AnnotationKind.CentreMark));
+        Assert.Equal(1, kinds.GetValueOrDefault(AnnotationKind.Datum));
+        Assert.Equal(1, kinds.GetValueOrDefault(AnnotationKind.Gtol));
+        var before = await BlockDimensions();
+        var gone = await Call<AnnotationDeleteRequest, AnnotationDeleteResult>(new AnnotationDeleteRequest { Document = Drawing, Annotations = { Made["width"], Made["thru"], Made["imported"] } });
+        Assert.Equal(3, gone.Deleted.Count);
+        string kept = Assert.Single(gone.ModelDimensionsKept);
+        var after = await BlockDimensions();
+        Assert.Equal(before.Dimensions.Select(d => (d.Name, d.Value)), after.Dimensions.Select(d => (d.Name, d.Value)));
+        var stale = await Refused(() => Call<AnnotationSetRequest, AnnotationResult>(new AnnotationSetRequest { Document = Drawing, Annotation = Made["thru"], At = new SheetPoint(150, 220) }));
+        Assert.Equal(ErrorCode.ReferenceUnresolved, stale.Code);
+        return $"Sheet1: {string.Join(", ", kinds.Select(k => $"{k.Value} {WireNames.ForEnum(k.Key)}"))}; deleted {string.Join(", ", gone.Deleted)}; the model kept {kept}; the THRU note's reference {WireNames.ForEnum(stale.Code)} ({stale.Error.Details!["reason"]})";
+    });
+
+    [SkippableFact, Step(27)]
+    public Task SOLIDWORKS_persistent_ids_for_an_annotation_are_probed() => _run.CaseAsync(27, "information only: whether GetPersistReference3 gives an annotation an id (api.call reports an object's reference when it can persist it); annotation references are name-based either way", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        // Reached through the sheet's views, not ActivateView: a view activated by anyone but the add-in's own operations
+        // is the user editing it (5.C live run, round 2), and would leave case 28 to find the drawing busy.
+        var first = await Call<ApiCallRequest, ApiCallResult>(new ApiCallRequest { Document = Drawing, Target = "document", Member = "GetFirstView.GetNextView.GetFirstAnnotation3", Rebuild = false });
+        return $"annotation: {JsonCodec.Serialize(first.Result)} (a ref means GetPersistReference3 gave an id)";
+    });
+
+    /// <summary>
+    /// Asks the member to do <paramref name="action"/> by hand, waits until diag.editing sees it (<paramref name="open"/>),
+    /// then makes a harmless drawing change (a note), which must be refused busy with user_editing before anything is
+    /// made. Null when nothing was seen within 3 min.
+    /// </summary>
+    async Task<(SwAgentException Busy, DiagEditingResult Seen)?> BusyWhile(string action, Func<DiagEditingResult, bool> open)
+    {
+        _run.Say($"ACTION: {action} (waiting up to 3 min); leave it so until the run asks you to finish");
+        var clock = Stopwatch.StartNew();
+        DiagEditingResult seen;
+        while (!open(seen = await Call<DiagEditingRequest, DiagEditingResult>(new DiagEditingRequest { Document = Drawing })))
+        {
+            if (clock.Elapsed > TimeSpan.FromMinutes(3)) return null;
+            await Task.Delay(2000);
+        }
+        int before = (await Call<AnnotationListRequest, AnnotationListResult>(new AnnotationListRequest { Document = Drawing })).Annotations.Count;
+        var busy = await Refused(() => Call<AnnotationNoteRequest, AnnotationNoteResult>(new AnnotationNoteRequest { Document = Drawing, Sheet = "Sheet1", Text = "WAIT", At = new SheetPoint(300, 60) }));
+        Assert.Equal(ErrorCode.Busy, busy.Code);
+        Assert.Equal("user_editing", busy.Error.Details!["reason"]);
+        Assert.Equal("before", busy.Error.Details["detected"]);
+        Assert.Equal(before, (await Call<AnnotationListRequest, AnnotationListResult>(new AnnotationListRequest { Document = Drawing })).Annotations.Count);
+        return (busy, seen);
+    }
+
+    /// <summary>Asks for what <see cref="BusyWhile"/> waited on to be finished, waits until diag.editing sees nothing open, then writes the drawing's Title again, which must work.</summary>
+    async Task<TimeSpan> FreeAfter(string action)
+    {
+        _run.Say($"ACTION: {action} (waiting up to 3 min)");
+        var clock = Stopwatch.StartNew();
+        DiagEditingResult seen;
+        while ((seen = await Call<DiagEditingRequest, DiagEditingResult>(new DiagEditingRequest { Document = Drawing })).Sketch != null || seen.Command != null || seen.SheetFormat)
+        {
+            if (clock.Elapsed > TimeSpan.FromMinutes(3)) throw _run.Stop($"the user's {(seen.SheetFormat ? "sheet format" : seen.Sketch ?? seen.Command)} was still open after 3 min");
+            await Task.Delay(2000);
+        }
+        await Call<DrawingPropertiesRequest, DrawingPropertiesResult>(new DrawingPropertiesRequest { Document = Drawing, Set = new List<DrawingPropertyValue> { new DrawingPropertyValue { Name = "Title", Value = "SWMCP BLOCK" } } });
+        return clock.Elapsed;
+    }
+
+    [SkippableFact, Step(28)]
+    public Task Editing_the_sheet_format_makes_drawing_changes_wait() => _run.CaseAsync(28, "busy with user_editing, sheet_format, while the user edits Sheet1's sheet format (by hand: Edit Sheet Format), nothing made; works again after Edit Sheet", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        await Call<SheetActivateRequest, SheetActivateResult>(new SheetActivateRequest { Document = Drawing, Sheet = "Sheet1" });
+        var (busy, seen) = await BusyWhile("in SOLIDWORKS, in block - Sheet1, right-click an empty part of Sheet1 and choose Edit Sheet Format", s => s.SheetFormat)
+            ?? throw new SkipException("no sheet format was seen being edited within 3 min");
+        Assert.Equal(true, busy.Error.Details!["sheet_format"]);
+        var waited = await FreeAfter("right-click Sheet1 and choose Edit Sheet, to leave the sheet format");
+        return $"busy, user_editing, sheet_format, detected before ({busy.Message}); diag.editing saw sketch {seen.Sketch ?? "none"} while it was edited; worked again {waited.TotalSeconds:0} s after asking for Edit Sheet";
+    });
+
+    [SkippableFact, Step(29)]
+    public Task Editing_a_sketch_in_a_view_makes_drawing_changes_wait() => _run.CaseAsync(29, "busy with user_editing while the user edits a sketch in a view (by hand: Edit Sketch on section line A, or, where SOLIDWORKS offers none, the line tool started in the front view), nothing made; works again once it is closed", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var (busy, seen) = await BusyWhile("in SOLIDWORKS, in the FeatureManager tree under Sheet1 > Section View A-A, right-click Cutting Line A-A and choose Edit Sketch (right-clicking the line on the sheet opens its PropertyManager first, a command, not a sketch edit); if the menu has no Edit Sketch, double-click inside the front view and click Sketch > Line instead, drawing nothing", s => s.Sketch != null || s.Command != null)
+            ?? throw new SkipException("no sketch or command was seen open within 3 min");
+        string what = seen.Sketch != null ? $"the sketch {seen.Sketch} (Edit Sketch)" : $"the command '{seen.Command}' (not a sketch edit)";
+        Assert.True(busy.Error.Details!.ContainsKey("sketch") || busy.Error.Details.ContainsKey("command"), "busy names neither a sketch nor a command");
+        var waited = await FreeAfter("exit the sketch (the exit-sketch icon in the corner of the graphics area), or press Esc to end the line tool");
+        return $"busy, user_editing, {what}, detected before ({busy.Message}); worked again {waited.TotalSeconds:0} s after asking for it to be closed";
+    });
+
+    [SkippableFact, Step(30)]
+    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(30, "the suite's documents closed", async () =>
     {
         var state = await _run.RequireOnlyOwnDocumentsAsync();
         int closed = 0;

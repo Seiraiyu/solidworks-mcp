@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "Adds a sheet to a drawing (IDrawingDoc.NewSheet4): a standard size (a4 … a0, a … e, landscape or portrait) or a custom width_mm and height_mm (sheet mm), a scale, a projection, and a sheet format (.SLDDRT), each the drawing's first sheet's when absent. The new sheet is shown. Checked: there is one more sheet, and its size reads back within 0.01 mm, its scale exactly, its projection and format as asked. Otherwise it is deleted again (rolled back).",
+  "description": "Adds a sheet to a drawing (IDrawingDoc.NewSheet4): a standard size (a4 … a0, a … e, landscape or portrait) or a custom width_mm and height_mm (sheet mm), a scale, a projection, and a sheet format (.SLDDRT), each the drawing's first sheet's when absent. The new sheet is shown. Checked: there is one more sheet, and its size reads back within 0.01 mm, its scale exactly, its projection and format as asked. Otherwise it is deleted again (rolled back). Waits, changing nothing (busy, user_editing), while the user edits a view's sketch or the sheet format (sheet_format: true) or has a command open. After the user exits a view's sketch, SOLIDWORKS keeps that view activated and changes keep waiting until the user lets go of it: ask them to double-click the sheet outside every view.",
   "properties": {
     "document": {
       "type": "string",

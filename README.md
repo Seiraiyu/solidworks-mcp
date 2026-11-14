@@ -106,6 +106,10 @@ A suppressed, lightweight or missing component's entity answers `reference_unres
 - A step cannot be turned: with an angle, SOLIDWORKS 2026 SP4 turns the components about their own origins, never about the axis asked, so `rotate_about` and `angle_deg` are refused. Turn components with `sw_component_place`.
 - Advanced and mechanical mates, mirroring components, forming or dissolving subassemblies, replacing a component's file and Pack and Go are not offered; `sw_api_call` reaches them.
 
+### Drawings
+
+Drawing changes (sheets, views, annotations, `sw_drawing_properties`) are guarded as part changes are: each one waits, changing nothing, while you are in the middle of something in the drawing. It answers `busy` with `reason: user_editing` while you edit a view's sketch or have a command open, and adds `sheet_format: true` while you edit the sheet format; finish what you are doing, then the agent tries again. After you exit a view's sketch, SOLIDWORKS keeps that view activated (its border stays highlighted), and drawing changes keep answering `busy` until you let go of it: double-click the sheet outside every view. A view the add-in activates for its own work (a note in a view, a line in its sketch) is let go of when the change ends; if SOLIDWORKS keeps it activated anyway, or letting go of it fails, the result says so in `change.not_at_rest` (or a failed change in its error's `not_at_rest`), and the change itself stands. A drawing change never edits, rebuilds or marks a model as changed; one that does is rolled back. A centre mark sits on its circle's centre and cannot be moved: SOLIDWORKS 2026 SP4 keeps it there whatever position it is given, so `sw_annotation_set` refuses `at` for one (`invalid_argument`).
+
 ### Closing documents
 
 `sw_document_close` closes only a document the agent opened or created (with `sw_document_new` or `sw_document_open`) since it connected. Any other document is yours: closing it needs `users_document: true`, which an agent should pass only when you asked. A document with unsaved changes needs `discard: true` as well.
@@ -295,12 +299,13 @@ In your running SOLIDWORKS, an agent can:
 - read the feature tree, dimensions, mass properties, bounding box and rebuild errors, and measure;
 - export parts and assemblies as STEP, Parasolid, STL and 3MF, and find interference between components;
 - make sheet-metal parts with flanges, hems and bends, change their thickness, radius and allowance, flatten them, cut across bends, and write their flat patterns as DXF or DWG checked against the flat size;
+- make drawings of parts and assemblies: sheets, model, projected, section, detail and flat-pattern views, dimensions, notes, centre marks and lines, datums and tolerance frames, and the drawing's custom properties (see **Drawings**);
 - see what you have selected;
 - reach the rest of SOLIDWORKS' API through `sw_api_call`.
 
 In this release it cannot:
 
-- work on drawings, or use advanced or mechanical mates, mirror components, or edit a component in the assembly's context (see **Assemblies**);
+- use advanced or mechanical mates, mirror components, or edit a component in the assembly's context (see **Assemblies**);
 - make teardrop or rolled hems: `sw_sheetmetal_hem` makes closed and open hems and refuses the other two kinds, which SOLIDWORKS does not make through its API as it does by hand;
 - fold a part whose cut reaches past a bend into the side that turns (see **Sheet metal**);
 - make sheet-metal corners, jogs, lofted bends, cross breaks, rips, gussets, tabs and slots, vents or forming tools, use bend or gauge tables, or put more than one sheet-metal body in a part;

@@ -23,6 +23,16 @@ public class SectionGeometryTests
     }
 
     [Fact]
+    public void A_centre_marks_own_position_is_in_its_views_frame()
+    {
+        // The 5.C live run (round 2): the hole's mark in the front view at (130, 180), 1:1, read ICenterMark.GetPosition(0)
+        // (-10, 0) for the hole drawn at (120, 180).
+        var drawn = ViewCutGeometry.FromViewSketch(new SheetPoint(130, 180), 1, new Point2(-10, 0));
+        Assert.Equal(120, drawn.X, 9);
+        Assert.Equal(180, drawn.Y, 9);
+    }
+
+    [Fact]
     public void A_horizontal_line_through_the_holes_axis_crosses_the_view_with_an_overrun()
     {
         var line = ViewCutGeometry.CutLine(Front, Drawn, new Point3(20, 20, 10), CutOrientation.Horizontal)!.Value;

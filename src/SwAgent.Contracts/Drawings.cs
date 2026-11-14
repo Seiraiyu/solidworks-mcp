@@ -311,6 +311,12 @@ public sealed class DrawingModelState
     public int RebuildErrorsAfter { get; set; }
 }
 
+/// <summary>What every drawing change's description says of when it waits (design 611, Drawing changes; the 5.C live run).</summary>
+public static class DrawingChangeText
+{
+    public const string Waits = " Waits, changing nothing (busy, user_editing), while the user edits a view's sketch or the sheet format (sheet_format: true) or has a command open. After the user exits a view's sketch, SOLIDWORKS keeps that view activated and changes keep waiting until the user lets go of it: ask them to double-click the sheet outside every view.";
+}
+
 /// <summary>A result that carries the evidence block every drawing-changing operation returns.</summary>
 public interface IDrawingChangeResult
 {
@@ -325,7 +331,7 @@ public sealed class DrawingChange
     public DocumentInfo Document { get; set; } = new DocumentInfo();
 
     [Required]
-    [Description("What it made (sheets, views), in the order it made them.")]
+    [Description("What it made (sheets, views, annotations), in the order it made them.")]
     public List<CreatedItem> Created { get; set; } = new List<CreatedItem>();
 
     [Required]
@@ -344,7 +350,16 @@ public sealed class DrawingChange
     [Description("Views after the change, on every sheet.")]
     public int ViewsAfter { get; set; }
 
+    [Description("Annotations before the change, on every sheet and in every view.")]
+    public int AnnotationsBefore { get; set; }
+
+    [Description("Annotations after the change, on every sheet and in every view.")]
+    public int AnnotationsAfter { get; set; }
+
     [Required]
     [Description("Each model the drawing shows, before and after: unsaved changes and rebuild errors, which must not have changed.")]
     public List<DrawingModelState> Models { get; set; } = new List<DrawingModelState>();
+
+    [Description("Set only when the drawing could not be put back at rest after the change: the view SOLIDWORKS keeps activated, or what failed in letting go of it. The change itself stands. Ask the user to double-click the sheet outside every view. A failed change reports the same in its error's details as not_at_rest.")]
+    public string? NotAtRest { get; set; }
 }

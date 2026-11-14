@@ -63,6 +63,9 @@ sealed class FakeView
     /// <summary>The model's entities the view shows (VisibleEntities), with whether each is a vertex or a silhouette.</summary>
     public List<VisibleEntity> Visible { get; } = new List<VisibleEntity>();
 
+    /// <summary>The model's faces the view shows (VisibleFaces).</summary>
+    public List<object> Faces { get; } = new List<object>();
+
     /// <summary>A section view's section, or null.</summary>
     public SectionFacts? Section { get; set; }
 
@@ -91,7 +94,7 @@ sealed class FakeView
 /// is redrawn when the sheet's scale changes; deleting a sheet deletes its views. Each way SOLIDWORKS can fail or answer
 /// wrongly is a flag the tests set.
 /// </summary>
-sealed class FakeDrawing : ISwDrawing
+sealed partial class FakeDrawing : ISwDrawing
 {
     readonly FakeDocument _doc;
     int _views;
@@ -206,6 +209,7 @@ sealed class FakeDrawing : ISwDrawing
         var sheet = Sheets.FirstOrDefault(s => s.Facts.Name == name);
         if (sheet == null) return false;
         Sheets.Remove(sheet);
+        Annotated.RemoveAll(a => a.Sheet == name);
         if (Active == name) Active = Sheets.FirstOrDefault()?.Facts.Name;
         return true;
     }
@@ -213,7 +217,13 @@ sealed class FakeDrawing : ISwDrawing
     public IReadOnlyList<string> ViewNames(string sheet) =>
         Sheets.FirstOrDefault(s => s.Facts.Name == sheet)?.Views.Select(v => v.Facts.Name).ToList() ?? new List<string>();
 
-    public ViewFacts? ReadView(string name) => AllViews.FirstOrDefault(v => v.Facts.Name == name)?.Facts.Copy();
+    /// <summary>A view as SOLIDWORKS reads it, with as many annotations as it holds.</summary>
+    public ViewFacts? ReadView(string name)
+    {
+        var facts = AllViews.FirstOrDefault(v => v.Facts.Name == name)?.Facts.Copy();
+        if (facts != null) facts.Annotations = Annotated.Count(a => a.View == name);
+        return facts;
+    }
 
     public ViewTransform? Transform(string view) => View(view).Transform;
 
@@ -404,13 +414,20 @@ sealed class FakeDrawing : ISwDrawing
             string? label = gone?.Section?.Label ?? gone?.Detail?.Label;
             if (DeleteTakesCuts && label != null && gone!.Facts.Parent != null) AllViews.FirstOrDefault(v => v.Facts.Name == gone.Facts.Parent)?.Cuts.Remove(label);
             foreach (var s in Sheets) s.Views.RemoveAll(v => v.Facts.Name == name);
+            Annotated.RemoveAll(a => a.View == name);
         }
     }
 
     public ISwDocument? ModelOf(string view) => AllViews.FirstOrDefault(v => v.Facts.Name == view)?.Model;
 
-    public IReadOnlyList<VisibleEntity> VisibleEntities(string view, bool edges, bool vertices) =>
-        View(view).Visible.Where(e => e.Vertex ? vertices : edges).ToList();
+    /// <summary>How many times what a view shows was listed (VisibleEntities), by view name.</summary>
+    public Dictionary<string, int> VisibleReads { get; } = new Dictionary<string, int>();
+
+    public IReadOnlyList<VisibleEntity> VisibleEntities(string view, bool edges, bool vertices)
+    {
+        VisibleReads[view] = VisibleReads.TryGetValue(view, out int n) ? n + 1 : 1;
+        return View(view).Visible.Where(e => e.Vertex ? vertices : edges).ToList();
+    }
 
     /// <summary>Each line and circle drawn in a view's sketch, sheet mm: "line (x1, y1) (x2, y2)" or "circle (x, y) r".</summary>
     public List<string> Sketched { get; } = new List<string>();
