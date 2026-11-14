@@ -89,7 +89,7 @@ public sealed class SubstitutedFile
 [Description("Saves a document where it already is. A document never saved needs document.save_as. Saving an assembly first saves every document it uses that has unsaved changes (its components, nested ones included), and saving a drawing every model it shows that has unsaved changes, so a saved document never points at changes that exist only in memory; each file written is listed in referenced. Checked on disk: every file was written by this call.")]
 public sealed class DocumentSaveRequest
 {
-    [Description("The document: its title or full path. The active document when absent.")]
+    [Description("The document: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 }
 
@@ -97,7 +97,7 @@ public sealed class DocumentSaveRequest
 [Description("Saves a document to a new file, which it then is (not a copy). Refuses an existing file unless overwrite. A drawing's file only is written: its views keep their models' paths. References issued before keep working. Checked on disk: the file was written by this call.")]
 public sealed class DocumentSaveAsRequest
 {
-    [Description("The document: its title or full path. The active document when absent.")]
+    [Description("The document: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -150,7 +150,7 @@ public sealed class SavedFile
 [Description("Closes a document. Refuses one with unsaved changes unless discard, and one the agent did not open or create (document.new, document.open) unless users_document, which is only for when the user asked for it to be closed. Closing an assembly also unloads the components no other open document uses (listed in unloaded), and closing a drawing the models only it shows, so either is refused, unless discard, when any of them has unsaved changes too. A part an open assembly or drawing uses only loses its window: it stays loaded for that document, with its changes (still_used_by).")]
 public sealed class DocumentCloseRequest
 {
-    [Description("The document: its title or full path. The active document when absent.")]
+    [Description("The document: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("Close it even though it has unsaved changes, losing them. Default false.")]
@@ -183,7 +183,7 @@ public sealed class DocumentCloseResult
 [Description("Rebuilds a part or an assembly (only what changed; everything with force) and reports its rebuild errors and warnings by feature; an assembly's include its mates' errors, each named by the mate. After changing a component's part, rebuild the assembly that uses it.")]
 public sealed class DocumentRebuildRequest
 {
-    [Description("The document: its title or full path. The active document when absent.")]
+    [Description("The document: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("Rebuild every feature, not only what changed. Default false.")]
@@ -194,7 +194,7 @@ public sealed class DocumentRebuildRequest
 [Description("Reports a part's or an assembly's rebuild errors and warnings by feature (SOLIDWORKS' What's Wrong list; an assembly's include its mates'), without rebuilding it.")]
 public sealed class ModelRebuildStatusRequest
 {
-    [Description("The document: its title or full path. The active document when absent.")]
+    [Description("The document: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 }
 

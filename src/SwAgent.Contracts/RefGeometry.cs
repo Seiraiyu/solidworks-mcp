@@ -17,7 +17,7 @@ public enum PlaneMode
 [Description("Makes a reference plane: offset (from, distance_mm, flip), angle (from, axis, angle_deg, flip), three_points (points), parallel_through_point (from, through) or normal_to_curve (curve, through). Lengths in mm, angles in degrees. Checked against the request: the plane exists, the part's volume is unchanged, and its normal and position are what was asked (the offset from the plane or face, the angle to it, the points on it, the curve normal to it). Otherwise it is deleted (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class RefgeomPlaneRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -62,7 +62,7 @@ public enum AxisMode
 [Description("Makes a reference axis: where two planes meet (two_planes: two planes or planar faces), through two points (two_points: two vertices or points), along a cylinder's or cone's axis (cylinder: its face), or along a straight edge (edge). Checked: the axis exists, the part's volume is unchanged, and its direction and position are what its entities give. Otherwise it is deleted (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class RefgeomAxisRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -87,7 +87,7 @@ public enum PointMode
 [Description("Makes a reference point: the centre of a circular edge (arc_center), the centre of a face (face_center), where two edges meet (intersection), or distance_mm along an edge from its start (along_curve). Lengths in mm. Checked: the point exists, the part's volume is unchanged, and it is where its entities put it (at the circle's centre, on the face's plane, on both edges, on the edge). Otherwise it is deleted (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class RefgeomPointRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]

@@ -52,7 +52,7 @@ public enum HemKind
 [Description("Bends a flange up from straight edges of a sheet-metal part, one flange per edge: each rises from the edge towards the outward normal of the sheet's face the edge bounds (to bend the other way, take the edge of the opposite face), turned angle_deg from the sheet and length_mm long. The add-in draws each flange's profile itself; the agent gives only the edges (sheetmetal.read gives the base face, model.find its edges). Folded parts only: a flattened part is refused. Lengths in mm, angles in degrees. Checked for each flange: one new bend at the angle, inner radius and allowance asked; the volume grows by exactly the flange's straight part and bend less the sheet its bend takes back (within the reliefs SOLIDWORKS cuts when offset_mm leaves sheet beside it); up to 90°, the part reaches the flange's height above the face. Otherwise every flange made is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class SheetMetalEdgeFlangeRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -85,7 +85,7 @@ public sealed class SheetMetalEdgeFlangeRequest
 [Description("Runs a flange along edges of a sheet-metal part with a profile the agent drew: an open chain of lines in a sketch on a plane square to the first edge, touching one of that edge's ends (refgeom.plane with normal_to_curve makes such a plane at the end; sketch.create draws in it). Each line becomes a straight part of the flange and each corner a bend, with one more bend where the flange meets the sheet; several edges must meet end to end, and the flange turns their corners leaving gap_mm. Folded parts only: a flattened part is refused. Lengths in mm. Checked before SOLIDWORKS is called: the profile is one open chain of lines, its plane is square to the first edge, and it touches that edge's end (SOLIDWORKS refuses silently 2 mm away). Checked after: the feature is a miter flange with a bend per profile corner and one where it meets the sheet, for every edge, at the radius and allowance asked; the volume grew, by no more than the profile and its bends along the edges; a profile of one line square to the sheet leaves the part as long as the line that way (plus at most the thickness). Otherwise it is deleted and the part is as it was (rolled back); the sketch stays. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class SheetMetalMiterFlangeRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -113,7 +113,7 @@ public sealed class SheetMetalMiterFlangeRequest
 [Description("Folds straight edges of a sheet-metal part back on themselves, as one hem feature. kind closed takes length_mm; open takes length_mm and gap_mm; a dimension the kind does not take is refused. teardrop and rolled are refused (invalid_argument at kind) for now: SOLIDWORKS does not make them through its API as it does by hand. position material_inside (the default) folds the hem back within the edge, bend_outside puts it outside. Folded parts only: a flattened part is refused. Lengths in mm, angles in degrees. Checked: the feature is a hem, the edges named are gone (folded into it), and the volume grew by the hem's material (its fold and its return, less the sheet it takes back) within one fold's outside radius of sheet across its width. Otherwise it is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class SheetMetalHemRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]

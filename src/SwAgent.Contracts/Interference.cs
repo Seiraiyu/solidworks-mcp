@@ -7,7 +7,7 @@ namespace SwAgent.Contracts;
 [Description("Finds where components of an assembly overlap, with SOLIDWORKS' interference detection over the whole assembly (inside subassemblies too): each pair of components that interfere, the volume (mm³) and the box (mm, assembly coordinates) of the overlap. Faces that only touch are not interference unless coincident_is_interference is true; hidden components are left out unless include_hidden is true. With components, only the interferences that involve one of them (or a component inside one of them) are reported. Changes nothing in the model, and the interference session is always closed, also when SOLIDWORKS fails or the call runs past its deadline. On SOLIDWORKS 2026 SP4 the interference session can mark a saved assembly as having unsaved changes, and the API cannot clear that: then marked_dirty is true, and the assembly is not saved behind you (save it with sw_document_save to clear it, or close it with discard).")]
 public sealed class AssemblyInterferenceRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("Report only the interferences that involve these components: each a reference (r1.component.…) or a name (bracket-1; sub-1/pin-1 inside a subassembly). Every interference when absent.")]

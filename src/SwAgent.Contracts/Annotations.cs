@@ -191,7 +191,7 @@ public sealed class AnnotationInfo
 [Description("Brings the models' own annotations onto the drawing's views (IDrawingDoc.InsertModelAnnotations3 into every view, the path CADapter measured reliable; into one view SOLIDWORKS picks the view itself): their dimensions when types is absent, and their hole callouts, datums, geometric tolerances and notes when types names them. With views, only those views keep what was brought: what SOLIDWORKS put into any other view is deleted again (removed counts it). Checked by counting what each view gained (never SOLIDWORKS' answer), and each imported dimension must be one of the model's (D1@Sketch2) whose value on the drawing equals its value in the model within 0.001 mm (0.01° for an angle). A model dimension shown in two views is reported under duplicates, not removed. The models are unchanged: changing a model dimension's value is dimension.set on the model, never done from the drawing. Otherwise everything it brought is deleted again (rolled back). Positions are sheet mm; values model mm." + DrawingChangeText.Waits)]
 public sealed class AnnotationImportRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("The views to bring them into: each a reference (r1.view.…) or a name (Drawing View1). Every view when absent.")]
@@ -256,7 +256,7 @@ public sealed class AnnotationImportResult : IDrawingChangeResult
 [Description("Adds a reference (driven) dimension to a view between one or two model entities the view shows, each a ViewEntity (a reference issued in the view's model, a {component, entity} pair, or a name) selected through the view (IView.SelectEntity), never picked by sheet coordinates. kind: linear (a straight edge's length; the distance between two parallel edges; a vertex's or a circle's centre's distance from an edge; or between two of those), horizontal or vertical (an edge's run across or up the sheet; or between vertices, circle centres and edges square to that direction), radius or diameter (one circular edge the view draws as a circle or arc), or angle (two straight edges that are not parallel). Its text goes at at (sheet mm). Checked by measuring: its value equals the same quantity measured on the model between those entities as the view draws them (through the view's transform, divided by its scale, so model mm) within 0.001 mm, or within 0.01° for an angle (the angle or its supplement, whichever SOLIDWORKS dimensions); it is driven, a reference dimension of the drawing; and the model is unchanged. An entity the view does not show is refused naming the view and the entity. Otherwise the dimension is deleted again (rolled back). A model dimension's value is changed with dimension.set on the model, never from the drawing." + DrawingChangeText.Waits)]
 public sealed class AnnotationDimensionRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -298,7 +298,7 @@ public sealed class AnnotationDimensionResult : IDrawingChangeResult
 [Description("Adds a note (IModelDoc2.InsertNote): on a sheet, or in a view, with a leader to a model entity the view shows when attach_to names one (a ViewEntity selected through its view, never picked by sheet coordinates), its text placed at at (sheet mm). text may link properties: $PRP:\"Title\" shows the drawing's Title (drawing.properties writes them), and shown gives the text as resolved. Checked: the note is on the sheet or in the view asked, its text reads back as written, its position within 0.01 mm, and its leader is attached to that entity; the model is unchanged. An entity the view does not show is refused naming the view and the entity. Otherwise the note is deleted again (rolled back)." + DrawingChangeText.Waits)]
 public sealed class AnnotationNoteRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -343,7 +343,7 @@ public sealed class AnnotationNoteResult : IDrawingChangeResult
 [Description("Adds centre marks to a view's circles (IDrawingDoc.InsertCenterMark3, a single mark on each circular edge, selected through the view, never picked by sheet coordinates): the circular edges named (each a ViewEntity of this view: a reference issued in its model, a {component, entity} pair, or a name), or, when entities is absent, every circle a view of a part shows, one mark per centre (a hole's front and back edges share one). A circle that already has a centre mark at its centre is skipped (already). Checked by walking the view's annotations, not by SOLIDWORKS' count (CADapter measured it answering 0 with marks in place): the view gained one centre mark per circle, each at its circle's centre within 0.01 mm (sheet mm); the model is unchanged. Otherwise the marks are deleted again (rolled back)." + DrawingChangeText.Waits)]
 public sealed class AnnotationCentreMarksRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -358,7 +358,7 @@ public sealed class AnnotationCentreMarksRequest
 [Description("Adds centre lines to a view (IDrawingDoc.InsertCenterLine2, what each runs along selected through the view, never picked by sheet coordinates): along each cylindrical face named that the view sees from the side, or between exactly two straight edges named that it draws parallel (each a ViewEntity of this view: a reference issued in its model, a {component, entity} pair, or a name); or, when entities is absent, along every cylinder a view of a part shows from the side, one per axis (SOLIDWORKS splits a hole's cylinder in two faces on one axis). An axis that already has a centre line is skipped (already). Checked by walking the view's annotations: the view gained one centre line per target, each attached to the face, or the two edges, it was made on; the model is unchanged. Otherwise the centre lines are deleted again (rolled back)." + DrawingChangeText.Waits)]
 public sealed class AnnotationCentreLinesRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -391,7 +391,7 @@ public sealed class AnnotationCentresResult : IDrawingChangeResult
 [Description("Adds a datum tag (IModelDoc2.InsertDatumTag2) to a model entity a view shows, an edge (a face seen edge on) or a face, selected through its view (attach_to, a ViewEntity), never picked by sheet coordinates (SOLIDWORKS 2026 SP4 no longer finds a drawing edge by sheet coordinates for a datum tag). label is 1 to 3 letters A to Z without I, O and Q, and must not already label a datum tag of the drawing; at (sheet mm) moves the tag. Checked: the tag reads back its label, is attached to that entity, and is at at within 0.01 mm when given; the model is unchanged. An entity the view does not show is refused naming the view and the entity. Otherwise the tag is deleted again (rolled back)." + DrawingChangeText.Waits)]
 public sealed class AnnotationDatumRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -410,7 +410,7 @@ public sealed class AnnotationDatumRequest
 [Description("Adds a single geometric tolerance frame (IModelDoc2.InsertGtol) to a model entity a view shows, an edge or a face, selected through its view (attach_to, a ViewEntity), never picked by sheet coordinates: characteristic one of the fourteen (straightness … total_runout), tolerance_mm (mm, more than 0) with the diameter symbol when diameter is true and material_condition none, mmc or lmc, and up to three datums, primary first, each the label of a datum tag already on the drawing (annotation.datum makes them; a form tolerance, straightness, flatness, circularity or cylindricity, takes none). The frame is set with IGtol.SetFrameSymbols (SOLIDWORKS' numbers; CADapter measured the string variant wanting font codes) and SetFrameValues2; at (sheet mm) moves it. Checked: the frame reads back its characteristic, tolerance, diameter symbol, material condition and datums, is attached to that entity, and is at at within 0.01 mm when given; the model is unchanged. Otherwise the frame is deleted again (rolled back). Composite and multi-frame tolerances are out of scope." + DrawingChangeText.Waits)]
 public sealed class AnnotationGtolRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -441,7 +441,7 @@ public sealed class AnnotationGtolRequest
 [Description("Lists a drawing's annotations (IView.GetAnnotations): every sheet's own and every view's, or those on one sheet (its own and its views'), or one view's. Each with its reference, kind (dimension, note, centre_mark, centre_line, datum, gtol, other), view, position (sheet mm), a note's text as written and as shown, a dimension's kind, value (model mm, or degrees), name and whether it is one of the model's or a reference dimension of the drawing, a datum's label, a tolerance frame's contents, and the model entities it is attached to as references issued in its view's model. Changes nothing.")]
 public sealed class AnnotationListRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("Only the annotations on this sheet, its own and its views' (a reference or a name).")]
@@ -463,7 +463,7 @@ public sealed class AnnotationListResult
 [Description("Moves an annotation's text to at (sheet mm; IAnnotation.SetPosition2), or gives a note new text (INote.SetText; $PRP:\"…\" links allowed). A centre mark sits on its circle's centre and cannot be moved: at on one is invalid_argument, and nothing is asked of SOLIDWORKS. Each value is recorded before and put back on failure. Checked: the position reads back within 0.01 mm and the text as written; the model is unchanged. text is for notes only: a model dimension's value is changed with dimension.set on the model, never from the drawing." + DrawingChangeText.Waits)]
 public sealed class AnnotationSetRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -481,7 +481,7 @@ public sealed class AnnotationSetRequest
 [Description("Deletes annotations by selecting each (IAnnotation.Select3, its sheet shown) and deleting the selection (IModelDoc2.EditDelete), a view or sheet at a time. Deleting an imported model dimension removes it from the drawing only: the model keeps it, with its value (checked). Checked: each is gone, every other annotation is still there, and the model is unchanged. Not rolled back (a deleted annotation cannot be made again as it was): a failed check says what is left, and when SOLIDWORKS refuses one view's annotations after deleting another's, operation_failed gives what is left with rollback_failed. A reference to a deleted annotation no longer resolves." + DrawingChangeText.Waits)]
 public sealed class AnnotationDeleteRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -537,7 +537,7 @@ public sealed class DrawingProperty
 [Description("Reads the drawing's own custom properties, which its title block shows (a title, a part number, a material, a drafter), and with set writes them first, each as text (ICustomPropertyManager.Set2 for one it has, Add3 for a new one); a value may link another property ($PRP:\"PartNo\"). Read back through ICustomPropertyManager.Get2, the getter CADapter measured resolving where Get5 does not. Checked: each property written reads back as written, and resolved gives its value as shown. On failure each old value is put back and each new property deleted (rolled back). The drawing's own properties only: not a configuration's, not the model's; the title block's geometry is not edited." + DrawingChangeText.Waits)]
 public sealed class DrawingPropertiesRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("The properties to write first, each by name (a name it has is overwritten). Nothing is written when absent.")]

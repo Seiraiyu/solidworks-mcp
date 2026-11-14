@@ -4,7 +4,7 @@
   "properties": {
     "document": {
       "type": "string",
-      "description": "The drawing: its title or full path. The active document when absent."
+      "description": "The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent."
     },
     "kind": {
       "type": "string",

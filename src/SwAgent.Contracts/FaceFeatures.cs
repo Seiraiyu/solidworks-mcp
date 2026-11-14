@@ -7,7 +7,7 @@ namespace SwAgent.Contracts;
 [Description("Hollows the part's body into walls of one thickness, leaving open the faces named (none: a closed hollow body). Thickness in mm. Checked: the feature exists as a shell, rebuilds without error, every face named is gone (it no longer resolves), and the volume shrank (inward, the default) or grew (outward). Otherwise the shell is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class FeatureShellRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("The faces to remove, left open: their references (model.find kind face). None for a closed hollow body.")]
@@ -24,7 +24,7 @@ public sealed class FeatureShellRequest
 [Description("Tapers faces by an angle about a neutral plane (a plane or planar face that keeps its size), as a mould needs. Angles in degrees. Checked: the feature exists as a draft, rebuilds without error, the volume changed, and every planar face it drafted now stands at 90 degrees less the draft angle to the neutral plane's normal. Otherwise the draft is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class FeatureDraftRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -69,7 +69,7 @@ public enum HoleEnd
 [Description("Drills Hole Wizard holes into a planar face at the positions given: simple (drill sizes), counterbore (for socket head cap screws), countersink (for countersunk flat head screws) or tapped, to an ISO or ANSI metric standard, blind or through all. The add-in first sketches a point at each position on the face. Lengths in mm. Checked: the feature exists as a Hole Wizard hole, rebuilds without error, the volume shrank, and the hole made one cylinder (or set of coaxial cylinders) per position, each on its position's axis. Otherwise the hole and its sketch are deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class FeatureHoleRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]

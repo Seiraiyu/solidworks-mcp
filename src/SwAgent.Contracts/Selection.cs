@@ -7,7 +7,7 @@ namespace SwAgent.Contracts;
 [Description("What is selected now in a part or an assembly, each item with its reference and shape: how an agent acts on what the user picked in SOLIDWORKS (\"fillet these edges\", \"mate these faces\"). In an assembly a selected face, edge or vertex names its component and is described in the assembly's coordinates, and a selected component is a component item. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class SelectionGetRequest
 {
-    [Description("The part or assembly: its title or full path. The active document when absent.")]
+    [Description("The part or assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 }
 
@@ -41,7 +41,7 @@ public sealed class SelectedItem
 [Description("Fault testing only: selects entities as the user would, so selection.changed is raised as for the user's own selection. Refused unless diagnostics are on.")]
 public sealed class DiagSelectRequest
 {
-    [Description("The part or assembly: its title or full path. The active document when absent.")]
+    [Description("The part or assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]

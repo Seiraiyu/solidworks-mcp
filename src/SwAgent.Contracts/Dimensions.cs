@@ -7,7 +7,7 @@ namespace SwAgent.Contracts;
 [Description("Sets a driving dimension, of a sketch or a feature, to a value in mm (degrees for an angle), named by its full name (width@Sketch3, D1@Boss-Extrude1) or its reference; then rebuilds the part. Checked: the value reads back and no feature has a new rebuild error; otherwise the old value is put back. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class DimensionSetRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -34,7 +34,7 @@ public sealed class DimensionSetResult : IModelChangeResult
 [Description("Lists a part's dimensions, or one feature's or sketch's: each one's full name, value in mm or degrees, whether it drives or is driven, the feature it belongs to, and its reference. dimension.set changes a driving one. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class ModelDimensionsRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("Only this feature's or sketch's: its name or reference. Every dimension in the part, in tree order, when absent.")]

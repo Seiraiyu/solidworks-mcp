@@ -7,7 +7,7 @@ namespace SwAgent.Contracts;
 [Description("Sweeps a sketch's closed profile along a path, optionally following guide curves: a boss adds material, a cut removes it. The profile keeps its angle to the path as it goes. Checked: the feature exists as a sweep, rebuilds without error, the part has a solid body, and its volume grew (boss) or shrank (cut); for a boss along one straight line on a part with no body yet, the volume is exactly the profile's area times the line's length along the profile's normal. Otherwise the sweep is deleted and the part is as it was (rolled back); the sketches stay. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class FeatureSweepRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -32,7 +32,7 @@ public sealed class FeatureSweepRequest
 [Description("Lofts between two or more sketch profiles in order, optionally following guide curves: a boss adds material, a cut removes it. Checked: the feature exists as a loft, rebuilds without error, the part has a solid body, and its volume grew (boss) or shrank (cut). Otherwise the loft is deleted and the part is as it was (rolled back); the sketches stay. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class FeatureLoftRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -61,7 +61,7 @@ public enum RibSide
 [Description("Makes a rib from an open sketch on a part that has a body: the sketch's lines are thickened into a wall that runs out until it meets the body. Lengths in mm, angles in degrees. Checked: the feature exists as a rib, rebuilds without error, the part's volume grew, and it made faces. Otherwise the rib is deleted and the part is as it was (rolled back); the sketch stays. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class FeatureRibRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]

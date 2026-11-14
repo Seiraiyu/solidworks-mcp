@@ -6,7 +6,7 @@ namespace SwAgent.Contracts;
 [Description("Measures between two entities of a part or an assembly: faces, edges, vertices, planes, axes or points, by reference or name. Gives the shortest distance and the two closest points (mm); the distance between centres where both have one (circles, spheres, vertices, points); and the angle between them where both have a direction (planar faces and planes by their normals, straight edges, axes, cylinders and cones by their axes), 0 to 90 degrees. In an assembly everything is in the assembly's coordinates, and an entity of a component is named three ways: a reference issued in the assembly (model.find), name@component for its planes, axes and points (front@bracket-1, Axis1@sub-1/pin-1), or a reference issued in the component's own part with a_component (or b_component) naming the component. Read twice: a measurement that changed between the two answers verification_failed. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class ModelMeasureRequest
 {
-    [Description("The part or assembly: its title or full path. The active document when absent.")]
+    [Description("The part or assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]

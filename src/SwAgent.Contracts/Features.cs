@@ -63,7 +63,7 @@ public sealed class ExtrudeThin
 [Description("Extrudes a sketch's closed profile along the sketch's normal, optionally in a second direction too and as a thin wall: a boss adds material, a cut removes it. Lengths in mm, angles in degrees. Checked: the feature exists with its type, rebuilds without error, and the part's volume grew (boss) or shrank (cut); for a blind or mid-plane boss (blind both ways with direction2) without draft or thin wall on a part with no body yet, the volume is exactly the profile's area times the total depth. Otherwise the feature is deleted and the part is as it was (rolled back); the sketch stays. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class FeatureExtrudeRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -105,7 +105,7 @@ public sealed class FeatureExtrudeRequest
 [Description("Revolves a sketch's closed profile about an axis: a boss adds material, a cut removes it. Angles in degrees. The axis is a line or centerline in the sketch, a reference axis or a straight edge. Checked: the feature exists with its type, rebuilds without error, and the part's volume grew (boss) or shrank (cut); for a boss on a part with no body yet, about a line in its own sketch, the volume is exactly Pappus' (angle × the profile's area × its centroid's distance from the axis). Otherwise the feature is deleted and the part is as it was (rolled back); the sketch stays. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class FeatureRevolveRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -132,7 +132,7 @@ public sealed class FeatureRevolveRequest
 [Description("Rounds edges with a constant-radius fillet: the edges named, and every edge of the faces named; tangent edges are rounded with them. Radius in mm. Checked: the feature exists as a fillet, rebuilds without error, every edge named is gone (it no longer resolves), the fillet made at least one face per edge named, and the part's volume changed. Otherwise the fillet is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class FeatureFilletRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("The edges to round: their references (model.find kind edge). Give edges, faces or both.")]
@@ -148,7 +148,7 @@ public sealed class FeatureFilletRequest
 [Description("Bevels edges with a chamfer: distance and angle (45 degrees unless given), or two distances. Lengths in mm, angles in degrees. Checked: the feature exists as a chamfer, rebuilds without error, every edge named is gone (it no longer resolves), the chamfer made at least one face per edge, and the part's volume changed. Otherwise the chamfer is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class FeatureChamferRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -168,7 +168,7 @@ public sealed class FeatureChamferRequest
 [Description("Suppresses features in the active configuration (suppressed: true, the default), or unsuppresses them (false); features built on a suppressed feature are suppressed with it, as SOLIDWORKS does. Then rebuilds. Checked: each feature named reads suppressed (or not) after the rebuild, and no feature has a new rebuild error; otherwise each is put back as it was. A feature already as asked is left alone and reported. Name a suppressed feature by its name to unsuppress it: references to what it made do not resolve while it is suppressed. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class FeatureSuppressRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -205,7 +205,7 @@ public enum DeleteChildren
 [Description("Deletes features, with the sketches they absorbed unless keep_absorbed. A feature that others are built on (its children, their children and so on) is refused unless children is delete, which deletes them all too. Checked: every feature named, and every feature built on it when deleted, is gone from the tree, and no feature has a new rebuild error. A deleted feature cannot be made again from its reference, so a check that fails after the delete answers operation_failed with rollback_failed, naming what is gone. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class FeatureDeleteRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]

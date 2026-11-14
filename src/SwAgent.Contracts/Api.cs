@@ -19,7 +19,7 @@ public sealed class ApiCallRequest
     [Description("What to call the member on: app (ISldWorks), document (the document's IModelDoc2), or an entity of the document: its reference (r1.…), or the name of a feature, plane, axis or point (Boss-Extrude1; front, top, right, origin).")]
     public string Target { get; set; } = "";
 
-    [Description("The document: its title or full path. The active document when absent. The one a document or reference target is in, and the one rebuilt.")]
+    [Description("The document: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent. The one a document or reference target is in, and the one rebuilt.")]
     public string? Document { get; set; }
 
     [Required]

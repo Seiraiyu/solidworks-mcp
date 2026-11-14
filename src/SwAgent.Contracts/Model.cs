@@ -7,7 +7,7 @@ namespace SwAgent.Contracts;
 [Description("Lists a part's features in tree order, sketches after the feature that uses them, each with its reference, whether it is suppressed and its rebuild error or warning. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class ModelTreeRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 }
 
@@ -57,7 +57,7 @@ public sealed class FeatureNode
 [Description("Mass properties of a part's solid bodies, in mm, g and the part's own material: volume, surface area, mass, density, centre of mass and principal moments of inertia. Of an assembly, the same for every component that is not suppressed (hidden ones included), in the assembly's coordinates, each component's own material, with each top-level component's share in components. A share counts the component in the configuration the assembly uses (component.set {configuration} changes it), so the shares add up to the assembly's mass. A component whose share cannot be counted exactly goes in skipped with the reason, and the whole still counts it: a lightweight one (component.set {suppression: resolved} loads it), or one whose configuration has a material other than its file's active configuration's.")]
 public sealed class ModelMassRequest
 {
-    [Description("The part or assembly: its title or full path. The active document when absent.")]
+    [Description("The part or assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 }
 
@@ -121,7 +121,7 @@ public sealed class ComponentMass
 [Description("The axis-aligned box around a part's solid bodies, or an assembly's resolved components' bodies in the assembly's coordinates, in mm. SOLIDWORKS' quick box by default (it may be a little larger than the bodies); precise for the exact one.")]
 public sealed class ModelBoundingBoxRequest
 {
-    [Description("The part or assembly: its title or full path. The active document when absent.")]
+    [Description("The part or assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("Compute the exact box from the bodies' extreme points. Default false.")]
@@ -158,7 +158,7 @@ public sealed class ModelBoundingBoxResult
 [Description("Finds a part's or an assembly's faces, edges or vertices by what they are, each with its persistent reference and shape: by the feature that made them, their geometry, a direction (a planar face's outward normal, or an edge's or cylinder's axis either way), or a point they contain or are near. Use it to get references to pass to other operations, such as the top face of Boss-Extrude1 or the circular edges of a hole. In an assembly it searches every resolved component, or only component (a subassembly: every component in it); directions, points and boxes are in the assembly's coordinates, each entity names its component, and its reference is the assembly's own. Components that are suppressed, lightweight or missing have no geometry and are listed in skipped. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class ModelFindRequest
 {
-    [Description("The part or assembly: its title or full path. The active document when absent.")]
+    [Description("The part or assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("In an assembly only: search this component (bracket-1, sub-1/pin-1, or its reference); a subassembly searches every component in it. Every resolved component when absent.")]

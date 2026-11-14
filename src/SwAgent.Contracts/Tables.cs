@@ -126,7 +126,7 @@ public sealed class TableInfo
 [Description("Puts a bill of materials on a drawing for a view of an assembly (IView.InsertBomTable4 with the view's configuration named, never empty: CADapter measured an empty name making a table with no rows that reports success), in SOLIDWORKS' standard template: top_level (one row per distinct file and configuration among the top-level components; a subassembly is one row), parts_only (parts at every level) or indented. at (sheet mm) puts its anchor corner there; at the sheet format's bill of materials anchor point when absent. Checked by reading the table's cells back, not by SOLIDWORKS' answer: one row per distinct component file and configuration at the level asked, each with the quantity assembly.components counts for it (suppressed components are not counted), in any order; a table with no rows is verification_failed; the model is unchanged. The view's configuration must be the assembly's active one, which assembly.components reads (activate it with configuration.activate). Otherwise the table is deleted again (rolled back)." + DrawingChangeText.Waits)]
 public sealed class TableBomRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -163,7 +163,7 @@ public sealed class TableResult : IDrawingChangeResult
 [Description("Reads a drawing's tables (IView.GetTableAnnotations): the one named, every one on a sheet, or every one of the drawing. Each with its reference, sheet, the view it is anchored to, its column titles and its rows' cells as shown, and for a bill of materials its kind and configuration and each row's item number, quantity (its quantity cell), component file and configuration, and components (IBomTableAnnotation.GetComponents2, read only). Changes nothing.")]
 public sealed class TableReadRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("The table: a reference (r1.table.…), or its name (with @sheet when names repeat). Every table (of the sheet, when given) when absent.")]
@@ -185,7 +185,7 @@ public sealed class TableReadResult
 [Description("Deletes tables by selecting each (its annotation, with its sheet shown; a bill of materials by its feature when that leaves it) and deleting the selection, a sheet at a time. Balloons numbered to a deleted bill of materials stay. Checked: each is gone, every other table is still there, and the model is unchanged. Not rolled back (a deleted table cannot be made again as it was): a failed check says what is left, and when SOLIDWORKS refuses one sheet's tables after deleting another's, operation_failed gives what is left with rollback_failed. A reference to a deleted table no longer resolves." + DrawingChangeText.Waits)]
 public sealed class TableDeleteRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -209,7 +209,7 @@ public sealed class TableDeleteResult : IDrawingChangeResult
 [Description("Balloons the components a view of an assembly shows (IDrawingDoc.AutoBalloon5 with the view selected by its name, never picked by sheet coordinates): one balloon on one instance of each item (a component file and configuration, as a bill of materials groups them), numbered as the view's bill of materials numbers its rows when the view has one (table.bom), laid out square, circular, top, bottom, left or right of the view. An item already ballooned in the view is skipped (already). Checked by walking the view's annotations, not by SOLIDWORKS' answer: every item the view shows has a balloon, no item gained two, each balloon made is attached to one component the view shows, and its item number is that component's row's in the bill (without a bill, an item's balloons share a number and two items never do); the model is unchanged. Otherwise the balloons made are deleted again (rolled back). The view's configuration must be the assembly's active one." + DrawingChangeText.Waits)]
 public sealed class AnnotationBalloonsRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]

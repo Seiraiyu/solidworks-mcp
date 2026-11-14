@@ -279,7 +279,7 @@ public sealed class SketchGeometry
 [Description("Draws a whole sketch in one call on a plane or a planar face: its lines, centerlines, arcs, circles, rectangles, polygons, slots, splines and points, then its relations, then its named driving dimensions; then closes it and checks it. Coordinates are mm in the sketch's own plane; the result gives the sketch's origin and axes in the part. SOLIDWORKS is never left editing the sketch. Checked: the sketch holds what was asked, every dimension reads back at its value, and it is not over defined; otherwise nothing is left of it (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class SketchCreateRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -429,7 +429,7 @@ public sealed class DimensionInfo
 [Description("Reads a sketch back: every segment (its kind, geometry in mm in the sketch, whether it is construction geometry, and its reference), every sketch point (the ends and centres of segments included), every relation (its type and what it relates), every dimension (full name, value, driving or driven), how far it is defined, and where its plane is in the part. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class SketchReadRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -524,7 +524,7 @@ public sealed class SketchRelationInfo
 [Description("Changes an existing sketch: draws, relates and dimensions what add says (as sketch.create does; add's relations and dimensions may also name the sketch's own entities by reference), checks the sketch, and only then removes what remove names. Checked as sketch.create is; additions that fail are taken back. A removed entity cannot be drawn back with the same reference, so a failure after removing answers operation_failed with rollback_failed. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class SketchModifyRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]

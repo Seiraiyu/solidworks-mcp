@@ -104,7 +104,7 @@ public sealed class DiagScratchBlockRequest
 [Description("Fault testing only: what the user has open that makes model and drawing changes wait, read exactly as their preconditions read it (the sketch being edited in the part, or in the drawing any sketch but its sheet's own and, only while the add-in itself activated that view, the activated view's own: a view the user activated, or left activated after exiting its sketch, counts as editing; the command whose PropertyManager is open; a drawing's sheet format being edited). Changes nothing. Refused unless diagnostics are on.")]
 public sealed class DiagEditingRequest
 {
-    [Description("The part or drawing: its title or full path. The active document when absent.")]
+    [Description("The part or drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 }
 
@@ -124,7 +124,7 @@ public sealed class DiagEditingResult
 [Description("Fault testing only: starts editing a component in the assembly's context as the user would (Edit Part) and leaves it so (editing true), or returns to editing the assembly (editing false), so the fault suite can show an assembly change waiting for the user without anyone at SOLIDWORKS. Refused unless diagnostics are on.")]
 public sealed class DiagEditComponentRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("The component to edit, by name or reference; for editing true.")]
@@ -145,7 +145,7 @@ public sealed class DiagEditComponentResult
 [Description("Fault testing only: opens a sketch for editing as the user would (Edit Sketch) and leaves it open (open true), or exits the sketch being edited (open false), so the fault suite can show a model change waiting for the user without anyone at SOLIDWORKS. Refused unless diagnostics are on.")]
 public sealed class DiagEditSketchRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("The sketch to open, by name or reference; for open true.")]
