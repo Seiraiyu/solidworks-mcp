@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "description": "Deletes tables by selecting each (its annotation, with its sheet shown; a bill of materials by its feature when that leaves it) and deleting the selection, a sheet at a time. Balloons numbered to a deleted bill of materials stay. Checked: each is gone, every other table is still there, and the model is unchanged. Not rolled back (a deleted table cannot be made again as it was): a failed check says what is left, and when SOLIDWORKS refuses one sheet's tables after deleting another's, operation_failed gives what is left with rollback_failed. A reference to a deleted table no longer resolves. Waits, changing nothing (busy, user_editing), while the user edits a view's sketch or the sheet format (sheet_format: true) or has a command open. After the user exits a view's sketch, SOLIDWORKS keeps that view activated and changes keep waiting until the user lets go of it: ask them to double-click the sheet outside every view.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The tables to delete: each a reference (r1.table.…) or a name (with @sheet when names repeat)."
+    }
+  },
+  "required": [
+    "tables"
+  ],
+  "additionalProperties": false
+}

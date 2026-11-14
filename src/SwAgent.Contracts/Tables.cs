@@ -159,6 +159,52 @@ public sealed class TableResult : IDrawingChangeResult
     public DrawingChange Change { get; set; } = new DrawingChange();
 }
 
+[Operation("table.read", typeof(TableReadResult), ReadOnly = true)]
+[Description("Reads a drawing's tables (IView.GetTableAnnotations): the one named, every one on a sheet, or every one of the drawing. Each with its reference, sheet, the view it is anchored to, its column titles and its rows' cells as shown, and for a bill of materials its kind and configuration and each row's item number, quantity (its quantity cell), component file and configuration, and components (IBomTableAnnotation.GetComponents2, read only). Changes nothing.")]
+public sealed class TableReadRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("The table: a reference (r1.table.…), or its name (with @sheet when names repeat). Every table (of the sheet, when given) when absent.")]
+    public string? Table { get; set; }
+
+    [Description("Only the tables on this sheet (a reference or a name). Not with table.")]
+    public string? Sheet { get; set; }
+}
+
+[Description("The drawing's tables, read back.")]
+public sealed class TableReadResult
+{
+    [Required]
+    [Description("Each table, sheet by sheet.")]
+    public List<TableInfo> Tables { get; set; } = new List<TableInfo>();
+}
+
+[Operation("table.delete", typeof(TableDeleteResult))]
+[Description("Deletes tables by selecting each (its annotation, with its sheet shown; a bill of materials by its feature when that leaves it) and deleting the selection, a sheet at a time. Balloons numbered to a deleted bill of materials stay. Checked: each is gone, every other table is still there, and the model is unchanged. Not rolled back (a deleted table cannot be made again as it was): a failed check says what is left, and when SOLIDWORKS refuses one sheet's tables after deleting another's, operation_failed gives what is left with rollback_failed. A reference to a deleted table no longer resolves." + DrawingChangeText.Waits)]
+public sealed class TableDeleteRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The tables to delete: each a reference (r1.table.…) or a name (with @sheet when names repeat).")]
+    public List<string> Tables { get; set; } = new List<string>();
+}
+
+[Description("The tables deleted.")]
+public sealed class TableDeleteResult : IDrawingChangeResult
+{
+    [Required]
+    [Description("Each table deleted, as name@sheet.")]
+    public List<string> Deleted { get; set; } = new List<string>();
+
+    [Required]
+    [Description("What changed in the drawing: changed lists each table deleted; tables before and after; models each model shown, unchanged.")]
+    public DrawingChange Change { get; set; } = new DrawingChange();
+}
+
 [Description("Where an exploded view draws one component, against where its explode steps put it.")]
 public sealed class ExplodedImage
 {

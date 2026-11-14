@@ -121,10 +121,13 @@ sealed partial class FakeDrawing
     /// <summary>When true, DeleteTables says it deleted but leaves them.</summary>
     public bool TableDeleteLeaves { get; set; }
 
+    /// <summary>When set, DeleteTables deletes nothing on this sheet and says so; on other sheets it deletes.</summary>
+    public string? TableDeleteFailsOn { get; set; }
+
     public bool DeleteTables(string sheet, IReadOnlyList<string> names)
     {
         Calls.Add($"delete tables {string.Join(", ", names)}");
-        if (TableDeleteFails || names.Any(n => !Tabled.Any(t => t.Sheet == sheet && t.Name == n))) return false;
+        if (TableDeleteFails || sheet == TableDeleteFailsOn || names.Any(n => !Tabled.Any(t => t.Sheet == sheet && t.Name == n))) return false;
         if (!TableDeleteLeaves) Tabled.RemoveAll(t => t.Sheet == sheet && names.Contains(t.Name));
         return true;
     }

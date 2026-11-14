@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "description": "Reads a drawing's tables (IView.GetTableAnnotations): the one named, every one on a sheet, or every one of the drawing. Each with its reference, sheet, the view it is anchored to, its column titles and its rows' cells as shown, and for a bill of materials its kind and configuration and each row's item number, quantity (its quantity cell), component file and configuration, and components (IBomTableAnnotation.GetComponents2, read only). Changes nothing.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "table": {
+      "type": "string",
+      "description": "The table: a reference (r1.table.…), or its name (with @sheet when names repeat). Every table (of the sheet, when given) when absent."
+    },
+    "sheet": {
+      "type": "string",
+      "description": "Only the tables on this sheet (a reference or a name). Not with table."
+    }
+  },
+  "additionalProperties": false
+}
