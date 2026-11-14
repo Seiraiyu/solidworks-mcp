@@ -73,7 +73,7 @@ public sealed class CreatedItem
     [Description("Its name, for example Sketch3 or Line2.")]
     public string Name { get; set; } = "";
 
-    [Description("What it is: feature, sketch, sketch_entity, sketch_point, dimension, plane, axis or point.")]
+    [Description("What it is: feature, sketch, sketch_entity, sketch_point, dimension, plane, axis or point; component or mate in an assembly; sheet or view on a drawing.")]
     public ReferenceKind Kind { get; set; }
 
     [Description("Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one.")]

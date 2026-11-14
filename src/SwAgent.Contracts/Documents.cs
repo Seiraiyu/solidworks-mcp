@@ -4,17 +4,20 @@ using System.ComponentModel;
 namespace SwAgent.Contracts;
 
 [Operation("document.new", typeof(DocumentNewResult))]
-[Description("Creates a part or an assembly from the user's default template for it (or a named template) and makes it the active document. With path, saves it there at once. The document is the agent's own, so document.close may close it.")]
+[Description("Creates a part, an assembly or a drawing from the user's default template for it (or a named template) and makes it the active document. With path, saves it there at once. The document is the agent's own, so document.close may close it. A drawing comes with the template's sheet and sheet format and no view; sheet sets that first sheet's size, scale and projection (sheet mm). On a drawing it makes, the agent hides origins, planes, axes, sketches and points in its views and turns off inserting annotations when a view is made. Checked: the document is active and of the type asked; a drawing has one sheet reading back as asked, no view, and no command left open.")]
 public sealed class DocumentNewRequest
 {
-    [Description("What to create: part or assembly (drawings come in a later release). Default part.")]
+    [Description("What to create: part, assembly or drawing. Default part.")]
     public DocumentType? Type { get; set; }
 
-    [Description("Full path of a template: .PRTDOT for a part, .ASMDOT for an assembly; the user's default template for the type when absent.")]
+    [Description("Full path of a template: .PRTDOT for a part, .ASMDOT for an assembly, .DRWDOT for a drawing; the user's default template for the type when absent.")]
     public string? Template { get; set; }
 
-    [Description("Full path of a file that does not exist yet, in an existing folder, with the type's extension (.SLDPRT, .SLDASM): the new document is saved there at once.")]
+    [Description("Full path of a file that does not exist yet, in an existing folder, with the type's extension (.SLDPRT, .SLDASM, .SLDDRW): the new document is saved there at once.")]
     public string? Path { get; set; }
+
+    [Description("Only for a drawing: the first sheet's size (a standard size or width_mm and height_mm), scale, projection and sheet format; the template's when absent.")]
+    public SheetSetup? Sheet { get; set; }
 }
 
 [Description("The document created.")]
@@ -27,10 +30,13 @@ public sealed class DocumentNewResult
     [Required]
     [Description("The template it was made from.")]
     public string Template { get; set; } = "";
+
+    [Description("For a drawing: its sheet, as read back after it was made.")]
+    public SheetInfo? Sheet { get; set; }
 }
 
 [Operation("document.open", typeof(DocumentOpenResult))]
-[Description("Opens a part, assembly or drawing from a local file and makes it the active document. An assembly opens with every component resolved (never lightweight), and never with a dialog. When a component's file is not where the assembly says, SOLIDWORKS looks for the same file name in other folders (ones it opened this session, the assembly's own) and loads what it finds without asking: each such file is listed in substituted, and references issued before to that component's entities no longer resolve (component_file_changed). A file it finds nowhere is listed in missing. A document that is already open is made active, not opened again. A document this call opened is the agent's own, so document.close may close it.")]
+[Description("Opens a part, assembly or drawing from a local file and makes it the active document. An assembly opens with every component resolved (never lightweight), and never with a dialog. When a component's file is not where the assembly says, SOLIDWORKS looks for the same file name in other folders (ones it opened this session, the assembly's own) and loads what it finds without asking: each such file is listed in substituted, and references issued before to that component's entities no longer resolve (component_file_changed). A file it finds nowhere is listed in missing. A drawing opens with the models it shows loaded (each model file not found is listed in missing, each found elsewhere in substituted) and is left the active document, not one of its models. A document that is already open is made active, not opened again. A document this call opened is the agent's own, so document.close may close it.")]
 public sealed class DocumentOpenRequest
 {
     [Required]
@@ -59,11 +65,11 @@ public sealed class DocumentOpenResult
     public List<string> Warnings { get; set; } = new List<string>();
 
     [Required]
-    [Description("Files the document uses (an assembly's components) that SOLIDWORKS could not find; those components stay suppressed. Empty when nothing is missing.")]
+    [Description("Files the document uses (an assembly's components, a drawing's models) that SOLIDWORKS could not find; those components stay suppressed, and those views show nothing. Empty when nothing is missing.")]
     public List<string> Missing { get; set; } = new List<string>();
 
     [Required]
-    [Description("An assembly's component files SOLIDWORKS loaded from another folder than the assembly says, because the file was not there: check each is the file meant before saving the assembly, which would then point at it. Empty when nothing was substituted.")]
+    [Description("An assembly's component files (or a drawing's model files) SOLIDWORKS loaded from another folder than the document says, because the file was not there: check each is the file meant before saving the document, which would then point at it. Empty when nothing was substituted.")]
     public List<SubstitutedFile> Substituted { get; set; } = new List<SubstitutedFile>();
 }
 
@@ -80,7 +86,7 @@ public sealed class SubstitutedFile
 }
 
 [Operation("document.save", typeof(DocumentSaveResult))]
-[Description("Saves a document where it already is. A document never saved needs document.save_as. Saving an assembly first saves every document it uses that has unsaved changes (its components, nested ones included), so the saved assembly never points at changes that exist only in memory; each file written is listed in referenced. Checked on disk: every file was written by this call.")]
+[Description("Saves a document where it already is. A document never saved needs document.save_as. Saving an assembly first saves every document it uses that has unsaved changes (its components, nested ones included), and saving a drawing every model it shows that has unsaved changes, so a saved document never points at changes that exist only in memory; each file written is listed in referenced. Checked on disk: every file was written by this call.")]
 public sealed class DocumentSaveRequest
 {
     [Description("The document: its title or full path. The active document when absent.")]
@@ -88,7 +94,7 @@ public sealed class DocumentSaveRequest
 }
 
 [Operation("document.save_as", typeof(DocumentSaveResult))]
-[Description("Saves a document to a new file, which it then is (not a copy). Refuses an existing file unless overwrite. References issued before keep working. Checked on disk: the file was written by this call.")]
+[Description("Saves a document to a new file, which it then is (not a copy). Refuses an existing file unless overwrite. A drawing's file only is written: its views keep their models' paths. References issued before keep working. Checked on disk: the file was written by this call.")]
 public sealed class DocumentSaveAsRequest
 {
     [Description("The document: its title or full path. The active document when absent.")]
@@ -121,7 +127,7 @@ public sealed class DocumentSaveResult
     public List<string> Warnings { get; set; } = new List<string>();
 
     [Required]
-    [Description("For document.save of an assembly: the documents it uses that had unsaved changes and were saved first, each where it already was. Empty otherwise.")]
+    [Description("For document.save of an assembly or a drawing: the documents it uses (components, models) that had unsaved changes and were saved first, each where it already was. Empty otherwise.")]
     public List<SavedFile> Referenced { get; set; } = new List<SavedFile>();
 }
 
@@ -141,7 +147,7 @@ public sealed class SavedFile
 }
 
 [Operation("document.close", typeof(DocumentCloseResult))]
-[Description("Closes a document. Refuses one with unsaved changes unless discard, and one the agent did not open or create (document.new, document.open) unless users_document, which is only for when the user asked for it to be closed. Closing an assembly also unloads the components no other open document uses (listed in unloaded), so it is refused, unless discard, when any of them has unsaved changes too. A part an open assembly uses only loses its window: it stays loaded for the assembly, with its changes (still_used_by).")]
+[Description("Closes a document. Refuses one with unsaved changes unless discard, and one the agent did not open or create (document.new, document.open) unless users_document, which is only for when the user asked for it to be closed. Closing an assembly also unloads the components no other open document uses (listed in unloaded), and closing a drawing the models only it shows, so either is refused, unless discard, when any of them has unsaved changes too. A part an open assembly or drawing uses only loses its window: it stays loaded for that document, with its changes (still_used_by).")]
 public sealed class DocumentCloseRequest
 {
     [Description("The document: its title or full path. The active document when absent.")]
@@ -165,11 +171,11 @@ public sealed class DocumentCloseResult
     public bool Discarded { get; set; }
 
     [Required]
-    [Description("For an assembly: the documents it used that SOLIDWORKS unloaded with it, as they were just before. Empty otherwise.")]
+    [Description("For an assembly or a drawing: the documents it used that SOLIDWORKS unloaded with it, as they were just before. Empty otherwise.")]
     public List<DocumentInfo> Unloaded { get; set; } = new List<DocumentInfo>();
 
     [Required]
-    [Description("The open documents (assemblies) that still use it: it lost its window but stays loaded for them, unsaved changes included. Empty when it was unloaded.")]
+    [Description("The open documents (assemblies, drawings) that still use it: it lost its window but stays loaded for them, unsaved changes included. Empty when it was unloaded.")]
     public List<string> StillUsedBy { get; set; } = new List<string>();
 }
 

@@ -115,7 +115,7 @@
         ],
         "additionalProperties": false
       },
-      "description": "For document.save of an assembly: the documents it uses that had unsaved changes and were saved first, each where it already was. Empty otherwise."
+      "description": "For document.save of an assembly or a drawing: the documents it uses (components, models) that had unsaved changes and were saved first, each where it already was. Empty otherwise."
     }
   },
   "required": [

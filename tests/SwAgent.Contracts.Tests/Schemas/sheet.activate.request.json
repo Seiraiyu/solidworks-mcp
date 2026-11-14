@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "description": "Shows a sheet of a drawing (IDrawingDoc.ActivateSheet), so new views go on it. Changes what is shown only, not the drawing, so nothing is rolled back. Waits, like a change, while the user edits a sketch, the sheet format or has a command open. Checked: the sheet is the one shown.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "sheet": {
+      "type": "string",
+      "description": "The sheet: a reference (r1.sheet.…) or its name (Sheet1)."
+    }
+  },
+  "required": [
+    "sheet"
+  ],
+  "additionalProperties": false
+}

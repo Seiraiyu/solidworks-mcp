@@ -32,6 +32,11 @@ public static class OperationFamilies
         ["component"] = TimeSpan.FromSeconds(60),
         ["mate"] = TimeSpan.FromSeconds(60),
         ["explode"] = TimeSpan.FromSeconds(60),
+        ["drawing"] = TimeSpan.FromSeconds(60),
+        ["sheet"] = TimeSpan.FromSeconds(30),
+        ["view"] = TimeSpan.FromSeconds(60),
+        ["annotation"] = TimeSpan.FromSeconds(60),
+        ["table"] = TimeSpan.FromSeconds(60),
     };
 
     public static bool TryGetDefault(string family, out TimeSpan deadline) => Defaults.TryGetValue(family, out deadline);

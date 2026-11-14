@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "description": "Deletes sheets of a drawing, and every view on them, by selecting each (SelectByID2 \"SHEET\") and deleting the selection. A drawing keeps at least one sheet: deleting its last is refused. Checked: each sheet is gone and every other sheet is still there. Not rolled back (a deleted sheet's views cannot be made again as they were): a failed check says what is left.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "sheets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The sheets to delete: each a reference (r1.sheet.…) or a name (Sheet2)."
+    }
+  },
+  "required": [
+    "sheets"
+  ],
+  "additionalProperties": false
+}

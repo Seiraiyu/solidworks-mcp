@@ -85,6 +85,6 @@ public class ExplodeContractTests
     [Fact]
     public void Protocol_speaks_exploded_views()
     {
-        Assert.Equal(12, Protocol.Version);
+        Assert.True(Protocol.Version >= 12);
     }
 }

@@ -103,6 +103,20 @@ public class OwnerGuardTests : IDisposable
     }
 
     [Fact]
+    public void A_hidden_document_in_its_scratch_directory_is_its_own_and_one_elsewhere_or_with_a_window_is_not()
+    {
+        var model = Doc(_guard.NewScratchPath("block"));
+        model.Visible = false;
+        var shown = Doc(_guard.NewScratchPath("plate"));
+        var hiddenElsewhere = Doc(@"C:\work\bracket.SLDPRT");
+        hiddenElsewhere.Visible = false;
+        var beside = Doc(_scratch + "-other" + Path.DirectorySeparatorChar + "pin.SLDPRT");
+        beside.Visible = false;
+        var foreign = _guard.Foreign(State(model, shown, hiddenElsewhere, beside));
+        Assert.Equal(new[] { "plate.SLDPRT", "bracket.SLDPRT", "pin.SLDPRT" }, System.Linq.Enumerable.Select(foreign, d => d.Title));
+    }
+
+    [Fact]
     public async Task Refuses_an_unsaved_untitled_document()
     {
         await Assert.ThrowsAsync<GuardRefusedException>(() => _guard.KillAsync(Pid, Reads(Sleeping(Doc(null)))));

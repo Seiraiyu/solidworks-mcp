@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "description": "Projects a view from another (IDrawingDoc.CreateUnfoldedViewAt3 with the parent selected): the parent's model seen from its left, right, above or below, drawn on the side the sheet's projection implies (third angle: the view from the right on the right; first angle: on the left) and aligned with the parent, as SOLIDWORKS aligns projected views. at (sheet mm) must be on that side and on the parent's centre line (its y for left and right, its x for above and below); beside the parent with a 20 mm gap when absent. Checked by measuring: a projected view of the parent, at the parent's scale, centred where asked within 0.01 mm, turned 90° from the parent toward that side and sharing its centre line (from both views' transforms), drawing the model's box projected and scaled within 0.01 mm; and the model is unchanged. Otherwise the view is deleted again (rolled back).",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "parent": {
+      "type": "string",
+      "description": "The view to project from: a reference (r1.view.…) or its name (Drawing View1)."
+    },
+    "direction": {
+      "type": "string",
+      "enum": [
+        "left",
+        "right",
+        "above",
+        "below"
+      ],
+      "description": "Which side of the model the new view shows: left, right, above or below."
+    },
+    "at": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "Mm to the right of the sheet's lower-left corner."
+        },
+        "y": {
+          "type": "number",
+          "description": "Mm above the sheet's lower-left corner."
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false,
+      "description": "Where its centre goes, sheet mm: on the side the sheet's projection implies, on the parent's centre line. Beside the parent when absent."
+    }
+  },
+  "required": [
+    "parent",
+    "direction"
+  ],
+  "additionalProperties": false
+}

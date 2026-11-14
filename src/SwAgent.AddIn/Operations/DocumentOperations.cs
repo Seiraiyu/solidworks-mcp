@@ -19,13 +19,17 @@ public sealed class DocumentNewOperation : Operation<DocumentNewRequest, Documen
     protected override DocumentNewResult Run(DocumentNewRequest request, IOperationContext context)
     {
         var type = request.Type ?? DocumentType.Part;
-        if (type == DocumentType.Drawing)
-        {
-            throw new SwAgentException(ErrorCode.InvalidArgument,
-                "document.new makes parts and assemblies in this version; drawings come in a later release",
-                new JsonObject { ["field"] = "type" });
-        }
         var kind = Kind.Of(type);
+        if (request.Sheet != null)
+        {
+            if (type != DocumentType.Drawing)
+            {
+                throw new SwAgentException(ErrorCode.InvalidArgument,
+                    $"sheet sets a drawing's first sheet, and this makes {kind.Article}; leave it out or pass type: drawing",
+                    new JsonObject { ["field"] = "sheet" });
+            }
+            SheetSetups.Validate(request.Sheet, "sheet");
+        }
         string? path = request.Path == null ? null : PathRules.Writable(request.Path, "path", overwrite: false, kind.Extension);
         string template;
         if (request.Template != null)
@@ -34,7 +38,12 @@ public sealed class DocumentNewOperation : Operation<DocumentNewRequest, Documen
         }
         else
         {
-            template = (type == DocumentType.Assembly ? _services.SolidWorks.DefaultAssemblyTemplate() : _services.SolidWorks.DefaultPartTemplate())
+            template = type switch
+                {
+                    DocumentType.Assembly => _services.SolidWorks.DefaultAssemblyTemplate(),
+                    DocumentType.Drawing => _services.SolidWorks.DefaultDrawingTemplate(),
+                    _ => _services.SolidWorks.DefaultPartTemplate(),
+                }
                 ?? throw new SwAgentException(ErrorCode.OperationFailed,
                     $"SOLIDWORKS has no default {kind.Noun} template; set one in Tools > Options > Default Templates, or pass template");
             if (!File.Exists(template))
@@ -46,6 +55,8 @@ public sealed class DocumentNewOperation : Operation<DocumentNewRequest, Documen
         }
 
         var doc = _services.SolidWorks.NewDocument(template);
+        _wanted = null;
+        if (type == DocumentType.Drawing) SetUpDrawing(doc, request.Sheet, context);
         if (path != null)
         {
             var saved = doc.SaveAs(path);
@@ -64,14 +75,53 @@ public sealed class DocumentNewOperation : Operation<DocumentNewRequest, Documen
             }
         }
         var info = doc.Info();
+        // Read after any save, so the sheet's reference names the drawing by its path.
+        var sheet = type == DocumentType.Drawing && doc.Drawing() is ISwDrawing made && made.SheetNames().FirstOrDefault() is string first && made.ReadSheet(first) is SheetFacts facts
+            ? DrawingReader.Sheet(_services.References, doc, made, facts, withViews: false)
+            : null;
         _services.Runtime.DocumentOpened(DocumentKeys.Of(info), owned: true);
-        context.Log.Info($"document.new: {DocumentKeys.Of(info)} from {template}");
-        return new DocumentNewResult { Document = info, Template = template };
+        context.Log.Info($"document.new: {DocumentKeys.Of(info)} from {template}{(sheet == null ? "" : $", sheet {sheet.Name} {SheetSetups.Describe(_wanted!)}")}");
+        return new DocumentNewResult { Document = info, Template = template, Sheet = sheet };
+    }
+
+    /// <summary>The first sheet's values document.new asked for, for Verify.</summary>
+    SheetFacts? _wanted;
+
+    /// <summary>
+    /// A new drawing (design 611, Drawing documents): it is the agent's own, so its views hide the model's scaffolding and
+    /// insert nothing when made (DrawingSettings), and its first sheet takes what was asked. A drawing that cannot be set
+    /// up is closed again, unsaved: it is new, so nothing of the user's is lost.
+    /// </summary>
+    void SetUpDrawing(ISwDocument doc, SheetSetup? setup, IOperationContext context)
+    {
+        try
+        {
+            var drawing = doc.Drawing() ?? throw new SwAgentException(ErrorCode.ApiError, $"{doc.Info().Title} says it is a drawing, but SOLIDWORKS gives no drawing for it");
+            foreach (var name in DrawingSettings.All) drawing.SetSetting(name, DrawingSettings.Value);
+            string first = drawing.SheetNames().FirstOrDefault()
+                ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"the template made a drawing with no sheet");
+            var facts = drawing.ReadSheet(first)!;
+            _wanted = setup == null ? facts : SheetSetups.Apply(facts, setup, null);
+            if (setup != null) drawing.SetSheet(first, _wanted);
+        }
+        catch (Exception e)
+        {
+            string title = doc.Info().Title;
+            _services.SolidWorks.Close(doc);
+            context.Log.Warn($"document.new: the new drawing {title} could not be set up, so it was closed: {e.Message}");
+            var known = e as SwAgentException;
+            var details = known?.Error.Details ?? new JsonObject { ["exception"] = e.GetType().FullName };
+            details["rolled_back"] = new System.Collections.Generic.List<object?> { title };
+            throw new SwAgentException(known?.Code ?? ErrorCode.OperationFailed,
+                $"{(known != null ? known.Error.Message : "SOLIDWORKS failed setting up the new drawing: " + e.Message)}; the new drawing {title} was closed", details);
+        }
     }
 
     /// <summary>
-    /// The document exists, is active, is of the type asked, has the template's three planes and origin, and is on disk
-    /// when a path was given; a new assembly has no command left open (Begin Assembly: design 455, Session preferences).
+    /// The document exists, is active, is of the type asked, and is on disk when a path was given. A part or assembly has
+    /// the template's three planes and origin; a new assembly or drawing has no command left open (Begin Assembly, Model
+    /// View: designs 455 and 611, Session preferences); a drawing has one sheet that reads back as asked, no view, and
+    /// the agent's settings (DrawingSettings) as set.
     /// </summary>
     protected override void Verify(DocumentNewRequest request, DocumentNewResult result, IOperationContext context)
     {
@@ -83,23 +133,56 @@ public sealed class DocumentNewOperation : Operation<DocumentNewRequest, Documen
             throw new SwAgentException(ErrorCode.VerificationFailed, $"the new {kind.Noun} {result.Document.Title} is not the active document");
         if (info.Type != type)
             throw new SwAgentException(ErrorCode.VerificationFailed, $"the template {result.Template} made {info.Type}, not {kind.Article}");
-        if (active!.StandardPlane(2) == null || active.Origin() == null)
+        if (type != DocumentType.Drawing && (active!.StandardPlane(2) == null || active.Origin() == null))
             throw new SwAgentException(ErrorCode.VerificationFailed, $"the new {kind.Noun} has no three default planes and origin; is {result.Template} {kind.Article} template?");
         if (request.Path != null && !File.Exists(request.Path))
             throw new SwAgentException(ErrorCode.VerificationFailed, $"SOLIDWORKS reported the {kind.Noun} saved to {request.Path}, but the file is not there");
-        if (type == DocumentType.Assembly && _services.SolidWorks.OpenCommand() is string command)
+        if (type != DocumentType.Part && _services.SolidWorks.OpenCommand() is string command)
+        {
+            string preference = type == DocumentType.Assembly ? "insert_component_for_new_assembly" : "insert_view_for_new_drawing";
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"SOLIDWORKS left '{command}' open on the new {kind.Noun} {info.Title}: the automation preference {preference} did not take (addin.state lists it under preferences_not_applied). Cancel it in SOLIDWORKS before the next change",
+                new JsonObject { ["command"] = command, ["document"] = DocumentLocator.Label(info) });
+        }
+        if (type == DocumentType.Drawing) VerifyDrawing(active!, info);
+    }
+
+    void VerifyDrawing(ISwDocument doc, DocumentInfo info)
+    {
+        var drawing = doc.Drawing() ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"{info.Title} gives no drawing");
+        var sheets = drawing.SheetNames();
+        if (sheets.Count != 1)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"the new drawing has {sheets.Count} sheets, not one ({string.Join(", ", sheets)})",
+                new JsonObject { ["check"] = "sheets", ["expected"] = 1, ["measured"] = sheets.Count });
+        }
+        int views = drawing.ViewNames(sheets[0]).Count;
+        if (views != 0)
         {
             throw new SwAgentException(ErrorCode.VerificationFailed,
-                $"SOLIDWORKS left '{command}' open on the new assembly {info.Title}: the automation preference insert_component_for_new_assembly did not take (addin.state lists it under preferences_not_applied). Cancel it in SOLIDWORKS before the next change",
-                new JsonObject { ["command"] = command, ["document"] = DocumentLocator.Label(info) });
+                $"the new drawing has {views} views, not none: the template or the automation preference insert_view_for_new_drawing put them there",
+                new JsonObject { ["check"] = "views", ["expected"] = 0, ["measured"] = views });
+        }
+        var actual = drawing.ReadSheet(sheets[0]) ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"the sheet {sheets[0]} cannot be read back");
+        var wanted = _wanted!.Copy();
+        wanted.Name = actual.Name;
+        if (SheetSetups.Mismatch(wanted, actual) is { } mismatch) throw SheetSetups.NotAsAsked(actual.Name, mismatch);
+        var settings = drawing.Settings();
+        var off = DrawingSettings.All.Where(n => !settings.TryGetValue(n, out var v) || v != DrawingSettings.Value).ToList();
+        if (off.Count > 0)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"the new drawing did not take its settings: {string.Join(", ", off)} still on",
+                new JsonObject { ["check"] = "settings", ["settings"] = off.Select(o => (object?)o).ToList() });
         }
     }
 
-    /// <summary>The words and extensions that differ between a new part and a new assembly.</summary>
+    /// <summary>The words and extensions that differ between a new part, assembly and drawing.</summary>
     sealed class Kind
     {
         static readonly Kind Part = new Kind("part", "a part", ".SLDPRT", ".PRTDOT");
         static readonly Kind Assembly = new Kind("assembly", "an assembly", ".SLDASM", ".ASMDOT");
+        static readonly Kind Drawing = new Kind("drawing", "a drawing", ".SLDDRW", ".DRWDOT");
 
         Kind(string noun, string article, string extension, string templateExtension)
         {
@@ -114,7 +197,12 @@ public sealed class DocumentNewOperation : Operation<DocumentNewRequest, Documen
         public string Extension { get; }
         public string TemplateExtension { get; }
 
-        public static Kind Of(DocumentType type) => type == DocumentType.Assembly ? Assembly : Part;
+        public static Kind Of(DocumentType type) => type switch
+        {
+            DocumentType.Assembly => Assembly,
+            DocumentType.Drawing => Drawing,
+            _ => Part,
+        };
     }
 }
 
@@ -140,7 +228,7 @@ public sealed class DocumentOpenOperation : Operation<DocumentOpenRequest, Docum
         }
 
         // Read before opening: once open, SOLIDWORKS holds the paths it found instead (plan 4.B; 4.A live run, case 7).
-        var stored = PathRules.TypeOf(path) == DocumentType.Assembly ? _services.SolidWorks.StoredReferences(path) : new string[0];
+        var stored = PathRules.TypeOf(path) != DocumentType.Part ? _services.SolidWorks.StoredReferences(path) : new string[0];
         var outcome = _services.SolidWorks.OpenDocument(path, PathRules.TypeOf(path), readOnly);
         var warnings = SolidWorksCodes.LoadWarnings(outcome.Warnings).ToList();
         if (outcome.Document == null)
@@ -163,6 +251,12 @@ public sealed class DocumentOpenOperation : Operation<DocumentOpenRequest, Docum
         if (missing.Count > 0) context.Log.Warn($"document.open: {path} uses {missing.Count} file(s) that are not there: {string.Join(", ", missing)}");
         var substituted = Substitutions.Find(stored, used);
         foreach (var s in substituted) context.Log.Warn($"document.open: {path} names {s.Expected}, which is not there; SOLIDWORKS loaded {s.Loaded} instead");
+        // Design 611: CADapter saw an older SOLIDWORKS leave one of a drawing's models active after opening it.
+        if (info.Type == DocumentType.Drawing && !(_services.SolidWorks.ActiveDoc() is ISwDocument active && DocumentUse.Same(active, outcome.Document)))
+        {
+            context.Log.Warn($"document.open: SOLIDWORKS left {_services.SolidWorks.ActiveDoc()?.Info().Title ?? "nothing"} active after opening {path}; activating the drawing");
+            outcome.Document.Activate();
+        }
         return new DocumentOpenResult { Document = info, ReadOnly = outcome.Document.ReadOnly, Warnings = warnings, Missing = missing, Substituted = substituted };
     }
 
@@ -175,6 +269,12 @@ public sealed class DocumentOpenOperation : Operation<DocumentOpenRequest, Docum
         if (!doc.Info().Visible) throw new SwAgentException(ErrorCode.VerificationFailed, $"{path} is loaded but has no window after document.open");
         if (request.ReadOnly == true && !result.AlreadyOpen && !doc.ReadOnly)
             throw new SwAgentException(ErrorCode.VerificationFailed, $"{path} was asked to open read-only but is writable");
+        if (doc.Info().Type == DocumentType.Drawing && !(_services.SolidWorks.ActiveDoc() is ISwDocument active && DocumentUse.Same(active, doc)))
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"{path} is open but {_services.SolidWorks.ActiveDoc()?.Info().Title ?? "no document"} is the active document, although the drawing was activated after opening",
+                new JsonObject { ["check"] = "active", ["document"] = path });
+        }
     }
 }
 
@@ -247,7 +347,7 @@ public sealed class DocumentSaveOperation : Operation<DocumentSaveRequest, Docum
                 new JsonObject { ["field"] = "document", ["document"] = info.Title });
         }
         string path = Path.GetFullPath(info.Path);
-        var referenced = info.Type == DocumentType.Assembly ? SaveUsed(doc, info, context) : new System.Collections.Generic.List<SavedFile>();
+        var referenced = info.Type != DocumentType.Part ? SaveUsed(doc, info, context) : new System.Collections.Generic.List<SavedFile>();
         var result = Saving.Save(doc, path, doc.Save, context);
         result.Referenced = referenced;
         return result;
@@ -255,11 +355,12 @@ public sealed class DocumentSaveOperation : Operation<DocumentSaveRequest, Docum
 
     /// <summary>
     /// Design 455, owner's answer 454: every document the assembly uses that has unsaved changes is saved first, where it
-    /// is, and checked on disk. A failure stops before the assembly is saved and says which were saved already.
+    /// is, and checked on disk. A failure stops before the assembly is saved and says which were saved already. A drawing
+    /// saves the models it shows the same way (design 611, Drawing documents).
     /// </summary>
-    System.Collections.Generic.List<SavedFile> SaveUsed(ISwDocument assembly, DocumentInfo info, IOperationContext context)
+    System.Collections.Generic.List<SavedFile> SaveUsed(ISwDocument user, DocumentInfo info, IOperationContext context)
     {
-        var dirty = DocumentUse.Used(_services.SolidWorks, assembly).Where(d => d.Info().Dirty).ToList();
+        var dirty = DocumentUse.Used(_services.SolidWorks, user).Where(d => d.Info().Dirty).ToList();
         var saved = new System.Collections.Generic.List<SavedFile>();
         foreach (var used in dirty)
         {
@@ -273,7 +374,7 @@ public sealed class DocumentSaveOperation : Operation<DocumentSaveRequest, Docum
             {
                 var details = e.Error.Details ?? new JsonObject();
                 details["saved"] = saved.Select(s => (object?)s.Path).ToList();
-                details["assembly"] = DocumentLocator.Label(info);
+                details[info.Type == DocumentType.Drawing ? "drawing" : "assembly"] = DocumentLocator.Label(info);
                 throw new SwAgentException(e.Code,
                     $"{e.Message}. {info.Title} was not saved{(saved.Count == 0 ? "" : $"; {saved.Count} of the documents it uses were saved before this one (details.saved)")}",
                     details);
@@ -352,10 +453,10 @@ public sealed class DocumentCloseOperation : Operation<DocumentCloseRequest, Doc
         if (!info.Visible)
         {
             throw new SwAgentException(ErrorCode.InvalidArgument,
-                $"{info.Title} has no window: it is loaded only because {(usedBy.Count == 0 ? "an open assembly" : string.Join(", ", usedBy))} uses it. Close the assembly instead",
+                $"{info.Title} has no window: it is loaded only because {(usedBy.Count == 0 ? "an open assembly or drawing" : string.Join(", ", usedBy))} uses it. Close {(usedBy.Count == 1 ? usedBy[0] : "what uses it")} instead",
                 new JsonObject { ["field"] = "document", ["document"] = key, ["used_by"] = usedBy.Select(u => (object?)u).ToList() });
         }
-        // Design 455: a document an assembly the agent owns uses is the agent's too.
+        // Designs 455 and 611: a document an assembly or drawing the agent owns uses is the agent's too.
         bool owned = DocumentUse.OwnedByAgent(sw, doc, _services.Runtime.Owned);
         if (!owned && request.UsersDocument != true)
         {
@@ -372,7 +473,7 @@ public sealed class DocumentCloseOperation : Operation<DocumentCloseRequest, Doc
                 ? $"{info.Title} has unsaved changes"
                 : $"closing {info.Title} would lose the unsaved changes of {string.Join(", ", lost.Select(l => l.Title))}";
             throw new SwAgentException(ErrorCode.InvalidArgument,
-                $"{what} and it was not closed; save {(info.Type == DocumentType.Assembly ? "the assembly (document.save saves its components too)" : "it")} first, or pass discard: true to lose them",
+                $"{what} and it was not closed; save {SaveFirst(info.Type)} first, or pass discard: true to lose them",
                 new JsonObject { ["field"] = "discard", ["document"] = key, ["unsaved"] = lost.Select(l => (object?)DocumentLocator.Label(l)).ToList() });
         }
         sw.Close(doc);
@@ -386,8 +487,16 @@ public sealed class DocumentCloseOperation : Operation<DocumentCloseRequest, Doc
         return new DocumentCloseResult { Closed = info, Discarded = lost.Count > 0, Unloaded = unloaded, StillUsedBy = usedBy };
     }
 
+    /// <summary>What to save before closing: an assembly or drawing saves the documents it uses too.</summary>
+    static string SaveFirst(DocumentType type) => type switch
+    {
+        DocumentType.Assembly => "the assembly (document.save saves its components too)",
+        DocumentType.Drawing => "the drawing (document.save saves the models it shows too)",
+        _ => "it",
+    };
+
     /// <summary>
-    /// The closed document is no longer open, nor anything it unloaded; or, when an assembly still uses it, it is still
+    /// The closed document is no longer open, nor anything it unloaded; or, when an assembly or drawing still uses it, it is still
     /// loaded but has no window.
     /// </summary>
     protected override void Verify(DocumentCloseRequest request, DocumentCloseResult result, IOperationContext context)
@@ -403,7 +512,7 @@ public sealed class DocumentCloseOperation : Operation<DocumentCloseRequest, Doc
             {
                 throw new SwAgentException(ErrorCode.VerificationFailed,
                     $"{result.Closed.Title} lost its window, and SOLIDWORKS keeps its changes in memory but reports it saved, so nothing would save or protect them; " +
-                    $"save it from the assembly (document.save of {string.Join(", ", result.StillUsedBy)}) now",
+                    $"save it through what uses it (document.save of {string.Join(", ", result.StillUsedBy)}) now",
                     new JsonObject { ["document"] = key, ["dirty"] = false });
             }
             if (still == null)

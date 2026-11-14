@@ -1,0 +1,78 @@
+{
+  "type": "object",
+  "description": "Adds a sheet to a drawing (IDrawingDoc.NewSheet4): a standard size (a4 … a0, a … e, landscape or portrait) or a custom width_mm and height_mm (sheet mm), a scale, a projection, and a sheet format (.SLDDRT), each the drawing's first sheet's when absent. The new sheet is shown. Checked: there is one more sheet, and its size reads back within 0.01 mm, its scale exactly, its projection and format as asked. Otherwise it is deleted again (rolled back).",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "name": {
+      "type": "string",
+      "description": "The new sheet's name; one no sheet has. SOLIDWORKS' next free SheetN when absent."
+    },
+    "size": {
+      "type": "string",
+      "enum": [
+        "a4",
+        "a3",
+        "a2",
+        "a1",
+        "a0",
+        "a",
+        "b",
+        "c",
+        "d",
+        "e"
+      ],
+      "description": "A standard paper size: a4, a3, a2, a1, a0 (ISO) or a, b, c, d, e (ANSI). Not with width_mm and height_mm."
+    },
+    "orientation": {
+      "type": "string",
+      "enum": [
+        "landscape",
+        "portrait"
+      ],
+      "description": "With size: landscape (the default) or portrait."
+    },
+    "width_mm": {
+      "type": "number",
+      "description": "A custom sheet's width, sheet mm, with height_mm; 10 to 10000."
+    },
+    "height_mm": {
+      "type": "number",
+      "description": "A custom sheet's height, sheet mm, with width_mm; 10 to 10000."
+    },
+    "scale": {
+      "type": "object",
+      "properties": {
+        "numerator": {
+          "type": "number",
+          "description": "The first number of the ratio, more than 0."
+        },
+        "denominator": {
+          "type": "number",
+          "description": "The second number of the ratio, more than 0."
+        }
+      },
+      "required": [
+        "numerator",
+        "denominator"
+      ],
+      "additionalProperties": false,
+      "description": "The sheet's scale: views that follow the sheet are drawn at it."
+    },
+    "projection": {
+      "type": "string",
+      "enum": [
+        "first_angle",
+        "third_angle"
+      ],
+      "description": "first_angle or third_angle."
+    },
+    "format": {
+      "type": "string",
+      "description": "Full path of a sheet format (.SLDDRT)."
+    }
+  },
+  "additionalProperties": false
+}

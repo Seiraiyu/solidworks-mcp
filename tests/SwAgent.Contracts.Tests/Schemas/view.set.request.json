@@ -1,0 +1,75 @@
+{
+  "type": "object",
+  "description": "Moves, rescales, restyles or reconfigures a drawing view in place: at (its centre, sheet mm), scale (its own) or sheet_scale (follow the sheet's), display, configuration (a model view's). Values not given stay; moved without at, a view keeps its centre. A projected view is drawn at its parent's scale and moves only along its parent's centre line (SOLIDWORKS silently keeps the aligned coordinate): moving it off that line is refused naming the parent. Each value is recorded before and put back on failure. Checked by measuring: every value reads back (the centre within 0.01 mm, the scale exactly), what it draws equals the model's box projected at its scale within 0.01 mm (orthographic views; inside it for others), the views projected from it are still on its centre lines, and the model is unchanged.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "view": {
+      "type": "string",
+      "description": "The view: a reference (r1.view.…) or its name (Drawing View1)."
+    },
+    "at": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "Mm to the right of the sheet's lower-left corner."
+        },
+        "y": {
+          "type": "number",
+          "description": "Mm above the sheet's lower-left corner."
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false,
+      "description": "Where its centre goes, sheet mm from the sheet's lower-left corner."
+    },
+    "scale": {
+      "type": "object",
+      "properties": {
+        "numerator": {
+          "type": "number",
+          "description": "The first number of the ratio, more than 0."
+        },
+        "denominator": {
+          "type": "number",
+          "description": "The second number of the ratio, more than 0."
+        }
+      },
+      "required": [
+        "numerator",
+        "denominator"
+      ],
+      "additionalProperties": false,
+      "description": "Its own scale (a model view's). Not with sheet_scale."
+    },
+    "sheet_scale": {
+      "type": "boolean",
+      "description": "true to make it follow its sheet's scale. Not with scale."
+    },
+    "display": {
+      "type": "string",
+      "enum": [
+        "hidden_lines_visible",
+        "hidden_lines_removed",
+        "wireframe",
+        "shaded",
+        "shaded_with_edges"
+      ],
+      "description": "hidden_lines_visible, hidden_lines_removed, wireframe, shaded or shaded_with_edges."
+    },
+    "configuration": {
+      "type": "string",
+      "description": "The model's configuration a model view shows."
+    }
+  },
+  "required": [
+    "view"
+  ],
+  "additionalProperties": false
+}

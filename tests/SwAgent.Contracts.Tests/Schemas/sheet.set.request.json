@@ -1,0 +1,85 @@
+{
+  "type": "object",
+  "description": "Changes a sheet in place: its name, size (a standard size or width_mm and height_mm, sheet mm), scale, projection or sheet format (.SLDDRT). Values not given stay. Through ISheet.SetProperties2, the scale through ISheet.SetScale. Checked: every value reads back (sizes within 0.01 mm, the scale exactly), and every view that follows the sheet's scale is drawn at the new scale (its transform's scale, and its drawn edges equal to its model's box projected at that scale). Otherwise the sheet's old values are put back (rolled back).",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "sheet": {
+      "type": "string",
+      "description": "The sheet: a reference (r1.sheet.…) or its name (Sheet1)."
+    },
+    "name": {
+      "type": "string",
+      "description": "A new name for it; one no other sheet has."
+    },
+    "size": {
+      "type": "string",
+      "enum": [
+        "a4",
+        "a3",
+        "a2",
+        "a1",
+        "a0",
+        "a",
+        "b",
+        "c",
+        "d",
+        "e"
+      ],
+      "description": "A standard paper size: a4, a3, a2, a1, a0 (ISO) or a, b, c, d, e (ANSI). Not with width_mm and height_mm."
+    },
+    "orientation": {
+      "type": "string",
+      "enum": [
+        "landscape",
+        "portrait"
+      ],
+      "description": "With size: landscape (the default) or portrait."
+    },
+    "width_mm": {
+      "type": "number",
+      "description": "A custom width, sheet mm, with height_mm; 10 to 10000."
+    },
+    "height_mm": {
+      "type": "number",
+      "description": "A custom height, sheet mm, with width_mm; 10 to 10000."
+    },
+    "scale": {
+      "type": "object",
+      "properties": {
+        "numerator": {
+          "type": "number",
+          "description": "The first number of the ratio, more than 0."
+        },
+        "denominator": {
+          "type": "number",
+          "description": "The second number of the ratio, more than 0."
+        }
+      },
+      "required": [
+        "numerator",
+        "denominator"
+      ],
+      "additionalProperties": false,
+      "description": "The sheet's scale: views that follow the sheet are redrawn at it."
+    },
+    "projection": {
+      "type": "string",
+      "enum": [
+        "first_angle",
+        "third_angle"
+      ],
+      "description": "first_angle or third_angle."
+    },
+    "format": {
+      "type": "string",
+      "description": "Full path of a sheet format (.SLDDRT) to draw the sheet in."
+    }
+  },
+  "required": [
+    "sheet"
+  ],
+  "additionalProperties": false
+}

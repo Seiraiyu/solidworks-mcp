@@ -1,0 +1,57 @@
+{
+  "type": "object",
+  "description": "The sheet shown now.",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "False for a document SOLIDWORKS loaded only because an open assembly uses it: it has no window of its own."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty",
+        "visible"
+      ],
+      "additionalProperties": false,
+      "description": "The drawing."
+    },
+    "sheet": {
+      "type": "string",
+      "description": "The sheet shown now."
+    },
+    "before": {
+      "type": "string",
+      "description": "The sheet shown before."
+    }
+  },
+  "required": [
+    "document",
+    "sheet"
+  ],
+  "additionalProperties": false
+}

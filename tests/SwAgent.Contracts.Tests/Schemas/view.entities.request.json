@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "description": "Lists what a view of a part shows (IView.GetVisibleEntities2): each visible edge, silhouette edge and vertex of the model, with its model reference (r1.edge.…, r1.vertex.…, issued in the part, when SOLIDWORKS gives the part a persistent id for it), its description in model mm, and how it is drawn on the sheet in sheet mm: a line's start and end, a circle's or arc's centre and radius (a circle seen face on), a vertex's point, computed from the model's geometry through the view's model-to-sheet transform. This is how to find the edge to dimension or the hole to tolerance, and to check that a reference already held is visible in a view. Views of parts only: an assembly view is refused. Changes nothing.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "view": {
+      "type": "string",
+      "description": "The view: a reference (r1.view.…) or its name (Drawing View1)."
+    },
+    "kinds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "edge",
+          "vertex"
+        ]
+      },
+      "description": "edge, vertex or both. Both when absent."
+    }
+  },
+  "required": [
+    "view"
+  ],
+  "additionalProperties": false
+}

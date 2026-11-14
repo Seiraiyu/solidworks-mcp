@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "Creates a part or an assembly from the user's default template for it (or a named template) and makes it the active document. With path, saves it there at once. The document is the agent's own, so document.close may close it.",
+  "description": "Creates a part, an assembly or a drawing from the user's default template for it (or a named template) and makes it the active document. With path, saves it there at once. The document is the agent's own, so document.close may close it. A drawing comes with the template's sheet and sheet format and no view; sheet sets that first sheet's size, scale and projection (sheet mm). On a drawing it makes, the agent hides origins, planes, axes, sketches and points in its views and turns off inserting annotations when a view is made. Checked: the document is active and of the type asked; a drawing has one sheet reading back as asked, no view, and no command left open.",
   "properties": {
     "type": {
       "type": "string",
@@ -9,15 +9,85 @@
         "assembly",
         "drawing"
       ],
-      "description": "What to create: part or assembly (drawings come in a later release). Default part."
+      "description": "What to create: part, assembly or drawing. Default part."
     },
     "template": {
       "type": "string",
-      "description": "Full path of a template: .PRTDOT for a part, .ASMDOT for an assembly; the user's default template for the type when absent."
+      "description": "Full path of a template: .PRTDOT for a part, .ASMDOT for an assembly, .DRWDOT for a drawing; the user's default template for the type when absent."
     },
     "path": {
       "type": "string",
-      "description": "Full path of a file that does not exist yet, in an existing folder, with the type's extension (.SLDPRT, .SLDASM): the new document is saved there at once."
+      "description": "Full path of a file that does not exist yet, in an existing folder, with the type's extension (.SLDPRT, .SLDASM, .SLDDRW): the new document is saved there at once."
+    },
+    "sheet": {
+      "type": "object",
+      "properties": {
+        "size": {
+          "type": "string",
+          "enum": [
+            "a4",
+            "a3",
+            "a2",
+            "a1",
+            "a0",
+            "a",
+            "b",
+            "c",
+            "d",
+            "e"
+          ],
+          "description": "A standard paper size: a4, a3, a2, a1, a0 (ISO) or a, b, c, d, e (ANSI). Not with width_mm and height_mm."
+        },
+        "orientation": {
+          "type": "string",
+          "enum": [
+            "landscape",
+            "portrait"
+          ],
+          "description": "With size: landscape (the default) or portrait."
+        },
+        "width_mm": {
+          "type": "number",
+          "description": "A custom sheet's width, sheet mm, with height_mm; 10 to 10000."
+        },
+        "height_mm": {
+          "type": "number",
+          "description": "A custom sheet's height, sheet mm, with width_mm; 10 to 10000."
+        },
+        "scale": {
+          "type": "object",
+          "properties": {
+            "numerator": {
+              "type": "number",
+              "description": "The first number of the ratio, more than 0."
+            },
+            "denominator": {
+              "type": "number",
+              "description": "The second number of the ratio, more than 0."
+            }
+          },
+          "required": [
+            "numerator",
+            "denominator"
+          ],
+          "additionalProperties": false,
+          "description": "The sheet's scale, which every view that follows the sheet's scale is drawn at."
+        },
+        "projection": {
+          "type": "string",
+          "enum": [
+            "first_angle",
+            "third_angle"
+          ],
+          "description": "first_angle or third_angle."
+        },
+        "format": {
+          "type": "string",
+          "description": "Full path of a sheet format (.SLDDRT) to draw the sheet in. The sheet's own (for a new sheet, the first sheet's) when absent."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Only for a drawing: the first sheet's size (a standard size or width_mm and height_mm), scale, projection and sheet format; the template's when absent."
     }
   },
   "additionalProperties": false

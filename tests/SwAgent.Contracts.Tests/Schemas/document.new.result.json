@@ -43,6 +43,274 @@
     "template": {
       "type": "string",
       "description": "The template it was made from."
+    },
+    "sheet": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Its name, for example Sheet1."
+        },
+        "reference": {
+          "type": "string",
+          "description": "Its reference (r1.sheet.…). It names the sheet by its name: a sheet renamed or deleted no longer resolves. References are opaque: pass one back exactly as it was given, and never build or change one."
+        },
+        "size": {
+          "type": "string",
+          "enum": [
+            "a4",
+            "a3",
+            "a2",
+            "a1",
+            "a0",
+            "a",
+            "b",
+            "c",
+            "d",
+            "e"
+          ],
+          "description": "Its standard size when its width and height are one's (within 0.01 mm); absent for a custom size."
+        },
+        "orientation": {
+          "type": "string",
+          "enum": [
+            "landscape",
+            "portrait"
+          ],
+          "description": "landscape or portrait."
+        },
+        "width_mm": {
+          "type": "number",
+          "description": "Its width, sheet mm."
+        },
+        "height_mm": {
+          "type": "number",
+          "description": "Its height, sheet mm."
+        },
+        "scale": {
+          "type": "object",
+          "properties": {
+            "numerator": {
+              "type": "number",
+              "description": "The first number of the ratio, more than 0."
+            },
+            "denominator": {
+              "type": "number",
+              "description": "The second number of the ratio, more than 0."
+            }
+          },
+          "required": [
+            "numerator",
+            "denominator"
+          ],
+          "additionalProperties": false,
+          "description": "Its scale."
+        },
+        "projection": {
+          "type": "string",
+          "enum": [
+            "first_angle",
+            "third_angle"
+          ],
+          "description": "first_angle or third_angle."
+        },
+        "format": {
+          "type": "string",
+          "description": "Its sheet format: the full path of its .SLDDRT, or *.drt for the drawing template's own format (held in the template, with no file); absent when it has none."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "True for the sheet shown now."
+        },
+        "views": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A drawing view, as drawing.read and the view operations report it. Positions and sizes in sheet mm.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Its name, for example Drawing View1."
+              },
+              "reference": {
+                "type": "string",
+                "description": "Its reference (r1.view.…). It names the view by its name: a view renamed or deleted no longer resolves. References are opaque: pass one back exactly as it was given, and never build or change one."
+              },
+              "sheet": {
+                "type": "string",
+                "description": "The sheet it is on."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "model",
+                  "projected",
+                  "section",
+                  "detail",
+                  "flat_pattern",
+                  "other"
+                ],
+                "description": "model, projected, section, detail, flat_pattern or other."
+              },
+              "model": {
+                "type": "string",
+                "description": "Full path of the model it shows; absent when it shows none."
+              },
+              "configuration": {
+                "type": "string",
+                "description": "The model's configuration it shows."
+              },
+              "orientation": {
+                "type": "string",
+                "description": "Its orientation: front, back, left, right, top, bottom, isometric, dimetric, trimetric, or the model's named view; absent for a view whose orientation follows another (projected) unless SOLIDWORKS names one."
+              },
+              "parent": {
+                "type": "string",
+                "description": "The view it was projected (or cut, or detailed) from; absent for a model view."
+              },
+              "position": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "Mm to the right of the sheet's lower-left corner."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Mm above the sheet's lower-left corner."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "additionalProperties": false,
+                "description": "Its centre on the sheet."
+              },
+              "scale": {
+                "type": "object",
+                "properties": {
+                  "numerator": {
+                    "type": "number",
+                    "description": "The first number of the ratio, more than 0."
+                  },
+                  "denominator": {
+                    "type": "number",
+                    "description": "The second number of the ratio, more than 0."
+                  }
+                },
+                "required": [
+                  "numerator",
+                  "denominator"
+                ],
+                "additionalProperties": false,
+                "description": "The scale it is drawn at."
+              },
+              "sheet_scale": {
+                "type": "boolean",
+                "description": "True when it follows the sheet's scale."
+              },
+              "display": {
+                "type": "string",
+                "enum": [
+                  "hidden_lines_visible",
+                  "hidden_lines_removed",
+                  "wireframe",
+                  "shaded",
+                  "shaded_with_edges"
+                ],
+                "description": "How it draws its model; absent when SOLIDWORKS reports a mode the add-in does not name."
+              },
+              "exploded": {
+                "type": "boolean",
+                "description": "True when it shows its assembly exploded."
+              },
+              "extents": {
+                "type": "object",
+                "properties": {
+                  "min": {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "number",
+                        "description": "Mm to the right of the sheet's lower-left corner."
+                      },
+                      "y": {
+                        "type": "number",
+                        "description": "Mm above the sheet's lower-left corner."
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "additionalProperties": false,
+                    "description": "The lower-left corner."
+                  },
+                  "max": {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "number",
+                        "description": "Mm to the right of the sheet's lower-left corner."
+                      },
+                      "y": {
+                        "type": "number",
+                        "description": "Mm above the sheet's lower-left corner."
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "additionalProperties": false,
+                    "description": "The upper-right corner."
+                  }
+                },
+                "required": [
+                  "min",
+                  "max"
+                ],
+                "additionalProperties": false,
+                "description": "The box around what it draws (its edges as drawn, not its border), sheet mm; absent when it draws nothing."
+              },
+              "annotations": {
+                "type": "integer",
+                "description": "How many annotations it holds."
+              },
+              "tables": {
+                "type": "integer",
+                "description": "How many tables are anchored to it."
+              }
+            },
+            "required": [
+              "name",
+              "sheet",
+              "type",
+              "position",
+              "scale",
+              "sheet_scale",
+              "exploded",
+              "annotations",
+              "tables"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Its views, in SOLIDWORKS' order."
+        }
+      },
+      "required": [
+        "name",
+        "orientation",
+        "width_mm",
+        "height_mm",
+        "scale",
+        "projection",
+        "active",
+        "views"
+      ],
+      "additionalProperties": false,
+      "description": "For a drawing: its sheet, as read back after it was made."
     }
   },
   "required": [

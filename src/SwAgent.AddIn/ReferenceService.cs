@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text;
 using SwAgent.AddIn.Core;
 using SwAgent.Contracts;
 using SwAgent.Contracts.Serialization;
@@ -85,6 +87,17 @@ public sealed class ReferenceService
     /// </summary>
     public (object Entity, ReferenceKind Kind) Resolve(ISwDocument doc, string text, string field, params ReferenceKind[] accepted)
     {
+        if (References.KindOf(text) is ReferenceKind onDrawing && DrawingKinds.Contains(onDrawing))
+        {
+            string needs = accepted.Length > 0 ? string.Join(" or ", accepted.Select(Wire)) : "a face, edge, vertex, feature, plane, axis, point or component of a part or assembly";
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{field} names a {Wire(onDrawing)} of a drawing, but this needs {needs}",
+                new JsonObject
+                {
+                    ["field"] = field, ["kind"] = Wire(onDrawing),
+                    ["accepted"] = (accepted.Length > 0 ? accepted : ModelKinds).Select(k => (object?)Wire(k)).ToList(),
+                });
+        }
         var (entity, kind) = References.IsReference(text) ? ResolveReference(doc, text, field) : ResolveName(doc, text, field);
         if (accepted.Length > 0 && !accepted.Contains(kind))
         {
@@ -268,9 +281,69 @@ public sealed class ReferenceService
         return mapped;
     }
 
-    static SwAgentException Unresolved(string text, string field, ReferenceData data, string reason, string why) =>
+    /// <summary>The kinds a drawing has (design 611): named by their drawing-unique name, never resolved in a model.</summary>
+    static readonly ReferenceKind[] DrawingKinds = { ReferenceKind.Sheet, ReferenceKind.View, ReferenceKind.Annotation, ReferenceKind.Table };
+
+    /// <summary>The kinds a part or assembly has.</summary>
+    static readonly ReferenceKind[] ModelKinds = Enum.GetValues(typeof(ReferenceKind)).Cast<ReferenceKind>().Where(k => !DrawingKinds.Contains(k)).ToArray();
+
+    /// <summary>
+    /// A reference to a sheet of <paramref name="drawing"/> (design 611, plan 5.A): its persistent-id block holds the
+    /// sheet's name, which every SOLIDWORKS call that takes a sheet takes.
+    /// </summary>
+    public string IssueSheet(ISwDocument drawing, string name) =>
+        References.Encode(new ReferenceData(ReferenceKind.Sheet, DocumentKeys.Of(drawing.Info()), Encoding.UTF8.GetBytes(name), $"sheet {name}"));
+
+    /// <summary>A reference to a view, by its drawing-unique name; described by its name, sheet, model and orientation.</summary>
+    public string IssueView(ISwDocument drawing, ViewFacts view)
+    {
+        string model = view.Model == null ? "no model" : System.IO.Path.GetFileName(view.Model);
+        string description = $"view {view.Name} on {view.Sheet}, {model}{(view.Orientation == null ? "" : ", " + view.Orientation)}";
+        return References.Encode(new ReferenceData(ReferenceKind.View, DocumentKeys.Of(drawing.Info()), Encoding.UTF8.GetBytes(view.Name), description));
+    }
+
+    /// <summary>
+    /// The name of the sheet <paramref name="text"/> names in <paramref name="drawing"/>: a sheet reference issued in this
+    /// drawing, or a sheet's name. reference_unresolved for a sheet renamed or deleted since; invalid_argument for a name
+    /// no sheet has, or a reference of another kind.
+    /// </summary>
+    public string ResolveSheet(ISwDocument doc, ISwDrawing drawing, string text, string field) =>
+        ResolveByName(doc, text, field, ReferenceKind.Sheet, drawing.SheetNames(), "drawing.read lists its sheets");
+
+    /// <summary>The name of the view <paramref name="text"/> names, as <see cref="ResolveSheet"/> does for sheets.</summary>
+    public string ResolveView(ISwDocument doc, ISwDrawing drawing, string text, string field) =>
+        ResolveByName(doc, text, field, ReferenceKind.View, drawing.SheetNames().SelectMany(drawing.ViewNames).ToList(), "drawing.read lists its views");
+
+    string ResolveByName(ISwDocument doc, string text, string field, ReferenceKind kind, IReadOnlyList<string> names, string hint)
+    {
+        if (!References.IsReference(text))
+        {
+            string? match = names.FirstOrDefault(n => string.Equals(n, text, StringComparison.Ordinal))
+                ?? (names.Count(n => string.Equals(n, text, StringComparison.OrdinalIgnoreCase)) == 1 ? names.First(n => string.Equals(n, text, StringComparison.OrdinalIgnoreCase)) : null);
+            if (match != null) return match;
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{field}: {doc.Info().Title} has no {Wire(kind)} named '{text}' ({hint}: {string.Join(", ", names.DefaultIfEmpty("none"))})",
+                new JsonObject { ["field"] = field, ["name"] = text, [kind == ReferenceKind.Sheet ? "sheets" : "views"] = names.Select(n => (object?)n).ToList() });
+        }
+        var data = References.Decode(text, field);
+        if (data.Kind != kind)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{field} names a {Wire(data.Kind)}, but this needs a {Wire(kind)}",
+                new JsonObject { ["field"] = field, ["kind"] = Wire(data.Kind), ["accepted"] = new List<object?> { Wire(kind) } });
+        }
+        string docKey = DocumentKeys.Of(doc.Info());
+        string now = _renames.Current(data.DocumentKey);
+        if (!DocumentKeys.Same(now, docKey))
+            throw Unresolved(text, field, data, "other_document", $"it belongs to {now}, not {docKey}", hint);
+        string name = Encoding.UTF8.GetString(data.PersistId);
+        if (names.Contains(name, StringComparer.Ordinal)) return name;
+        throw Unresolved(text, field, data, "not_found", $"no {Wire(kind)} is named {name} now: it was renamed or deleted", hint);
+    }
+
+    static SwAgentException Unresolved(string text, string field, ReferenceData data, string reason, string why, string hint = "model.find, model.tree") =>
         new SwAgentException(ErrorCode.ReferenceUnresolved,
-            $"{field} no longer resolves: {why}. It was the {data.Description}. Find it again (model.find, model.tree) rather than guessing",
+            $"{field} no longer resolves: {why}. It was the {data.Description}. Find it again ({hint}) rather than guessing",
             new JsonObject
             {
                 ["field"] = field,

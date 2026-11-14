@@ -62,9 +62,10 @@ public sealed class ModelTransaction
     /// exception is operation_failed); one while checking the change is verification_failed. Either way the details say
     /// what was rolled back. When the rollback itself fails, the answer is operation_failed with rollback_failed, what
     /// remains, and the code of what caused it; the document is left open with unsaved changes for the agent to inspect.
-    /// A failure before anything was made is passed on as it is.
+    /// A failure before anything was made is passed on as it is. <paramref name="leftFor"/> says what is left and how to look at it
+    /// (a part by default; a drawing operation names the drawing and drawing.read).
     /// </summary>
-    public SwAgentException Abort(Exception cause, bool verifying)
+    public SwAgentException Abort(Exception cause, bool verifying, string leftFor = "the part is left with unsaved changes for you to inspect (model.tree, model.rebuild_status)")
     {
         if (_steps.Count == 0 && cause is SwAgentException unchanged) return unchanged;
         var error = cause is SwAgentException known
@@ -88,8 +89,7 @@ public sealed class ModelTransaction
         details["remaining"] = outcome.Failed.Select(f => (object?)f).ToList();
         details["cause"] = WireNames.ForEnum(error.Code);
         return new SwAgentException(new SwAgentError(ErrorCode.OperationFailed,
-            $"{error.Message}; rolling it back failed too ({string.Join("; ", outcome.Failed)}), so the part is left with unsaved changes " +
-            "for you to inspect (model.tree, model.rebuild_status); it was not closed or reverted",
+            $"{error.Message}; rolling it back failed too ({string.Join("; ", outcome.Failed)}), so {leftFor}; it was not closed or reverted",
             details));
     }
 }

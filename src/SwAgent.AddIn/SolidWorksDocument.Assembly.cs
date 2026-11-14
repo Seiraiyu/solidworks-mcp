@@ -55,4 +55,6 @@ internal sealed partial class SolidWorksDocument
     }
 
     public ISwAssembly? Assembly() => Doc is IAssemblyDoc ? new SolidWorksAssembly(_sw, Doc) : null;
+
+    public ISwDrawing? Drawing() => Doc is IDrawingDoc ? new SolidWorksDrawing(_sw, Doc) : null;
 }

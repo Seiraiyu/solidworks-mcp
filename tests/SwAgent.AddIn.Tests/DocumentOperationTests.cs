@@ -80,15 +80,6 @@ public class DocumentNewTests : DocumentTestBase
         Assert.Equal(other, New(new DocumentNewRequest { Template = other }).Template);
     }
 
-    [Fact]
-    public void Drawings_are_not_made_in_this_version()
-    {
-        var e = Fails(() => New(new DocumentNewRequest { Type = DocumentType.Drawing }));
-        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
-        Assert.Equal("type", e.Error.Details!["field"]);
-        Assert.Empty(Sw.NewFrom);
-    }
-
     string AssemblyTemplate()
     {
         string template = PathOf("Assembly.ASMDOT");
@@ -355,7 +346,7 @@ public class AssemblyCloseTests : DocumentTestBase
         plate.SaveFlagIgnored = true;
         var e = Fails(() => Close("plate.SLDPRT"));
         Assert.Equal(ErrorCode.VerificationFailed, e.Code);
-        Assert.Contains("save it from the assembly", e.Message);
+        Assert.Contains("save it through what uses it", e.Message);
     }
 
     // 4.A live run, case 6: SOLIDWORKS unloaded a part the assembly was said to use. That is never a quiet success.
@@ -916,6 +907,7 @@ abstract class DelegatingSolidWorks : ISolidWorksApplication
     public string? OpenCommand() => Inner.OpenCommand();
     public string? DefaultPartTemplate() => Inner.DefaultPartTemplate();
     public string? DefaultAssemblyTemplate() => Inner.DefaultAssemblyTemplate();
+    public string? DefaultDrawingTemplate() => Inner.DefaultDrawingTemplate();
     public virtual ISwDocument NewDocument(string template) => Inner.NewDocument(template);
     public OpenOutcome OpenDocument(string path, DocumentType type, bool readOnly) => Inner.OpenDocument(path, type, readOnly);
     public virtual void Close(ISwDocument document) => Inner.Close(document);

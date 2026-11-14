@@ -28,7 +28,21 @@ internal sealed partial class SolidWorksDocument : ISwDocument
 
     public bool ReadOnly => Doc.IsOpenedReadOnly();
 
-    public string? EditingSketch() => Doc.GetActiveSketch2() is ISketch sketch ? ((sketch as IFeature)?.Name ?? "a sketch") : null;
+    public string? EditingSketch()
+    {
+        if (!(Doc.GetActiveSketch2() is ISketch sketch)) return null;
+        var active = new DrawingSketches.Sketch(sketch, (sketch as IFeature)?.Name);
+        return Doc is IDrawingDoc drawing ? DrawingSketches.UserEditing(active, AtRest(drawing)) : active.Name ?? "a sketch";
+    }
+
+    /// <summary>A drawing's sketches at rest (DrawingSketches): the current sheet's own and the activated view's own.</summary>
+    static IEnumerable<DrawingSketches.Sketch> AtRest(IDrawingDoc drawing)
+    {
+        foreach (var view in new[] { drawing.GetFirstView() as IView, drawing.ActiveDrawingView as IView })
+        {
+            if (view?.GetSketch() is ISketch own) yield return new DrawingSketches.Sketch(own, (own as IFeature)?.Name);
+        }
+    }
 
     public void Activate()
     {
