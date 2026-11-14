@@ -107,6 +107,30 @@ public sealed class DxfFile
     /// <summary>The extents of the measured entities, or null when there are none.</summary>
     public DxfBox? EntityExtents => Entities == 0 ? null : new DxfBox(_minX, _minY, _maxX, _maxY);
 
+    /// <summary>
+    /// Each measured entity's own extents, in the order they were read (export.drawing finds a view's edges among them).
+    /// An entity with no points (a polyline without vertices) has none.
+    /// </summary>
+    public IReadOnlyList<DxfBox> EntityBoxes => _boxes;
+
+    readonly List<DxfBox> _boxes = new List<DxfBox>();
+
+    double _eMinX, _eMinY, _eMaxX, _eMaxY;
+
+    /// <summary>Starts the box of the next entity.</summary>
+    void Begin()
+    {
+        _eMinX = _eMinY = double.PositiveInfinity;
+        _eMaxX = _eMaxY = double.NegativeInfinity;
+    }
+
+    /// <summary>Counts an entity as measured and keeps its box.</summary>
+    void Measured()
+    {
+        if (_eMinX <= _eMaxX && _eMinY <= _eMaxY) _boxes.Add(new DxfBox(_eMinX, _eMinY, _eMaxX, _eMaxY));
+        Entities++;
+    }
+
     /// <summary>$INSUNITS, or null when the header does not give it.</summary>
     public int? Units { get; private set; }
 
@@ -351,6 +375,7 @@ public sealed class DxfFile
     void Entity(string type, List<(int Code, string Value)> group)
     {
         bool bend = Count(group);
+        Begin();
         switch (type)
         {
             case "LINE":
@@ -408,7 +433,7 @@ public sealed class DxfFile
                 Skipped[type] = (Skipped.TryGetValue(type, out int s) ? s : 0) + 1;
                 return;
         }
-        Entities++;
+        Measured();
         if (bend) NamedBendLines++;
     }
 
@@ -418,6 +443,7 @@ public sealed class DxfFile
         const string type = "POLYLINE";
         var head = Group(pairs, start, stopAtNine: false);
         bool bend = Count(head);
+        Begin();
         bool closed = ((int)(First(type, head, 70) ?? 0) & 1) != 0;
         var vertices = new List<(double X, double Y, double Bulge)>();
         int i = start + 1 + head.Count;
@@ -430,7 +456,7 @@ public sealed class DxfFile
         if (i < pairs.Count && pairs[i].Code == 0 && pairs[i].Value == "SEQEND") i += Group(pairs, i, stopAtNine: false).Count;
         else i--;
         Polyline(type, vertices, closed);
-        Entities++;
+        Measured();
         if (bend) NamedBendLines++;
         return i;
     }
@@ -501,6 +527,10 @@ public sealed class DxfFile
 
     void Add(double x, double y)
     {
+        _eMinX = Math.Min(_eMinX, x);
+        _eMinY = Math.Min(_eMinY, y);
+        _eMaxX = Math.Max(_eMaxX, x);
+        _eMaxY = Math.Max(_eMaxY, y);
         _minX = Math.Min(_minX, x);
         _minY = Math.Min(_minY, y);
         _maxX = Math.Max(_maxX, x);

@@ -1,9 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Text;
-using System.Text.RegularExpressions;
 using SwAgent.Contracts;
 
 namespace SwAgent.AddIn.Core;
@@ -73,9 +70,7 @@ public static class FlatPatternFileCheck
     public const double ExtentsToleranceMm = 0.01;
 
     /// <summary>A DWG holding a flat pattern is at least this long; its header alone is a few hundred bytes.</summary>
-    public const int DwgLeastBytes = 1024;
-
-    static readonly Regex DwgVersion = new Regex(@"^AC10\d\d$", RegexOptions.CultureInvariant);
+    public const int DwgLeastBytes = DwgFile.LeastBytes;
 
     public static FlatPatternFile Check(string path, FlatPatternFormat format, DateTime startedUtc, FlatPatternExpectation expected)
     {
@@ -89,19 +84,7 @@ public static class FlatPatternFileCheck
         return file;
     }
 
-    static void Dwg(string path, FlatPatternFile file)
-    {
-        byte[] head = new byte[6];
-        int read;
-        using (var s = File.OpenRead(path)) read = s.Read(head, 0, head.Length);
-        string version = Encoding.ASCII.GetString(head, 0, read);
-        if (!DwgVersion.IsMatch(version))
-            throw ExportFileCheck.Failed("file_header", path, "AC10xx", ExportFileCheck.Snippet(version), $"{path} is not a DWG: it does not start with an AC10xx version");
-        if (file.Bytes < DwgLeastBytes)
-            throw ExportFileCheck.Failed("dwg_size", path, $"at least {DwgLeastBytes} bytes", $"{file.Bytes} bytes", $"{path} is a DWG of {file.Bytes} bytes, too small to hold a flat pattern");
-        file.Header = version;
-        file.Checks.Add($"a DWG ({version}) of {file.Bytes} bytes; its extents are not read (no DWG reader)");
-    }
+    static void Dwg(string path, FlatPatternFile file) => file.Header = DwgFile.Check(path, file.Bytes, "a flat pattern", file.Checks);
 
     static void Dxf(string path, FlatPatternExpectation expected, FlatPatternFile file)
     {

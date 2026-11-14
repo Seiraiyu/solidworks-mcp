@@ -108,6 +108,34 @@ public static class Exporter
     }
 
     /// <summary>
+    /// Runs <paramref name="write"/> as every export runs (export.drawing's way in): the document made active for it, the
+    /// export preferences <paramref name="settings"/> set for it (journalled, so a crash mid-export is undone at the next
+    /// load) and put back afterwards, and the document that was active made active again, however it ends. Returns what
+    /// <paramref name="write"/> returned, and the title of the document made active again, or null when none had to be.
+    /// </summary>
+    public static (T Result, string? MadeActive) Prepared<T>(AddInServices services, ISwDocument doc, string operation, IReadOnlyList<PreferenceSetting> settings, Func<T> write)
+    {
+        var preferences = services.ExportPreferences
+            ?? throw new SwAgentException(ErrorCode.ApiError, "export preferences are not set up in this add-in load, so nothing can be exported");
+        var info = doc.Info();
+        var previous = services.SolidWorks.ActiveDoc();
+        var previousInfo = previous?.Info();
+        bool switched = previousInfo == null || !DocumentKeys.Same(DocumentKeys.Of(previousInfo), DocumentKeys.Of(info));
+        if (switched) doc.Activate();
+        try
+        {
+            using (preferences.Apply(operation, settings))
+            {
+                return (write(), switched && previousInfo != null ? previousInfo.Title : null);
+            }
+        }
+        finally
+        {
+            if (switched && previous != null) previous.Activate();
+        }
+    }
+
+    /// <summary>
     /// STEP AP242 by the chain the 3.E live run called for, stopping at the first attempt that writes: PublishSTEP242File
     /// with the path; the same with its extension in upper case (round 4 answered InvalidPath); GetMBDSTEP242Data with
     /// PublishSTEP242File2. Every attempt and SOLIDWORKS' answer is returned, and when none writes they all go into

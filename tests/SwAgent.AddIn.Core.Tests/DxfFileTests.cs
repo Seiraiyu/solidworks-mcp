@@ -317,4 +317,19 @@ public class DxfFileTests
     {
         Assert.Contains("ENTITIES", Assert.Throws<FormatException>(() => DxfFile.Parse(Dxf(0, "SECTION", 2, "HEADER", 0, "ENDSEC", 0, "EOF"))).Message);
     }
+
+    [Fact]
+    public void Each_measured_entity_has_its_own_box_and_skipped_ones_have_none()
+    {
+        var dxf = DxfFile.Parse(Drawing(new object[0],
+            Line(10, 20, 30, 25),
+            new object[] { 0, "TEXT", 8, "0", 10, 500.0, 20, 500.0, 1, "NOTE" },
+            new object[] { 0, "CIRCLE", 8, "0", 10, 100.0, 20, 50.0, 30, 0.0, 40, 5.0 },
+            new object[] { 0, "LWPOLYLINE", 8, "0", 90, 3, 70, 0, 10, 0.0, 20, 0.0, 10, 4.0, 20, 0.0, 10, 4.0, 20, 3.0 }));
+        Assert.Equal(3, dxf.EntityBoxes.Count);
+        Box(dxf.EntityBoxes[0], 10, 20, 30, 25);
+        Box(dxf.EntityBoxes[1], 95, 45, 105, 55);
+        Box(dxf.EntityBoxes[2], 0, 0, 4, 3);
+        Box(dxf.EntityExtents, 0, 0, 105, 55);
+    }
 }

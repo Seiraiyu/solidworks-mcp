@@ -53,10 +53,36 @@ internal sealed partial class SolidWorksDrawing
     {
         var v = View(view);
         var facts = ReadView(view)!;
-        var edges = v.GetPolylines7(0, out object polylines) as object[] ?? new object[0];
-        var numbers = polylines as double[] ?? new double[0];
-        string? root = RootOf(v);
-        var owners = edges.Select(e => NameIn((e as IEntity)?.GetComponent() as IComponent2, root)).ToList();
+        object[] edges;
+        double[] numbers;
+        string? root;
+        List<string?> owners;
+        // While the drawing is the active document, SP4 gives an exploded view's GetPolylines7 edges without the
+        // component they belong to, so every component measured none (5.E live run, the make-a-drawing scenario; case 31
+        // passed only because the assembly it had just made was active). Read with the view's model made the active
+        // document, then put back what was active, and hide the model again if it had no window of its own before.
+        var model = v.ReferencedDocument as IModelDoc2;
+        var before = _sw.ActiveDoc as IModelDoc2;
+        bool switched = model != null && !ReferenceEquals(model, before)
+            && !string.Equals(model.GetPathName(), before?.GetPathName(), StringComparison.OrdinalIgnoreCase);
+        bool hidden = switched && !model!.Visible;
+        int errors = 0;
+        if (switched) _sw.ActivateDoc3(model!.GetPathName(), false, (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, ref errors);
+        try
+        {
+            edges = v.GetPolylines7(0, out object polylines) as object[] ?? new object[0];
+            numbers = polylines as double[] ?? new double[0];
+            root = RootOf(v);
+            owners = edges.Select(e => NameIn((e as IEntity)?.GetComponent() as IComponent2, root)).ToList();
+        }
+        finally
+        {
+            if (switched)
+            {
+                if (before != null) _sw.ActivateDoc3(before.GetTitle(), false, (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, ref errors);
+                if (hidden && model!.Visible) model.Visible = false;
+            }
+        }
         try
         {
             return ExplodedImages.PerComponent(owners, numbers, facts.Position, facts.Scale.Numerator / facts.Scale.Denominator);

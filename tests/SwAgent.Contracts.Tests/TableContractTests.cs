@@ -7,9 +7,9 @@ namespace SwAgent.Contracts.Tests;
 public class TableContractTests
 {
     [Fact]
-    public void Protocol_16_speaks_assembly_drawings()
+    public void Protocol_16_and_later_speak_assembly_drawings()
     {
-        Assert.Equal(16, Protocol.Version);
+        Assert.True(Protocol.Version >= 16, $"protocol {Protocol.Version} speaks assembly drawings from 16 on");
     }
 
     [Theory]

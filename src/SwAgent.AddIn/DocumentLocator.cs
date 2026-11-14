@@ -89,8 +89,15 @@ public static class DocumentLocator
             }
             if (type == DocumentType.Drawing)
             {
-                details["instead"] = DrawingInstead;
-                message += "; " + DrawingInstead;
+                string instead = operation == "export.drawing" ? ModelExports : DrawingInstead;
+                details["instead"] = instead;
+                message += "; " + instead;
+            }
+            else if (info.Type == DocumentType.Drawing && operation.StartsWith("export.", StringComparison.Ordinal))
+            {
+                // Design 611, Error handling: a drawing given to a model export names the drawing export.
+                details["instead"] = DrawingExport;
+                message += "; " + DrawingExport;
             }
             throw new SwAgentException(ErrorCode.WrongDocumentType, message, details);
         }
@@ -107,6 +114,12 @@ public static class DocumentLocator
 
     /// <summary>The way to change a component's geometry, for every other part-only operation.</summary>
     const string PartOnly = "to change a component's geometry, open its part with document.open, change it there, then document.rebuild the assembly";
+
+    /// <summary>What a model export asked of a drawing should use instead (design 611, Error handling).</summary>
+    const string DrawingExport = "export.drawing writes a drawing's sheets as PDF, DXF or DWG";
+
+    /// <summary>What export.drawing asked of a part or assembly should use instead.</summary>
+    const string ModelExports = "export.part writes a part, export.assembly an assembly (STEP, Parasolid, STL or 3MF) and export.flat_pattern a sheet-metal part's flat pattern (DXF or DWG)";
 
     /// <summary>What a drawing operation asked of a part or assembly should use instead (design 611, Error handling).</summary>
     const string DrawingInstead = "name a drawing: document.new with type drawing makes one, document.open opens one, and view.create puts a part or assembly on it";

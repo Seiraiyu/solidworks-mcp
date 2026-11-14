@@ -1,0 +1,258 @@
+{
+  "type": "object",
+  "description": "The files export.drawing wrote, as read back from disk.",
+  "properties": {
+    "document": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The document's title as SOLIDWORKS shows it."
+        },
+        "path": {
+          "type": "string",
+          "description": "The full path, absent while the document has never been saved."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "part",
+            "assembly",
+            "drawing"
+          ],
+          "description": "Part, assembly or drawing."
+        },
+        "dirty": {
+          "type": "boolean",
+          "description": "True when the document has unsaved changes."
+        },
+        "visible": {
+          "type": "boolean",
+          "description": "False for a document SOLIDWORKS loaded only because an open assembly uses it: it has no window of its own."
+        }
+      },
+      "required": [
+        "title",
+        "type",
+        "dirty",
+        "visible"
+      ],
+      "additionalProperties": false,
+      "description": "The drawing, as it is after the export: same path; its unsaved-changes flag the same unless marked_dirty."
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "pdf",
+        "dxf",
+        "dwg"
+      ],
+      "description": "The format written."
+    },
+    "sheets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The sheets written, in the drawing's order."
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A file export.drawing wrote, as read back from disk.",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The file written."
+          },
+          "sheets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The sheets it holds, in order."
+          },
+          "bytes": {
+            "type": "integer",
+            "description": "Its size in bytes."
+          },
+          "header": {
+            "type": "string",
+            "description": "What it starts with: %PDF- and its version, DXF, or the DWG's version (AC1032)."
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "A PDF page export.drawing wrote, as read back from the file.",
+              "properties": {
+                "sheet": {
+                  "type": "string",
+                  "description": "The sheet it shows."
+                },
+                "width_mm": {
+                  "type": "number",
+                  "description": "Its width as shown (its media box, turned by its /Rotate), mm."
+                },
+                "height_mm": {
+                  "type": "number",
+                  "description": "Its height as shown, mm."
+                }
+              },
+              "required": [
+                "sheet",
+                "width_mm",
+                "height_mm"
+              ],
+              "additionalProperties": false
+            },
+            "description": "A PDF's pages, in order; empty for DXF and DWG."
+          },
+          "extents": {
+            "type": "object",
+            "properties": {
+              "min_x_mm": {
+                "type": "number",
+                "description": "Its smallest x, mm."
+              },
+              "min_y_mm": {
+                "type": "number",
+                "description": "Its smallest y, mm."
+              },
+              "max_x_mm": {
+                "type": "number",
+                "description": "Its largest x, mm."
+              },
+              "max_y_mm": {
+                "type": "number",
+                "description": "Its largest y, mm."
+              },
+              "length_mm": {
+                "type": "number",
+                "description": "Its longer side, mm."
+              },
+              "width_mm": {
+                "type": "number",
+                "description": "Its shorter side, mm."
+              },
+              "from": {
+                "type": "string",
+                "description": "Where they were read: its entities (the header's $EXTMIN/$EXTMAX is reported in checks, not compared)."
+              }
+            },
+            "required": [
+              "min_x_mm",
+              "min_y_mm",
+              "max_x_mm",
+              "max_y_mm",
+              "length_mm",
+              "width_mm",
+              "from"
+            ],
+            "additionalProperties": false,
+            "description": "A DXF's extents: the rectangle its entities fill, sheet mm; absent for PDF and DWG."
+          },
+          "view": {
+            "type": "string",
+            "description": "A DXF's largest view, whose drawn extents were found among its entities; absent when its sheet has no view, and for PDF and DWG."
+          },
+          "view_extents": {
+            "type": "object",
+            "properties": {
+              "min": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "Mm to the right of the sheet's lower-left corner."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Mm above the sheet's lower-left corner."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "additionalProperties": false,
+                "description": "The lower-left corner."
+              },
+              "max": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "Mm to the right of the sheet's lower-left corner."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Mm above the sheet's lower-left corner."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "additionalProperties": false,
+                "description": "The upper-right corner."
+              }
+            },
+            "required": [
+              "min",
+              "max"
+            ],
+            "additionalProperties": false,
+            "description": "The extents that view's entities fill in the file, sheet mm."
+          }
+        },
+        "required": [
+          "path",
+          "sheets",
+          "bytes",
+          "header",
+          "pages"
+        ],
+        "additionalProperties": false
+      },
+      "description": "The files written: one PDF, or one DXF or DWG per sheet."
+    },
+    "marked_dirty": {
+      "type": "boolean",
+      "description": "True when the export marked a drawing that had no unsaved changes as having them (SOLIDWORKS 2026 SP4 may, and the API cannot clear the flag). It was not saved to clear it; its sheets, views, annotations and tables are measured unchanged."
+    },
+    "preferences": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The SOLIDWORKS export preferences set for the call and put back afterwards, each as name = value."
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What SOLIDWORKS warned about while exporting (swFileSaveWarning_e names)."
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Each check made on the files and the drawing, and what it found."
+    }
+  },
+  "required": [
+    "document",
+    "format",
+    "sheets",
+    "files",
+    "marked_dirty",
+    "preferences",
+    "warnings",
+    "checks"
+  ],
+  "additionalProperties": false
+}

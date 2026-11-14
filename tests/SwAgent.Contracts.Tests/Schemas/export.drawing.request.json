@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "description": "Writes a drawing's sheets as PDF, DXF or DWG: every sheet when sheets is absent, else the ones named (by reference r1.sheet.… or name), in the drawing's order. PDF is one file with a page per sheet. DXF and DWG are one file per sheet: the path itself for one sheet, and for several <folder>\\<name>-<sheet>.dxf (or .dwg) beside it, the sheet's name with any character a file name cannot hold made _. Each sheet is shown in turn for DXF and DWG, and the sheet that was shown is shown again afterwards. The drawing must be saved to disk: a drawing never saved is refused before SOLIDWORKS is called (save it with sw_document_save_as first), because SOLIDWORKS then opens a Save As box that waits for the user. The export options it needs are set for the call and put back afterwards: no PDF viewer opened after saving; DXF and DWG of the shown sheet only, at sheet scale (not 1:1 model scale), views as plain entities (not blocks), no mapping file and no hidden-layer warning. Checked on disk: each file was written by this call and is not empty; a PDF starts %PDF-, has one page per sheet exported, and each page is its sheet's size within 0.1 mm (turned or not); a DXF parses, every entity lies on its sheet (within 0.1 mm), and the largest view's drawn extents (sw_drawing_read's extents, sheet mm) are found among its entities within 0.01 mm (at least the view's scale × 0.01 mm); a DWG starts with its AC10xx version and is at least 1 KB (its contents are not read). Otherwise verification_failed, naming the check; the files are left where they were written. The drawing keeps its path, sheets, views, annotations and tables (measured before and after), and every model it shows keeps its unsaved-changes flag. On SOLIDWORKS 2026 SP4 an export may mark a saved drawing as having unsaved changes, and the API cannot clear that: then marked_dirty is true, and the drawing is not saved behind you (save it with sw_document_save to clear it). Waits, writing nothing (busy, user_editing), while the user edits a view's sketch or the sheet format or has a command open. A part or an assembly is refused (export.part, export.assembly and export.flat_pattern write those).",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "path": {
+      "type": "string",
+      "description": "Full path of the file to write, in an existing folder, ending .pdf, .dxf or .dwg as format says. For DXF or DWG of several sheets, the name each sheet's file is named after."
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "pdf",
+        "dxf",
+        "dwg"
+      ],
+      "description": "pdf, dxf or dwg."
+    },
+    "sheets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The sheets to write, each a reference (r1.sheet.…) or a name (Sheet1). Every sheet when absent."
+    },
+    "overwrite": {
+      "type": "boolean",
+      "description": "Replace the files if they exist. Default false."
+    }
+  },
+  "required": [
+    "path",
+    "format"
+  ],
+  "additionalProperties": false
+}
