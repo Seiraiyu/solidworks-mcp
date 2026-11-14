@@ -433,7 +433,7 @@ sealed partial class FakeDrawing : ISwDrawing
     public IReadOnlyList<VisibleEntity> VisibleEntities(string view, bool edges, bool vertices, string? component = null)
     {
         VisibleReads[view] = VisibleReads.TryGetValue(view, out int n) ? n + 1 : 1;
-        return View(view).Visible.Where(e => (e.Vertex ? vertices : edges) && Of(e.Entity, component)).ToList();
+        return Swept(view, component, SweepKind.Entities, () => View(view).Visible.Where(e => (e.Vertex ? vertices : edges) && Of(e.Entity, component)).ToList());
     }
 
     /// <summary>True when <paramref name="entity"/> is one of <paramref name="component"/>'s, or no component is asked for.</summary>

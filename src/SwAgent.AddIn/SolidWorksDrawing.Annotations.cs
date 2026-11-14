@@ -140,22 +140,11 @@ internal sealed partial class SolidWorksDrawing
     string? ShownComponentOf(IView view, object entity, string? root)
     {
         string? found = null;
-        string? before = RunningCommand();
+        string viewName = view.GetName2();
         foreach (var c in Components(view))
         {
-            bool shows = Try(() => ShowsOf(view, c, entity)) is true;
-            // SP4 can open a view's PropertyManager on these reads (5.D live run, round 4). That path is then unusable:
-            // refuse, saying what SOLIDWORKS was left in, rather than leave it busy unannounced.
-            if (before == null && RunningCommand() is string left)
-            {
-                _doc.ClearSelection2(true);
-                string? still = RunningCommand();
-                throw new SwAgentException(ErrorCode.OperationFailed,
-                    $"reading which component an annotation in {view.GetName2()} is attached to (IView.GetVisibleEntities2 per component) left SOLIDWORKS in '{left}'"
-                    + (still == null ? "; it was cleared. " : $"; it is still open: close it in SOLIDWORKS. ")
-                    + "This way of reading an assembly view's attachments is not usable here",
-                    new SwAgent.Contracts.Serialization.JsonObject { ["view"] = view.GetName2(), ["command"] = left });
-            }
+            // Guarded (ViewSweepGuard): SP4 can open a view's PropertyManager on these reads (5.D live run, round 4).
+            bool shows = Try(() => Swept(viewName, "reading which component an annotation is attached to", () => ShowsOf(view, c, entity))) is true;
             if (!shows) continue;
             string? name = NameIn(c, root);
             if (name == null) continue;
@@ -171,6 +160,14 @@ internal sealed partial class SolidWorksDrawing
         _sw.GetRunningCommandInfo(out int _, out string title, out bool _);
         return string.IsNullOrEmpty(title) ? null : title;
     }
+
+    /// <summary>
+    /// A per-component read of what <paramref name="view"/> shows (IView.GetVisibleEntities2 with a component), run inside
+    /// ViewSweepGuard: one that leaves SOLIDWORKS in a command it was not in before is cleared and refused. Every such
+    /// sweep of the seam goes through here (ShownComponentOf, Shows, VisibleEntities, VisibleFaces; PR #33 review).
+    /// </summary>
+    T Swept<T>(string view, string what, Func<T> read) =>
+        ViewSweepGuard.Read(RunningCommand, () => _doc.ClearSelection2(true), view, what, read);
 
     bool ShowsOf(IView view, IComponent2 component, object entity)
     {
@@ -404,11 +401,15 @@ internal sealed partial class SolidWorksDrawing
     public bool Shows(string view, object entity, object? component)
     {
         var v = View(view);
-        foreach (var type in new[] { swViewEntityType_e.swViewEntityType_Edge, swViewEntityType_e.swViewEntityType_SilhouetteEdge, swViewEntityType_e.swViewEntityType_Vertex, swViewEntityType_e.swViewEntityType_Face })
+        bool Read()
         {
-            if (v.GetVisibleEntities2(component as Component2, (int)type) is object[] found && found.Any(o => o != null && SameEntity(o, entity))) return true;
+            foreach (var type in new[] { swViewEntityType_e.swViewEntityType_Edge, swViewEntityType_e.swViewEntityType_SilhouetteEdge, swViewEntityType_e.swViewEntityType_Vertex, swViewEntityType_e.swViewEntityType_Face })
+            {
+                if (v.GetVisibleEntities2(component as Component2, (int)type) is object[] found && found.Any(o => o != null && SameEntity(o, entity))) return true;
+            }
+            return false;
         }
-        return false;
+        return component == null ? Read() : Swept(view, "checking that the view shows an entity", Read);
     }
 
     public IReadOnlyList<object> VisibleFaces(string view, string? component = null)
@@ -416,7 +417,8 @@ internal sealed partial class SolidWorksDrawing
         var v = View(view);
         var of = ComponentIn(v, component);
         if (component != null && of == null) return new List<object>();
-        return v.GetVisibleEntities2(of, (int)swViewEntityType_e.swViewEntityType_Face) is object[] found ? found.Where(o => o != null).ToList() : new List<object>();
+        List<object> Read() => v.GetVisibleEntities2(of, (int)swViewEntityType_e.swViewEntityType_Face) is object[] found ? found.Where(o => o != null).ToList() : new List<object>();
+        return of == null ? Read() : Swept(view, $"reading the faces the view shows of {component}", Read);
     }
 
     static object? Try(Func<object?> call)
