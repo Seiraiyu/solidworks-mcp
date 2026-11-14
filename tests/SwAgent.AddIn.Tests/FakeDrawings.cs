@@ -420,8 +420,14 @@ sealed partial class FakeDrawing : ISwDrawing
 
     public ISwDocument? ModelOf(string view) => AllViews.FirstOrDefault(v => v.Facts.Name == view)?.Model;
 
-    public IReadOnlyList<VisibleEntity> VisibleEntities(string view, bool edges, bool vertices) =>
-        View(view).Visible.Where(e => e.Vertex ? vertices : edges).ToList();
+    /// <summary>How many times what a view shows was listed (VisibleEntities), by view name.</summary>
+    public Dictionary<string, int> VisibleReads { get; } = new Dictionary<string, int>();
+
+    public IReadOnlyList<VisibleEntity> VisibleEntities(string view, bool edges, bool vertices)
+    {
+        VisibleReads[view] = VisibleReads.TryGetValue(view, out int n) ? n + 1 : 1;
+        return View(view).Visible.Where(e => e.Vertex ? vertices : edges).ToList();
+    }
 
     /// <summary>Each line and circle drawn in a view's sketch, sheet mm: "line (x1, y1) (x2, y2)" or "circle (x, y) r".</summary>
     public List<string> Sketched { get; } = new List<string>();

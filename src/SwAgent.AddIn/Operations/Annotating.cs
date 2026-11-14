@@ -45,9 +45,10 @@ static class Annotating
     public static List<ResolvedViewEntity> InView(ReferenceService references, ISwDocument doc, ISwDrawing drawing, string view, IReadOnlyList<ViewEntity> given, params ReferenceKind[] accepted)
     {
         var list = new List<ResolvedViewEntity>();
+        var shown = new ShownEntities(references, drawing);
         for (int i = 0; i < given.Count; i++)
         {
-            var e = ViewEntities.ResolveShown(references, doc, drawing, given[i], $"/entities/{i}", accepted);
+            var e = ViewEntities.ResolveShown(shown, references, doc, drawing, given[i], $"/entities/{i}", accepted);
             if (e.View != view) throw ViewRequests.Invalid($"/entities/{i}/view", $"/entities/{i}/view: every entity is one of {view}'s, not {e.View}'s");
             list.Add(e);
         }

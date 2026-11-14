@@ -42,11 +42,11 @@ internal sealed partial class SolidWorksDrawing : ISwDrawing
         return true;
     }
 
-    public void Settle(bool adopt)
+    public string? Settle(bool adopt)
     {
-        if (!(_drawing.GetFirstView() is IView sheetView)) return;
+        if (!(_drawing.GetFirstView() is IView sheetView)) return null;
         string? active = (_drawing.ActiveDrawingView as IView)?.GetName2();
-        ViewActivations.Settle(_doc.GetTitle(), active, sheetView.GetName2(), adopt, view => _drawing.ActivateView(view), () =>
+        return ViewActivations.Settle(_doc.GetTitle(), active, sheetView.GetName2(), adopt, view => _drawing.ActivateView(view), () =>
             !(_doc.GetActiveSketch2() is ISketch sketch) || ReferenceEquals(sketch, sheetView.GetSketch())
             || string.Equals((sketch as IFeature)?.Name, (sheetView.GetSketch() as IFeature)?.Name, StringComparison.Ordinal));
     }

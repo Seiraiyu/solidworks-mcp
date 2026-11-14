@@ -61,6 +61,7 @@ internal sealed partial class SolidWorksDrawing
             View = view,
             Kind = KindOf(a.GetType()),
             Position = a.GetPosition() is double[] p && p.Length >= 2 ? new SheetPoint(p[0] * Mm, p[1] * Mm) : null,
+            Anchor = a.GetPosition() is double[] q && q.Length >= 2 ? new SheetPoint(q[0] * Mm, q[1] * Mm) : null,
             Attached = a.GetAttachedEntities3() is object[] attached ? attached.Where(o => o != null).ToList() : new List<object>(),
         };
         switch (a.GetSpecificAnnotation())
@@ -324,32 +325,6 @@ internal sealed partial class SolidWorksDrawing
     public IReadOnlyList<object> VisibleFaces(string view) =>
         View(view).GetVisibleEntities2(null, (int)swViewEntityType_e.swViewEntityType_Face) is object[] found ? found.Where(o => o != null).ToList() : new List<object>();
 
-    public IReadOnlyList<object> ModelEntities(string view, object shown)
-    {
-        var v = View(view);
-        var found = new List<object>();
-        foreach (var map in new Func<object, object?>[] { o => v.GetCorresponding(o), o => v.GetCorrespondingEntity(o) })
-        {
-            object? own = Try(() => map(shown));
-            if (own != null && !ReferenceEquals(own, shown) && !found.Any(f => ReferenceEquals(f, own))) found.Add(own);
-        }
-        return found;
-    }
-
-    public object? InView(string view, object own)
-    {
-        var v = View(view);
-        var shown = new List<object>();
-        foreach (int type in new[] { (int)swViewEntityType_e.swViewEntityType_Edge, (int)swViewEntityType_e.swViewEntityType_SilhouetteEdge, (int)swViewEntityType_e.swViewEntityType_Vertex, (int)swViewEntityType_e.swViewEntityType_Face })
-        {
-            if (v.GetVisibleEntities2(null, type) is object[] found) shown.AddRange(found.Where(o => o != null));
-        }
-        foreach (var map in new Func<object, object?>[] { o => v.GetCorrespondingEntity(o), o => v.GetCorresponding(o) })
-        {
-            if (Try(() => map(own)) is object drawn && shown.FirstOrDefault(s => SameEntity(s, drawn)) is object match) return match;
-        }
-        return null;
-    }
 
     static object? Try(Func<object?> call)
     {

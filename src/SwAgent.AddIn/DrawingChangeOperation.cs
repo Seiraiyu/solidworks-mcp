@@ -125,15 +125,44 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         _pending = null;
         var (doc, drawing) = DocumentLocator.FindDrawing(Services.SolidWorks, DocumentOf(request), Name);
         DrawingChangeGuard.Require(Services.SolidWorks, doc, drawing, Name);
+        // A view the add-in activated for this change is let go of when it ends, however it ends (ViewActivations). What
+        // that leaves undone, or a failure in it, is reported beside the change's own result or error, never in its place.
+        TResult result;
         try
         {
-            return RunChange(doc, drawing, request, context);
+            result = RunChange(doc, drawing, request, context);
         }
-        finally
+        catch (Exception e)
         {
-            // A view the add-in activated for this change is let go of when it ends, however it ends (ViewActivations).
-            drawing.Settle(adopt: true);
+            if (Settle(drawing, context) is string left && e is SwAgentException failed)
+            {
+                failed.Error.Details ??= new JsonObject();
+                failed.Error.Details["not_at_rest"] = left;
+            }
+            throw;
         }
+        result.Change.NotAtRest = Settle(drawing, context);
+        return result;
+    }
+
+    /// <summary>
+    /// Puts the drawing back at rest (ISwDrawing.Settle): null when it is, otherwise what is left (the view SOLIDWORKS keeps
+    /// activated, or what failed), logged. Never throws: it runs after the change has its outcome.
+    /// </summary>
+    static string? Settle(ISwDrawing drawing, IOperationContext context)
+    {
+        string? left;
+        try
+        {
+            var view = drawing.Settle(adopt: true);
+            left = view == null ? null : $"SOLIDWORKS keeps {view} activated after the change; until it is let go of (double-click the sheet outside every view), a user editing {view}'s sketch is not told apart from the drawing at rest";
+        }
+        catch (Exception e)
+        {
+            left = $"letting go of a view the add-in activated failed ({e.GetType().Name}: {e.Message}); a view may stay activated: double-click the sheet outside every view to let go of it";
+        }
+        if (left != null) context.Log.Warn($"drawing change ended not at rest: {left}");
+        return left;
     }
 
     TResult RunChange(ISwDocument doc, ISwDrawing drawing, TRequest request, IOperationContext context)

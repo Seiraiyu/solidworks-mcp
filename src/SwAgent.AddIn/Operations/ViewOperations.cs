@@ -392,7 +392,15 @@ public sealed class ViewEntitiesOperation : Operation<ViewEntitiesRequest, ViewE
         var result = new ViewEntitiesResult { View = view, Model = info.Path ?? info.Title, Scale = t.Scale };
         // Read with no view of the add-in's activated: SP4 gives an activated view's proxies positions in another frame
         // (5.C live run, round 4). A view the user activated is left as it is; ShownEntities then matches by the view's offset.
-        drawing.Settle(adopt: false);
+        // A failure to let go of it is not the read's failure: the offset vote is what covers an activated view.
+        try
+        {
+            drawing.Settle(adopt: false);
+        }
+        catch (System.Runtime.InteropServices.COMException e)
+        {
+            context.Log.Warn($"view.entities: letting go of the add-in's view before reading {view} failed ({e.Message}); read as it is");
+        }
         var shown = drawing.VisibleEntities(view, kinds.Contains(ViewEntityKind.Edge), kinds.Contains(ViewEntityKind.Vertex)).OrderBy(e => e.Vertex).ToList();
         // Each reference from the model's own entity, verified, and none two entities would share (ShownEntities).
         var references = ShownEntities.References(_services.References, model, drawing, view, shown.Select(e => e.Entity).ToList());

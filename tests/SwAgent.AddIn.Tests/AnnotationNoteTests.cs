@@ -35,6 +35,38 @@ public class AnnotationNoteTests : AnnotationTestBase
     }
 
     [Fact]
+    public void A_settle_that_throws_leaves_the_made_note_as_the_result_and_says_so_beside_it()
+    {
+        Drw.SettleThrows = new System.Runtime.InteropServices.COMException("RPC failed");
+        var r = Note("THRU", new SheetPoint(130, 190), On(Hole));
+        Assert.Equal(Front.Facts.Name, r.Annotation.View);
+        Assert.Single(Drw.Annotated);
+        Assert.Contains("RPC failed", r.Change.NotAtRest);
+    }
+
+    [Fact]
+    public void A_view_SOLIDWORKS_keeps_activated_is_said_in_the_result()
+    {
+        Drw.SettleLeaves = Front.Facts.Name;
+        var r = Note("THRU", new SheetPoint(130, 190), On(Hole));
+        Assert.Contains($"keeps {Front.Facts.Name} activated", r.Change.NotAtRest);
+        Drw.SettleLeaves = null;
+        Assert.Null(Note("THRU", new SheetPoint(140, 190), On(Hole)).Change.NotAtRest);
+    }
+
+    [Fact]
+    public void A_settle_that_throws_after_a_failed_note_leaves_the_failure_and_its_rollback_as_the_error()
+    {
+        Drw.SettleThrows = new System.Runtime.InteropServices.COMException("RPC failed");
+        Drw.AnnotationLandsOffByMm = 0.02;
+        var e = Fails(() => Note("THRU", new SheetPoint(130, 190), On(Hole)));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("position", e.Error.Details!["check"]);
+        Assert.Contains("RPC failed", (string)e.Error.Details!["not_at_rest"]!);
+        Assert.Empty(Drw.Annotated);
+    }
+
+    [Fact]
     public void A_note_in_a_view_without_a_leader()
     {
         var r = Note("SCALE 1:1", new SheetPoint(100, 120), view: Front.Facts.Name);

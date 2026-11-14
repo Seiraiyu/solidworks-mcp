@@ -21,7 +21,8 @@ public sealed class AnnotationListOperation : Operation<AnnotationListRequest, A
         var (doc, drawing) = DocumentLocator.FindDrawing(_services.SolidWorks, request.Document, Name);
         var all = Listed(_services.References, doc, drawing, request);
         var owners = DrawingAnnotations.Owners(drawing);
-        var result = new AnnotationListResult { Annotations = all.Select(a => DrawingAnnotations.Info(_services.References, doc, drawing, a, owners)).ToList() };
+        var shown = new ShownEntities(_services.References, drawing);
+        var result = new AnnotationListResult { Annotations = all.Select(a => DrawingAnnotations.Info(_services.References, doc, drawing, a, owners, shown)).ToList() };
         context.Log.Info($"annotation.list: {result.Annotations.Count} annotations");
         return result;
     }
@@ -76,10 +77,17 @@ public sealed class AnnotationSetOperation : DrawingChangeOperation<AnnotationSe
         if (request.At != null)
         {
             ViewRequests.OnSheet(request.At, drawing.ReadSheet(a.Sheet)!, "/at");
-            drawing.MoveAnnotation(a.Sheet, a.View, a.Name, request.At);
+            // at is where the annotation is read (Position); SetPosition2 writes its anchor, which for a centre mark lies
+            // off its centre (AnnotationFacts.Anchor), so the move and the rollback write the anchor that puts it there.
+            drawing.MoveAnnotation(a.Sheet, a.View, a.Name, AnchorFor(a, request.At));
             tx.Edited(new ChangedItem { Name = a.Name, Property = "position", Before = a.Position?.ToString() ?? "", After = request.At.ToString() }, () =>
             {
-                if (a.Position != null) drawing.MoveAnnotation(a.Sheet, a.View, a.Name, a.Position);
+                var back = a.Anchor ?? a.Position;
+                if (back == null) return;
+                drawing.MoveAnnotation(a.Sheet, a.View, a.Name, back);
+                var now = DrawingAnnotations.Read(drawing, a.Sheet, a.View, a.Name);
+                if (a.Position != null && (now?.Position == null || !ViewGeometry.Near(now.Position, a.Position)))
+                    throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not put {a.Name} back at {a.Position} (it reads {now?.Position?.ToString() ?? "nowhere"})");
             });
         }
         if (request.Text != null)
@@ -95,6 +103,14 @@ public sealed class AnnotationSetOperation : DrawingChangeOperation<AnnotationSe
         context.Log.Info($"annotation.set: {a.Name} in {DrawingAnnotations.Where(a)}: {string.Join(", ", tx.Changed.Select(c => $"{c.Property} {c.Before} -> {c.After}"))}");
         return new AnnotationResult();
     }
+
+    /// <summary>
+    /// The anchor (the frame IAnnotation.SetPosition2 writes) that puts <paramref name="a"/> where it is read at
+    /// <paramref name="at"/>: <paramref name="at"/> shifted by how far its anchor lies from where it is read now (a centre
+    /// mark's anchor is off its centre), <paramref name="at"/> itself when the two are one point.
+    /// </summary>
+    public static SheetPoint AnchorFor(AnnotationFacts a, SheetPoint at) =>
+        a.Anchor == null || a.Position == null ? at : new SheetPoint(at.X + a.Anchor.X - a.Position.X, at.Y + a.Anchor.Y - a.Position.Y);
 
     /// <summary>Every value set reads back: the position within 0.01 mm, the text as written.</summary>
     protected override void Check(ISwDocument doc, ISwDrawing drawing, AnnotationSetRequest request, AnnotationResult result)

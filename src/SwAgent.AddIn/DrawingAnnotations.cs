@@ -31,9 +31,13 @@ public static class DrawingAnnotations
     /// <summary>The names of the drawing's sheets and views: a dimension whose name ends @ one of them is the drawing's own.</summary>
     public static List<string> Owners(ISwDrawing drawing) => drawing.SheetNames().Concat(drawing.SheetNames().SelectMany(drawing.ViewNames)).ToList();
 
-    /// <summary>An annotation as results report it.</summary>
-    public static AnnotationInfo Info(ReferenceService references, ISwDocument doc, ISwDrawing drawing, AnnotationFacts a, IReadOnlyList<string>? owners = null)
+    /// <summary>
+    /// An annotation as results report it. Its attachments' references are read through <paramref name="shown"/>, which a
+    /// call describing several annotations shares, so each view is read once (a new one when not given).
+    /// </summary>
+    public static AnnotationInfo Info(ReferenceService references, ISwDocument doc, ISwDrawing drawing, AnnotationFacts a, IReadOnlyList<string>? owners = null, ShownEntities? shown = null)
     {
+        shown ??= new ShownEntities(references, drawing);
         bool dimension = a.Kind == AnnotationKind.Dimension && a.DimensionName != null;
         bool model = dimension && AnnotationGeometry.IsModelDimension(a.DimensionName!, owners ?? Owners(drawing));
         var info = new AnnotationInfo
@@ -54,7 +58,7 @@ public static class DrawingAnnotations
             Gtol = a.Gtol,
         };
         var modelDoc = a.View == null ? null : drawing.ModelOf(a.View);
-        foreach (var e in a.Attached) info.Attached.Add(new ViewEntity { View = a.View ?? a.Sheet, Reference = modelDoc == null ? null : Reference(references, modelDoc, drawing, a.View!, e) });
+        foreach (var e in a.Attached) info.Attached.Add(new ViewEntity { View = a.View ?? a.Sheet, Reference = modelDoc == null ? null : Reference(shown, modelDoc, a.View!, e) });
         return info;
     }
 
@@ -62,11 +66,11 @@ public static class DrawingAnnotations
     /// The reference of an entity an annotation in a view is attached to, issued from the model's own entity and verified
     /// (ShownEntities); null when it is not one, or it cannot be verified.
     /// </summary>
-    static string? Reference(ReferenceService references, ISwDocument model, ISwDrawing drawing, string view, object entity)
+    static string? Reference(ShownEntities shown, ISwDocument model, string view, object entity)
     {
         try
         {
-            return ShownEntities.Reference(references, model, drawing, view, entity);
+            return shown.Reference(model, view, entity);
         }
         catch (System.Runtime.InteropServices.COMException)
         {

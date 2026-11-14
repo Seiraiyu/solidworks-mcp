@@ -202,7 +202,10 @@ public interface ISwDrawing
     /// </summary>
     string? AddGtol(string view, object entity, GtolFrame frame, SheetPoint? at);
 
-    /// <summary>Moves an annotation's text to <paramref name="at"/> (IAnnotation.SetPosition2). Nothing is checked here.</summary>
+    /// <summary>
+    /// Moves an annotation's anchor to <paramref name="at"/> (IAnnotation.SetPosition2), in the frame of
+    /// <see cref="AnnotationFacts.Anchor"/>, not of Position where they differ (a centre mark). Nothing is checked here.
+    /// </summary>
     void MoveAnnotation(string sheet, string? view, string name, SheetPoint at);
 
     /// <summary>Gives a note new text (INote.SetText); false when SOLIDWORKS refused or it is not a note.</summary>
@@ -228,19 +231,11 @@ public interface ISwDrawing
     /// view active then is the add-in's, and is let go of by activating the sheet's own view, then forgotten once the
     /// drawing is at rest (kept as the add-in's when SOLIDWORKS keeps it active, so the next change is not refused for it).
     /// Without adopt (before view.entities reads a view) only a view the add-in already holds is let go of; a view the
-    /// user activated is never touched.
+    /// user activated is never touched. Returns the add-in's view SOLIDWORKS keeps activated when the drawing could not be
+    /// put at rest, null when it is at rest. COM failures are the caller's to catch (DrawingChangeOperation reports them
+    /// beside the change's own result or error, never in place of it).
     /// </summary>
-    void Settle(bool adopt);
-
-    /// <summary>
-    /// The model's own entity for an entity the view shows, as candidates in the order to try (IView.GetCorresponding,
-    /// then IView.GetCorrespondingEntity): SP4 hands back proxies whose persistent ids are twins (5.C live run, round 2),
-    /// so a reference is issued from the model's own entity, and ShownEntities verifies which candidate is it.
-    /// </summary>
-    IReadOnlyList<object> ModelEntities(string view, object shown);
-
-    /// <summary>The entity the view shows for the model's own <paramref name="own"/> (IView.GetCorrespondingEntity, then IView.GetCorresponding), one of those IView.GetVisibleEntities2 gives; null when the view does not show it.</summary>
-    object? InView(string view, object own);
+    string? Settle(bool adopt);
 
     /// <summary>True when two SOLIDWORKS objects are the same entity (ISldWorks.IsSame).</summary>
     bool SameEntity(object a, object b);
@@ -418,6 +413,14 @@ public sealed class AnnotationFacts
     public SheetPoint? Position { get; set; }
 
     /// <summary>
+    /// Where IAnnotation.GetPosition puts it, sheet mm: the frame MoveAnnotation (IAnnotation.SetPosition2) writes. The
+    /// same point as <see cref="Position"/> but for a centre mark in a view, whose Position is its centre
+    /// (ICenterMark.GetPosition drawn onto the sheet; the 5.C live runs measured SP4's anchor (117.226, 175.84) for a
+    /// centre at (120, 180)). Null when SOLIDWORKS gives none; then Position is the frame written.
+    /// </summary>
+    public SheetPoint? Anchor { get; set; }
+
+    /// <summary>
     /// How <see cref="Position"/> was read, when more than one reading was taken (a centre mark: IAnnotation.GetPosition
     /// and ICenterMark.GetPosition), so a failed position check says what SOLIDWORKS gave each way.
     /// </summary>
@@ -452,7 +455,7 @@ public sealed class AnnotationFacts
 
     public AnnotationFacts Copy() => new AnnotationFacts
     {
-        Name = Name, Sheet = Sheet, View = View, Kind = Kind, Position = Position == null ? null : new SheetPoint(Position.X, Position.Y), PositionNote = PositionNote, Text = Text, LinkedText = LinkedText,
+        Name = Name, Sheet = Sheet, View = View, Kind = Kind, Position = Position == null ? null : new SheetPoint(Position.X, Position.Y), Anchor = Anchor == null ? null : new SheetPoint(Anchor.X, Anchor.Y), PositionNote = PositionNote, Text = Text, LinkedText = LinkedText,
         DimensionKind = DimensionKind, DimensionNote = DimensionNote, Value = Value, DimensionName = DimensionName, Driven = Driven, Label = Label,
         Gtol = Gtol == null ? null : new GtolFrame { Characteristic = Gtol.Characteristic, ToleranceMm = Gtol.ToleranceMm, Diameter = Gtol.Diameter, MaterialCondition = Gtol.MaterialCondition, Datums = new List<string>(Gtol.Datums) },
         Attached = new List<object>(Attached),

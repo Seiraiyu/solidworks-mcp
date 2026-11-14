@@ -414,6 +414,10 @@
             "additionalProperties": false
           },
           "description": "Each model the drawing shows, before and after: unsaved changes and rebuild errors, which must not have changed."
+        },
+        "not_at_rest": {
+          "type": "string",
+          "description": "Set only when the drawing could not be put back at rest after the change: the view SOLIDWORKS keeps activated, or what failed in letting go of it. The change itself stands. Ask the user to double-click the sheet outside every view. A failed change reports the same in its error's details as not_at_rest."
         }
       },
       "required": [

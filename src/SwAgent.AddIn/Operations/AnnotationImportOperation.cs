@@ -71,10 +71,11 @@ public sealed class AnnotationImportOperation : DrawingChangeOperation<Annotatio
     {
         var owners = DrawingAnnotations.Owners(drawing);
         var models = new Dictionary<string, IReadOnlyList<DimensionRecord>>(StringComparer.Ordinal);
+        var views = new ShownEntities(Services.References, drawing);
         foreach (var made in _made)
         {
             var a = Annotating.Reread(drawing, made);
-            var info = DrawingAnnotations.Info(Services.References, doc, drawing, a, owners);
+            var info = DrawingAnnotations.Info(Services.References, doc, drawing, a, owners, views);
             result.Annotations.Add(info);
             if (a.Kind != AnnotationKind.Dimension) continue;
             if (a.DimensionName == null || info.ModelDimension != true)

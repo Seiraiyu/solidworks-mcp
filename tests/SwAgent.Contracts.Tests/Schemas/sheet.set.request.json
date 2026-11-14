@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "Changes a sheet in place: its name, size (a standard size or width_mm and height_mm, sheet mm), scale, projection or sheet format (.SLDDRT). Values not given stay. Through ISheet.SetProperties2, the scale through ISheet.SetScale. Checked: every value reads back (sizes within 0.01 mm, the scale exactly), and every view that follows the sheet's scale is drawn at the new scale (its transform's scale, and its drawn edges equal to its model's box projected at that scale). Otherwise the sheet's old values are put back (rolled back).",
+  "description": "Changes a sheet in place: its name, size (a standard size or width_mm and height_mm, sheet mm), scale, projection or sheet format (.SLDDRT). Values not given stay. Through ISheet.SetProperties2, the scale through ISheet.SetScale. Checked: every value reads back (sizes within 0.01 mm, the scale exactly), and every view that follows the sheet's scale is drawn at the new scale (its transform's scale, and its drawn edges equal to its model's box projected at that scale). Otherwise the sheet's old values are put back (rolled back). Waits, changing nothing (busy, user_editing), while the user edits a view's sketch or the sheet format (sheet_format: true) or has a command open. After the user exits a view's sketch, SOLIDWORKS keeps that view activated and changes keep waiting until the user lets go of it: ask them to double-click the sheet outside every view.",
   "properties": {
     "document": {
       "type": "string",

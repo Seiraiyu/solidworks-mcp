@@ -17,29 +17,95 @@ namespace SwAgent.AddIn;
 /// matches as given or shifted by the one offset the view's proxies share with the part (found by vote over the whole
 /// view). Its reference is kept only when it resolves back to that entity and no other entity of the view would be given
 /// it. Anything else is not issued: null, never a twin or a guess.
+/// <para>
+/// An instance reads each view it is asked about once: what the view shows, the part's topology described, and every
+/// shown entity's verified reference, so a call that resolves or describes many entities (annotation.list, an annotation
+/// on several edges) pays for each view once rather than once per entity (PR #32 review). An instance lives for one read
+/// of the drawing and is never kept across a change: activating a view moves its proxies (round 4). Not measured on a
+/// part larger than the 60 x 40 x 20 block (at most 116 ms per view there).
+/// </para>
 /// </summary>
-public static class ShownEntities
+public sealed class ShownEntities
 {
     /// <summary>How close two lengths or positions must be to be one entity, mm (the part's own numbers, read twice).</summary>
     const double Tol = 1e-4;
 
-    /// <summary>The verified reference for <paramref name="shown"/>, or null.</summary>
-    public static string? Reference(ReferenceService references, ISwDocument model, ISwDrawing drawing, string view, object shown)
+    readonly ReferenceService _references;
+    readonly ISwDrawing _drawing;
+    readonly Dictionary<string, (ISwDocument Model, List<object> Shown, IReadOnlyList<string?> Refs)> _views = new Dictionary<string, (ISwDocument, List<object>, IReadOnlyList<string?>)>(StringComparer.Ordinal);
+    readonly List<(ISwDocument Model, Part Part)> _parts = new List<(ISwDocument, Part)>();
+
+    public ShownEntities(ReferenceService references, ISwDrawing drawing)
     {
-        var all = Shown(drawing, view);
-        int at = all.FindIndex(s => ReferenceEquals(s, shown) || drawing.SameEntity(s, shown));
-        if (at < 0)
+        _references = references;
+        _drawing = drawing;
+    }
+
+    /// <summary>How many times this instance read a view (what it shows and their references): once per view asked about.</summary>
+    public int ViewsRead { get; private set; }
+
+    /// <summary>The verified reference for <paramref name="shown"/>, or null.</summary>
+    public string? Reference(ISwDocument model, string view, object shown)
+    {
+        var (all, refs) = Of(model, view);
+        int at = all.FindIndex(s => ReferenceEquals(s, shown) || _drawing.SameEntity(s, shown));
+        if (at >= 0) return refs[at];
+        // Not among what the view lists: judged with them, as one more of the view's entities.
+        var with = new List<object>(all) { shown };
+        return References(_references, model, _drawing, view, with, PartOf(model))[with.Count - 1];
+    }
+
+    /// <summary>
+    /// The entity <paramref name="view"/> shows for the part's own <paramref name="entity"/>: the one shown entity whose
+    /// verified reference is the part entity's own; null when the view shows none.
+    /// </summary>
+    public object? InView(ISwDocument model, string view, object entity)
+    {
+        string? own;
+        try
         {
-            all.Add(shown);
-            at = all.Count - 1;
+            own = _references.Describe(model, entity).Reference;
         }
-        return References(references, model, drawing, view, all)[at];
+        catch (Exception e) when (e is SwAgentException || e is System.Runtime.InteropServices.COMException)
+        {
+            return null;
+        }
+        if (own == null) return null;
+        var (shown, refs) = Of(model, view);
+        for (int i = 0; i < shown.Count; i++)
+        {
+            if (refs[i] != null && string.Equals(refs[i], own, StringComparison.Ordinal)) return shown[i];
+        }
+        return null;
+    }
+
+    (List<object> Shown, IReadOnlyList<string?> Refs) Of(ISwDocument model, string view)
+    {
+        if (_views.TryGetValue(view, out var read) && ReferenceEquals(read.Model, model)) return (read.Shown, read.Refs);
+        ViewsRead++;
+        var shown = Shown(_drawing, view);
+        var refs = References(_references, model, _drawing, view, shown, PartOf(model));
+        _views[view] = (model, shown, refs);
+        return (shown, refs);
+    }
+
+    Part PartOf(ISwDocument model)
+    {
+        foreach (var (m, p) in _parts)
+        {
+            if (ReferenceEquals(m, model)) return p;
+        }
+        var part = new Part(model);
+        _parts.Add((model, part));
+        return part;
     }
 
     /// <summary>The verified references for each of <paramref name="shown"/>, in order; any two would share are dropped from both.</summary>
-    public static IReadOnlyList<string?> References(ReferenceService references, ISwDocument model, ISwDrawing drawing, string view, IReadOnlyList<object> shown)
+    public static IReadOnlyList<string?> References(ReferenceService references, ISwDocument model, ISwDrawing drawing, string view, IReadOnlyList<object> shown) =>
+        References(references, model, drawing, view, shown, new Part(model));
+
+    static IReadOnlyList<string?> References(ReferenceService references, ISwDocument model, ISwDrawing drawing, string view, IReadOnlyList<object> shown, Part part)
     {
-        var part = new Part(model);
         var seen = shown.Select(s => Describe(model, s)).ToList();
         var forms = seen.Select(p => p == null ? new List<(object, EntityInfo Info)>() : part.OfKind(p.Kind).Where(c => SameForm(c.Info, p)).ToList()).ToList();
         // Where the proxy is as given wins; only proxies with no entity of their form there vote for the view's offset,
@@ -62,31 +128,6 @@ public static class ShownEntities
         }
         var twins = new HashSet<string>(refs.Where(r => r != null).GroupBy(r => r!, StringComparer.Ordinal).Where(g => g.Count() > 1).Select(g => g.Key), StringComparer.Ordinal);
         return refs.Select(r => r != null && twins.Contains(r) ? null : r).ToList();
-    }
-
-    /// <summary>
-    /// The entity <paramref name="view"/> shows for the part's own <paramref name="entity"/>: the one shown entity whose
-    /// verified reference is the part entity's own; null when the view shows none.
-    /// </summary>
-    public static object? InView(ReferenceService references, ISwDocument model, ISwDrawing drawing, string view, object entity)
-    {
-        string? own;
-        try
-        {
-            own = references.Describe(model, entity).Reference;
-        }
-        catch (Exception e) when (e is SwAgentException || e is System.Runtime.InteropServices.COMException)
-        {
-            return null;
-        }
-        if (own == null) return null;
-        var shown = Shown(drawing, view);
-        var refs = References(references, model, drawing, view, shown);
-        for (int i = 0; i < shown.Count; i++)
-        {
-            if (refs[i] != null && string.Equals(refs[i], own, StringComparison.Ordinal)) return shown[i];
-        }
-        return null;
     }
 
     static List<object> Shown(ISwDrawing drawing, string view) =>

@@ -86,10 +86,11 @@ public class DrawingSketchTests
         // the next change was refused as the user editing its sketch.
         ViewActivations.Clear("d");
         var activated = new List<string>();
-        ViewActivations.Settle("d", "Drawing View1", "Sheet1", adopt: true, activate: v => { activated.Add(v); return true; }, atRest: () => true);
+        Assert.Null(ViewActivations.Settle("d", "Drawing View1", "Sheet1", adopt: true, activate: v => { activated.Add(v); return true; }, atRest: () => true));
         Assert.Equal(new[] { "Sheet1" }, activated);
         Assert.Null(ViewActivations.ByAddIn("d"));
-        ViewActivations.Settle("d", "Drawing View1", "Sheet1", adopt: true, activate: v => true, atRest: () => false);
+        // Not at rest after letting go: still the add-in's, and said to be.
+        Assert.Equal("Drawing View1", ViewActivations.Settle("d", "Drawing View1", "Sheet1", adopt: true, activate: v => true, atRest: () => false));
         Assert.Equal("Drawing View1", ViewActivations.ByAddIn("d"));
         ViewActivations.Clear("d");
     }

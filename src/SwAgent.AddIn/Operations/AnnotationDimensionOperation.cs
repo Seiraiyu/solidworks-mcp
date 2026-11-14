@@ -26,9 +26,10 @@ public sealed class AnnotationDimensionOperation : DrawingChangeOperation<Annota
         if (given.Count < 1 || given.Count > 2)
             throw ViewRequests.Invalid("/entities", $"/entities: a dimension takes one or two entities of one view, not {given.Count}");
         var entities = new List<ResolvedViewEntity>();
+        var shown = new ShownEntities(Services.References, drawing);
         for (int i = 0; i < given.Count; i++)
         {
-            var e = ViewEntities.ResolveShown(Services.References, doc, drawing, given[i], $"/entities/{i}", ReferenceKind.Edge, ReferenceKind.Vertex);
+            var e = ViewEntities.ResolveShown(shown, Services.References, doc, drawing, given[i], $"/entities/{i}", ReferenceKind.Edge, ReferenceKind.Vertex);
             if (i > 0 && e.View != entities[0].View)
                 throw ViewRequests.Invalid($"/entities/{i}/view", $"/entities/{i}/view: a dimension's entities are in one view; this one is in {e.View}, the first in {entities[0].View}");
             entities.Add(e);

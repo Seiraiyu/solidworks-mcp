@@ -101,7 +101,7 @@ public sealed class DiagScratchBlockRequest
 }
 
 [Operation("diag.editing", typeof(DiagEditingResult), Internal = true, ReadOnly = true)]
-[Description("Fault testing only: what the user has open that makes model and drawing changes wait, read exactly as their preconditions read it (the sketch being edited in the part, or in the drawing a sketch other than its sheet's or activated view's own; the command whose PropertyManager is open; a drawing's sheet format being edited). Changes nothing. Refused unless diagnostics are on.")]
+[Description("Fault testing only: what the user has open that makes model and drawing changes wait, read exactly as their preconditions read it (the sketch being edited in the part, or in the drawing any sketch but its sheet's own and, only while the add-in itself activated that view, the activated view's own: a view the user activated, or left activated after exiting its sketch, counts as editing; the command whose PropertyManager is open; a drawing's sheet format being edited). Changes nothing. Refused unless diagnostics are on.")]
 public sealed class DiagEditingRequest
 {
     [Description("The part or drawing: its title or full path. The active document when absent.")]

@@ -46,7 +46,18 @@ sealed partial class FakeDrawing
     /// <summary>How many times a drawing operation put the drawing back at rest when it ended (Settle).</summary>
     public int Settled { get; private set; }
 
-    public void Settle(bool adopt) => Settled++;
+    /// <summary>When set, Settle throws this (a COM failure in letting go of a view).</summary>
+    public Exception? SettleThrows { get; set; }
+
+    /// <summary>When set, Settle says SOLIDWORKS keeps this view activated (the drawing could not be put at rest).</summary>
+    public string? SettleLeaves { get; set; }
+
+    public string? Settle(bool adopt)
+    {
+        Settled++;
+        if (SettleThrows != null) throw SettleThrows;
+        return SettleLeaves;
+    }
 
     /// <summary>When set, what each annotation read back says of how its position was read (AnnotationFacts.PositionNote).</summary>
     public string? PositionNote { get; set; }
@@ -65,6 +76,18 @@ sealed partial class FakeDrawing
 
     /// <summary>When true, MoveAnnotation and SetNoteText change nothing (and say nothing).</summary>
     public bool AnnotationSetIgnored { get; set; }
+
+    /// <summary>
+    /// When set, a centre mark's anchor (IAnnotation.GetPosition, the frame SetPosition2 writes) lies this far from its
+    /// centre (where it is read), as SP4's did: (-2.774, -4.16) mm, (117.226, 175.84) for a centre at (120, 180).
+    /// </summary>
+    public SheetPoint? CentreMarkAnchorOffset { get; set; }
+
+    /// <summary>When set, only this many more MoveAnnotation calls land; later ones change nothing (and say nothing).</summary>
+    public int? MovesThatLand { get; set; }
+
+    /// <summary>When true, moving an annotation in a view marks the view's model as changed.</summary>
+    public bool MovingDirtiesModel { get; set; }
 
     /// <summary>When true, DeleteAnnotations deletes nothing and says so.</summary>
     public bool AnnotationDeleteFails { get; set; }
@@ -166,7 +189,12 @@ sealed partial class FakeDrawing
     public string? AddCentreMark(string view, object edge)
     {
         Calls.Add($"centre mark {view}");
-        return Make(view, "", new[] { edge }, v => new AnnotationFacts { Name = "Center Mark" + ++_annotations, Kind = AnnotationKind.CentreMark, Position = Drawn(v!, edge).Centre });
+        return Make(view, "", new[] { edge }, v =>
+        {
+            var centre = Drawn(v!, edge).Centre;
+            var anchor = CentreMarkAnchorOffset == null || centre == null ? null : new SheetPoint(centre.X + CentreMarkAnchorOffset.X, centre.Y + CentreMarkAnchorOffset.Y);
+            return new AnnotationFacts { Name = "Center Mark" + ++_annotations, Kind = AnnotationKind.CentreMark, Position = centre, Anchor = anchor };
+        });
     }
 
     public string? AddCentreLine(string view, IReadOnlyList<object> entities)
@@ -203,7 +231,14 @@ sealed partial class FakeDrawing
     public void MoveAnnotation(string sheet, string? view, string name, SheetPoint at)
     {
         Calls.Add($"move annotation {name}");
-        if (!AnnotationSetIgnored) Find(sheet, view, name).Position = new SheetPoint(at.X, at.Y);
+        if (AnnotationSetIgnored) return;
+        if (MovesThatLand != null && MovesThatLand-- <= 0) return;
+        // SetPosition2 writes the anchor; where the annotation is read keeps its distance from it (a centre mark's centre).
+        var a = Find(sheet, view, name);
+        double dx = a.Anchor == null || a.Position == null ? 0 : a.Position.X - a.Anchor.X, dy = a.Anchor == null || a.Position == null ? 0 : a.Position.Y - a.Anchor.Y;
+        if (a.Anchor != null) a.Anchor = new SheetPoint(at.X, at.Y);
+        a.Position = new SheetPoint(at.X + dx, at.Y + dy);
+        if (MovingDirtiesModel && view != null && View(view).Model is { } model) model.Document.Dirty = true;
     }
 
     public bool SetNoteText(string sheet, string? view, string name, string text)
@@ -231,34 +266,20 @@ sealed partial class FakeDrawing
 
     public bool SameEntity(object a, object b) => ReferenceEquals(a, b);
 
-    /// <summary>Entities a view shows as SOLIDWORKS' proxies (ShowAsProxy), each with the model's own entity, or null for none.</summary>
-    public Dictionary<object, FakeEntity?> Proxies { get; } = new Dictionary<object, FakeEntity?>();
-
     static readonly byte[] TwinId = { 7, 7, 7, 7 };
 
     /// <summary>
-    /// Shows <paramref name="own"/> in <paramref name="view"/> as SP4 does (5.C live run, round 2): through a proxy whose
-    /// persistent id it shares with every other proxy and which the model does not find; the proxy corresponds to the
-    /// model's own entity unless <paramref name="corresponds"/> is false.
+    /// Shows <paramref name="own"/> in <paramref name="view"/> as SP4 does (5.C live run, rounds 2 to 4): through a proxy
+    /// whose persistent id it shares with every other proxy, which the model does not find and which nothing maps back to
+    /// the model's own entity; it has only the entity's form, at its position or <paramref name="shiftedBy"/> from it.
     /// </summary>
-    public FakeEntity ShowAsProxy(FakeView view, FakeEntity own, bool corresponds = true, Point3? shiftedBy = null)
+    public FakeEntity ShowAsProxy(FakeView view, FakeEntity own, Point3? shiftedBy = null)
     {
         var i = own.Info;
         var origin = i.Origin == null || shiftedBy == null ? i.Origin : new Point3(i.Origin.X + shiftedBy.X, i.Origin.Y + shiftedBy.Y, i.Origin.Z + shiftedBy.Z);
         var proxy = new FakeEntity(own.Kind, new EntityInfo { Geometry = i.Geometry, Origin = origin, Axis = i.Axis, RadiusMm = i.RadiusMm, LengthMm = i.LengthMm, Feature = i.Feature }) { Id = TwinId, State = PersistState.Invalid };
-        Proxies[proxy] = corresponds ? own : null;
         view.Visible.Add(new VisibleEntity(proxy, own.Kind == ReferenceKind.Vertex, false));
         return proxy;
-    }
-
-    public IReadOnlyList<object> ModelEntities(string view, object shown) =>
-        Proxies.TryGetValue(shown, out var own) ? (own == null ? new List<object>() : new List<object> { own }) : new List<object> { shown };
-
-    public object? InView(string view, object own)
-    {
-        var v = View(view);
-        var proxy = Proxies.Where(p => ReferenceEquals(p.Value, own) && Visible(v, p.Key)).Select(p => p.Key).FirstOrDefault();
-        return proxy ?? (Visible(v, own) ? own : null);
     }
 
     public IReadOnlyList<PropertyFacts> Properties() => Props.Select(p => new PropertyFacts(p.Key, p.Value, Resolve(p.Value))).ToList();
