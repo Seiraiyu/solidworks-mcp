@@ -183,6 +183,135 @@ public static class ViewGeometry
     /// <summary>A box's centre.</summary>
     public static SheetPoint Centre(SheetBox box) => new SheetPoint((box.Min.X + box.Max.X) / 2, (box.Min.Y + box.Max.Y) / 2);
 
+    /// <summary>True for a view projected to the left or right (it shares its parent's horizontal centre line).</summary>
+    public static bool Horizontal(ProjectDirection direction) => direction == ProjectDirection.Left || direction == ProjectDirection.Right;
+
+    /// <summary>
+    /// The model direction a view projected from <paramref name="parent"/> shows facing the reader: the parent's right
+    /// for a view from the right, its up for a view from above, and their opposites. The view is the parent turned 90°.
+    /// </summary>
+    public static Vector3 ProjectedFacing(ViewTransform parent, ProjectDirection direction) => direction switch
+    {
+        ProjectDirection.Right => Right(parent),
+        ProjectDirection.Left => Negate(Right(parent)),
+        ProjectDirection.Above => Up(parent),
+        _ => Negate(Up(parent)),
+    };
+
+    /// <summary>
+    /// Which side of its parent a projected view is drawn on, as unit steps on the sheet (x, y): in third-angle projection
+    /// the view from the right goes on the right and the view from above above; in first-angle projection the opposite.
+    /// </summary>
+    public static (int Dx, int Dy) Side(ProjectDirection direction, Projection projection)
+    {
+        int sign = projection == Projection.ThirdAngle ? 1 : -1;
+        return direction switch
+        {
+            ProjectDirection.Right => (sign, 0),
+            ProjectDirection.Left => (-sign, 0),
+            ProjectDirection.Above => (0, sign),
+            _ => (0, -sign),
+        };
+    }
+
+    /// <summary>
+    /// Where a projected view goes when no position is asked: beside its parent on the side <see cref="Side"/> names, on its
+    /// centre line, with <paramref name="gapMm"/> between the parent's drawn extents and the new view's, which is
+    /// <paramref name="depthMm"/> across (<see cref="Depth"/> of the parent).
+    /// </summary>
+    public static SheetPoint ProjectedPlace(SheetPoint parentPosition, SheetBox parentExtents, double depthMm, ProjectDirection direction, Projection projection, double gapMm)
+    {
+        var (dx, dy) = Side(direction, projection);
+        var centre = Centre(parentExtents);
+        if (dx != 0)
+        {
+            double reach = dx > 0 ? parentExtents.Max.X - centre.X : centre.X - parentExtents.Min.X;
+            return new SheetPoint(centre.X + dx * (reach + gapMm + depthMm / 2), parentPosition.Y);
+        }
+        double rise = dy > 0 ? parentExtents.Max.Y - centre.Y : centre.Y - parentExtents.Min.Y;
+        return new SheetPoint(parentPosition.X, centre.Y + dy * (rise + gapMm + depthMm / 2));
+    }
+
+    /// <summary>
+    /// Null when <paramref name="at"/> is on the side of <paramref name="parentPosition"/> a view projected
+    /// <paramref name="direction"/> goes under <paramref name="projection"/>; otherwise why not.
+    /// </summary>
+    public static string? WrongSide(SheetPoint parentPosition, SheetPoint at, ProjectDirection direction, Projection projection)
+    {
+        var (dx, dy) = Side(direction, projection);
+        double along = dx != 0 ? (at.X - parentPosition.X) * dx : (at.Y - parentPosition.Y) * dy;
+        if (along > PositionToleranceMm) return null;
+        string side = dx > 0 ? "right of" : dx < 0 ? "left of" : dy > 0 ? "above" : "below";
+        return $"a view seen from {Wire(direction)} goes {side} its parent in {Wire(projection)} projection";
+    }
+
+    /// <summary>
+    /// Null when a view projected <paramref name="direction"/> from <paramref name="parent"/> is the parent turned 90° that
+    /// way and shares its centre line: it faces <see cref="ProjectedFacing"/>, and the model's origin is drawn at the same
+    /// height in both (left and right) or the same x (above and below), within 0.01 mm. Otherwise what was measured.
+    /// </summary>
+    public static string? AlignmentMismatch(ViewTransform parent, ViewTransform child, ProjectDirection direction)
+    {
+        var expected = ProjectedFacing(parent, direction);
+        var facing = Facing(child);
+        if (!Same(expected, facing)) return $"a view projected from {Wire(direction)} should face {expected} toward the reader, but faces {facing}";
+        var origin = new Point3(0, 0, 0);
+        var a = ToSheet(parent, origin);
+        var b = ToSheet(child, origin);
+        if (Horizontal(direction))
+        {
+            return Math.Abs(a.Y - b.Y) <= PositionToleranceMm ? null
+                : System.FormattableString.Invariant($"it is not on its parent's horizontal centre line: the model's origin is drawn at y {b.Y:0.###} mm in it and {a.Y:0.###} mm in its parent");
+        }
+        return Math.Abs(a.X - b.X) <= PositionToleranceMm ? null
+            : System.FormattableString.Invariant($"it is not on its parent's vertical centre line: the model's origin is drawn at x {b.X:0.###} mm in it and {a.X:0.###} mm in its parent");
+    }
+
+    /// <summary>
+    /// What a view draws, as the box around its edges on the sheet, from IView.GetPolylines5's numbers: for each edge its
+    /// type, the count of geometry numbers and those numbers, six style numbers (colour, line style, font, weight, layer,
+    /// layer override), the count of points, then each point's x, y and z in metres in the view's own coordinates about
+    /// its position; a point is drawn at position + point × scale (CADapter's measurement on SOLIDWORKS 2026; plan 5.A's
+    /// live run proves it again). Null when the view draws no point. FormatException when the numbers run short.
+    /// </summary>
+    public static SheetBox? DrawnExtents(IReadOnlyList<double> polylines, SheetPoint position, double scale)
+    {
+        double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
+        bool any = false;
+        int i = 0;
+        while (i < polylines.Count)
+        {
+            int geometry = Count(polylines, i + 1, "geometry numbers");
+            i += 2 + geometry + 6;
+            int points = Count(polylines, i, "points");
+            i++;
+            if (i + 3 * points > polylines.Count) throw new FormatException($"the polylines end inside an edge's {points} points (at number {i})");
+            for (int p = 0; p < points; p++, i += 3)
+            {
+                double x = position.X + polylines[i] * 1000 * scale;
+                double y = position.Y + polylines[i + 1] * 1000 * scale;
+                minX = Math.Min(minX, x);
+                minY = Math.Min(minY, y);
+                maxX = Math.Max(maxX, x);
+                maxY = Math.Max(maxY, y);
+                any = true;
+            }
+        }
+        return any ? new SheetBox { Min = new SheetPoint(minX, minY), Max = new SheetPoint(maxX, maxY) } : null;
+    }
+
+    static int Count(IReadOnlyList<double> numbers, int at, string what)
+    {
+        if (at >= numbers.Count) throw new FormatException($"the polylines end where an edge's count of {what} should be (number {at})");
+        double value = numbers[at];
+        if (value < 0 || value != Math.Floor(value)) throw new FormatException($"number {at} should count an edge's {what}, but is {value}");
+        return (int)value;
+    }
+
+    static Vector3 Negate(Vector3 v) => new Vector3(-v.X, -v.Y, -v.Z);
+
+    static string Wire(System.Enum value) => SwAgent.Contracts.WireNames.ForEnum(value);
+
     static IEnumerable<Point3> Corners(Box3 box)
     {
         foreach (double x in new[] { box.Min.X, box.Max.X })
