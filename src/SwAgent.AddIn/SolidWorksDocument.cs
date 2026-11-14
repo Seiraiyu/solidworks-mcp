@@ -31,24 +31,17 @@ internal sealed partial class SolidWorksDocument : ISwDocument
     public string? EditingSketch()
     {
         if (!(Doc.GetActiveSketch2() is ISketch sketch)) return null;
-        if (Doc is IDrawingDoc drawing && OwnSketchOfASheetOrView(drawing, sketch)) return null;
-        return (sketch as IFeature)?.Name ?? "a sketch";
+        var active = new DrawingSketches.Sketch(sketch, (sketch as IFeature)?.Name);
+        return Doc is IDrawingDoc drawing ? DrawingSketches.UserEditing(active, AtRest(drawing)) : active.Name ?? "a sketch";
     }
 
-    /// <summary>
-    /// In a drawing, GetActiveSketch2 gives the current sheet's own sketch (or an activated view's) whenever nothing else
-    /// is being edited (5.A live run): that is the drawing at rest, not the user editing a sketch.
-    /// </summary>
-    static bool OwnSketchOfASheetOrView(IDrawingDoc drawing, ISketch sketch)
+    /// <summary>A drawing's sketches at rest (DrawingSketches): the current sheet's own and the activated view's own.</summary>
+    static IEnumerable<DrawingSketches.Sketch> AtRest(IDrawingDoc drawing)
     {
-        string? name = (sketch as IFeature)?.Name;
-        for (var view = drawing.GetFirstView() as IView; view != null; view = view.GetNextView() as IView)
+        foreach (var view in new[] { drawing.GetFirstView() as IView, drawing.ActiveDrawingView as IView })
         {
-            if (!(view.GetSketch() is ISketch own)) continue;
-            if (ReferenceEquals(own, sketch)) return true;
-            if (name != null && string.Equals((own as IFeature)?.Name, name, StringComparison.Ordinal)) return true;
+            if (view?.GetSketch() is ISketch own) yield return new DrawingSketches.Sketch(own, (own as IFeature)?.Name);
         }
-        return false;
     }
 
     public void Activate()
