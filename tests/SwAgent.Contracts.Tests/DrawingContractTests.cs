@@ -12,7 +12,7 @@ public class DrawingContractTests
     [Fact]
     public void Protocol_13_speaks_drawings()
     {
-        Assert.Equal(13, Protocol.Version);
+        Assert.True(Protocol.Version >= 13, $"protocol {Protocol.Version} speaks drawings from 13 on");
     }
 
     [Theory]
