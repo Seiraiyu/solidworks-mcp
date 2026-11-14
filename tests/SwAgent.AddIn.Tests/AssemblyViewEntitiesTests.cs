@@ -107,6 +107,21 @@ public class AssemblyViewEntitiesTests : AssemblyDrawingTestBase
     }
 
     [Fact]
+    public void A_proxy_the_view_shows_under_two_components_lists_no_reference_for_either()
+    {
+        // The view decides the component a proxy is of; when it shows the proxy under two, which one is never guessed:
+        // no reference is issued, not the pin's and not the block's, and not the one IEntity.GetComponent reports.
+        Drw.AttachedAsProxies = true;
+        Drw.ProxiesReport = PinC;
+        Drw.ProxiesAlsoSameAs = BlockEdge;
+        var note = Run(new AnnotationNoteOperation(Services), new AnnotationNoteRequest
+        {
+            Text = "PIN", At = new SheetPoint(300, 200), AttachTo = new ViewEntity { View = AsmFront.Facts.Name, Reference = RefOf(PinCircle) },
+        }).Annotation;
+        Assert.Null(Assert.Single(note.Attached).Reference);
+    }
+
+    [Fact]
     public void The_component_entity_pair_names_the_pins_circle_through_its_own_part()
     {
         var pinPart = FakeDocument.Part("pin.SLDPRT", PathOf("pin.SLDPRT"));

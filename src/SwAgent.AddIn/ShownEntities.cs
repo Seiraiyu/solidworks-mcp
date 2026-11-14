@@ -59,12 +59,14 @@ public sealed class ShownEntities
         if (model.Assembly() != null)
         {
             // SP4 (5.D live run, case 32): what a note reads back attached to is the view's proxy, whose component does not
-            // read as the assembly names it. The view decides: the one component it shows the entity under (unique, by
-            // SameEntity); the model's answer only when the view lists it under none, and only when the view shows that
-            // component; never a guess.
+            // read as the assembly names it. The view decides: the one component it shows the entity under (SameEntity);
+            // when it shows it under more than one, no reference is issued (which is never guessed); the model's answer
+            // only when the view lists it under none, and only when the view shows that component. Whichever component is
+            // taken, the reference is still verified below by resolving it back to the entity.
             var visible = _drawing.VisibleComponents(view);
-            component = ShownOf(view, visible, shown)
-                ?? (component != null && visible.Contains(component, StringComparer.OrdinalIgnoreCase) ? component : null);
+            var (one, ambiguous) = ShownOf(view, visible, shown);
+            if (ambiguous) return null;
+            component = one ?? (component != null && visible.Contains(component, StringComparer.OrdinalIgnoreCase) ? component : null);
         }
         var (all, refs) = Of(model, view, component);
         int at = all.FindIndex(s => ReferenceEquals(s, shown) || _drawing.SameEntity(s, shown));
@@ -74,8 +76,11 @@ public sealed class ShownEntities
         return References(_references, model, _drawing, view, with, PartOf(model, component))[with.Count - 1];
     }
 
-    /// <summary>The one component of <paramref name="visible"/> the view shows <paramref name="entity"/> of (SameEntity); null for none, or for more than one.</summary>
-    string? ShownOf(string view, IReadOnlyList<string> visible, object entity)
+    /// <summary>
+    /// The one component of <paramref name="visible"/> the view shows <paramref name="entity"/> of (SameEntity): that
+    /// component; (null, false) when it shows it under none; (null, true) when under more than one.
+    /// </summary>
+    (string? One, bool Ambiguous) ShownOf(string view, IReadOnlyList<string> visible, object entity)
     {
         string? found = null;
         foreach (var c in visible)
@@ -83,10 +88,10 @@ public sealed class ShownEntities
             bool shows = _drawing.VisibleEntities(view, edges: true, vertices: true, c).Any(v => ReferenceEquals(v.Entity, entity) || _drawing.SameEntity(v.Entity, entity))
                 || _drawing.VisibleFaces(view, c).Any(f => ReferenceEquals(f, entity) || _drawing.SameEntity(f, entity));
             if (!shows) continue;
-            if (found != null) return null;
+            if (found != null) return (null, true);
             found = c;
         }
-        return found;
+        return (found, false);
     }
 
     /// <summary>The name of the component an entity of an assembly belongs to; null in a part, or for the assembly's own.</summary>

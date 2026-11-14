@@ -49,6 +49,87 @@ public class AnnotationBalloonsTests : AssemblyDrawingTestBase
     }
 
     [Fact]
+    public void A_bill_on_the_sheet_of_another_model_is_not_the_views()
+    {
+        Drw.BomOnSheet = true;
+        var other = Bom();
+        other.Model = PathOf("other.SLDASM");
+        Assert.Null(Balloons().Bom);
+    }
+
+    [Fact]
+    public void A_bill_on_the_sheet_of_another_configuration_is_not_the_views()
+    {
+        Drw.BomOnSheet = true;
+        var other = Bom();
+        other.Configuration = "Exploded";
+        Assert.Null(Balloons().Bom);
+    }
+
+    [Fact]
+    public void Beside_bills_of_another_model_and_configuration_the_views_own_numbers_the_balloons()
+    {
+        Drw.BomOnSheet = true;
+        var model = Bom();
+        model.Model = PathOf("other.SLDASM");
+        var configuration = Bom();
+        configuration.Configuration = "Exploded";
+        var own = Bom();
+        var result = Balloons();
+        Assert.Equal(own.Name, result.Bom);
+        Assert.Equal(new[] { ("block-1", "1"), ("pin-1", "2") }, result.Made.Select(b => (b.Component!, b.ItemNumber!)));
+    }
+
+    [Fact]
+    public void A_bill_on_the_sheet_that_names_no_model_is_the_views_when_it_lists_exactly_the_views_items()
+    {
+        Drw.BomOnSheet = true;
+        var bom = Bom();
+        bom.Model = null;
+        Assert.Equal(bom.Name, Balloons().Bom);
+    }
+
+    [Fact]
+    public void A_bill_on_the_sheet_that_names_no_model_and_lists_other_items_is_not_the_views()
+    {
+        Drw.BomOnSheet = true;
+        var bom = Bom();
+        bom.Model = null;
+        bom.Rows.RemoveAt(1);
+        Assert.Null(Balloons().Bom);
+    }
+
+    [Fact]
+    public void A_bill_of_the_model_whose_configuration_reads_empty_could_be_the_views_and_is_never_chosen_over_another()
+    {
+        // SP4 read IBomFeature.Configuration as "" for a top-level bill (5.D live run): such a bill of the view's model is
+        // taken as the view's; beside another that could be, neither is guessed.
+        Drw.BomOnSheet = true;
+        var empty = Bom();
+        empty.Configuration = "";
+        Assert.Equal(empty.Name, Balloons().Bom);
+        Drw.Annotated.RemoveAll(a => a.Kind == AnnotationKind.Balloon);
+        var own = Bom();
+        var e = Fails(() => Balloons());
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Contains(empty.Name, e.Message);
+        Assert.Contains(own.Name, e.Message);
+    }
+
+    [Fact]
+    public void A_bill_whose_configuration_reads_empty_and_numbers_unlike_the_balloons_is_refused_not_misnumbered()
+    {
+        Drw.BomOnSheet = true;
+        var empty = Bom();
+        empty.Configuration = "";
+        Drw.BalloonsMisnumbered = true;
+        var e = Fails(() => Balloons());
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("balloon_item", e.Error.Details!["check"]);
+        Assert.DoesNotContain(Drw.Annotated, a => a.Kind == AnnotationKind.Balloon);
+    }
+
+    [Fact]
     public void Without_a_bill_each_item_has_its_own_number()
     {
         var result = Balloons();
