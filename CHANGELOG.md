@@ -74,6 +74,12 @@ new add-in; until then every call answers `addin_incompatible`.
 - The dialog watcher can match a 3DEXPERIENCE sign-in window that opens while it is looking for another dialog,
   and close it (#10). Sign in before you start an agent.
 
+### Fixed before release
+
+- `sw_assembly_interference` now says when SOLIDWORKS' interference session marks a saved assembly as having unsaved
+  changes (`marked_dirty: true`), and checks that no component moved and no mate came or went; the assembly is not
+  saved behind you (#29).
+
 ## 0.1.0 (2026-11-11)
 
 The first release: an agent can model parts, sheet-metal parts and assemblies in a running SOLIDWORKS 2026 SP4 on

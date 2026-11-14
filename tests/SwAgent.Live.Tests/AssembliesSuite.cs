@@ -979,8 +979,14 @@ public sealed class AssembliesSuite : IClassFixture<AssembliesSuiteRun>
         var onlyB2 = await Interference(asm, false, b2);
         Assert.Equal(2000, Math.Round(Assert.Single(onlyB2.Interferences).VolumeMm3, 2));
         await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
+        // #29: on a saved assembly, the flag after the check is exactly what marked_dirty says.
+        var saved = await Interference(asm);
+        Assert.Single(saved.Interferences);
+        Assert.Equal(saved.MarkedDirty, saved.Document.Dirty);
+        if (saved.Document.Dirty) await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = asm });
         var t = touching.Interferences.First(i => i.Components.Contains(b3));
-        return $"{b1}/{b2}: {overlap.VolumeMm3} mm³, box {overlap.Box.Min} to {overlap.Box.Max}; touching {b3}: not reported by default, with coincident {t.VolumeMm3} mm³ touching={t.Touching}; components=[{b2}] keeps 1";
+        return $"{b1}/{b2}: {overlap.VolumeMm3} mm³, box {overlap.Box.Min} to {overlap.Box.Max}; touching {b3}: not reported by default, with coincident {t.VolumeMm3} mm³ touching={t.Touching}; components=[{b2}] keeps 1; " +
+               $"on the saved assembly the check {(saved.MarkedDirty ? "marked it (marked_dirty true)" : "kept it clean")}";
     });
 
     [SkippableFact, Step(26)]
