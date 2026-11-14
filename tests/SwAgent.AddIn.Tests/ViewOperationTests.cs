@@ -7,6 +7,88 @@ using Xunit;
 
 namespace SwAgent.AddIn.Tests;
 
+public class ViewProjectTests : DrawingTestBase
+{
+    readonly FakeView _front;
+
+    public ViewProjectTests()
+    {
+        // The block's front view at 1:1 centred at (100, 150): drawn 70..130 by 130..170, 20 deep.
+        _front = Drw.AddView("Sheet1", Block, "front", new SheetPoint(100, 150));
+    }
+
+    ViewResult Project(ProjectDirection direction, SheetPoint? at = null) =>
+        Run(new ViewProjectOperation(Services), new ViewProjectRequest { Parent = _front.Facts.Name, Direction = direction, At = at });
+
+    [Fact]
+    public void A_view_from_the_right_goes_right_in_third_angle_on_the_centre_line_with_a_gap()
+    {
+        var v = Project(ProjectDirection.Right).View;
+        Assert.Equal(ViewType.Projected, v.Type);
+        Assert.Equal(_front.Facts.Name, v.Parent);
+        Assert.Equal(160, v.Position.X, 9);
+        Assert.Equal(150, v.Position.Y, 9);
+        Assert.Equal(150, v.Extents!.Min.X, 9);
+        Assert.Equal(170, v.Extents.Max.X, 9);
+        Assert.Equal(130, v.Extents.Min.Y, 9);
+    }
+
+    [Fact]
+    public void A_view_from_above_goes_below_in_first_angle()
+    {
+        var sheet = Drw.Sheet("Sheet1");
+        sheet.Facts.Projection = Projection.FirstAngle;
+        var v = Project(ProjectDirection.Above).View;
+        Assert.Equal(100, v.Position.X, 9);
+        Assert.Equal(100, v.Position.Y, 9);
+        Assert.Equal(20, v.Extents!.Max.Y - v.Extents.Min.Y, 9);
+    }
+
+    [Fact]
+    public void A_position_on_the_centre_line_and_the_right_side_is_taken()
+    {
+        var v = Project(ProjectDirection.Left, new SheetPoint(30, 150)).View;
+        Assert.Equal(30, v.Position.X, 9);
+    }
+
+    [Theory]
+    [InlineData(250, 150, "/at")]
+    [InlineData(200, 160, "/at/y")]
+    [InlineData(500, 150, "/at")]
+    public void A_position_off_the_side_or_the_centre_line_or_the_sheet_is_refused(double x, double y, string field)
+    {
+        var e = Fails(() => Project(x == 250 ? ProjectDirection.Left : ProjectDirection.Right, new SheetPoint(x, y)));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal(field, e.Error.Details!["field"]);
+        Assert.Empty(Drw.Calls);
+    }
+
+    [Fact]
+    public void An_unknown_parent_is_refused_naming_the_field()
+    {
+        var e = Fails(() => Run(new ViewProjectOperation(Services), new ViewProjectRequest { Parent = "Drawing View9", Direction = ProjectDirection.Right }));
+        Assert.Equal("/parent", e.Error.Details!["field"]);
+    }
+
+    [Fact]
+    public void A_view_off_its_parents_centre_line_is_deleted_again()
+    {
+        Drw.AfterCreate = v => v.Transform = new SwAgent.AddIn.Core.ViewTransform(v.Transform!.Rotation, v.Transform.TxMm, v.Transform.TyMm + 1, 0, v.Transform.Scale);
+        var e = Fails(() => Project(ProjectDirection.Right));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("alignment", e.Error.Details!["check"]);
+        Assert.Contains("horizontal centre line", (string)e.Error.Details["measured"]!);
+        Assert.Single(Drw.ViewNames("Sheet1"));
+    }
+
+    [Fact]
+    public void SOLIDWORKS_making_no_view_is_operation_failed()
+    {
+        Drw.CreateFails = true;
+        Assert.Equal(ErrorCode.OperationFailed, Fails(() => Project(ProjectDirection.Below)).Code);
+    }
+}
+
 public class ViewCreateTests : DrawingTestBase
 {
     ViewResult Create(ViewCreateRequest request) => Run(new ViewCreateOperation(Services), request);

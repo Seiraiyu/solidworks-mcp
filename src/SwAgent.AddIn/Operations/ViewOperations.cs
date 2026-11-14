@@ -31,6 +31,80 @@ static class ViewRequests
         new SwAgentException(ErrorCode.InvalidArgument, message, new JsonObject { ["field"] = field });
 }
 
+public sealed class ViewProjectOperation : DrawingChangeOperation<ViewProjectRequest, ViewResult>
+{
+    /// <summary>The gap between a parent's drawn edges and a projected view placed beside it, sheet mm.</summary>
+    public const double GapMm = 20;
+
+    public ViewProjectOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    string _parent = "";
+    SheetPoint _at = new SheetPoint();
+
+    protected override string? DocumentOf(ViewProjectRequest request) => request.Document;
+
+    protected override ViewResult Change(ISwDocument doc, ISwDrawing drawing, ViewProjectRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        _parent = View(doc, drawing, request.Parent, "/parent");
+        var parent = drawing.ReadView(_parent)!;
+        if (parent.Type != ViewType.Model && parent.Type != ViewType.Projected)
+        {
+            throw ViewRequests.Invalid("/parent",
+                $"/parent: {_parent} is a {WireNames.ForEnum(parent.Type)} view; project from a model view or a projected view");
+        }
+        var t = drawing.Transform(_parent) ?? throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS gives no transform for {_parent}");
+        var sheet = drawing.ReadSheet(parent.Sheet)!;
+        bool horizontal = ViewGeometry.Horizontal(request.Direction);
+        if (request.At is SheetPoint asked)
+        {
+            ViewRequests.OnSheet(asked, sheet, "/at");
+            if (ViewGeometry.WrongSide(parent.Position, asked, request.Direction, sheet.Projection) is string side)
+                throw ViewRequests.Invalid("/at", $"/at: {side}; {_parent} is centred at {parent.Position}");
+            double aligned = horizontal ? asked.Y - parent.Position.Y : asked.X - parent.Position.X;
+            if (Math.Abs(aligned) > ViewGeometry.PositionToleranceMm)
+            {
+                string axis = horizontal ? "y" : "x";
+                throw ViewRequests.Invalid("/at/" + axis, FormattableString.Invariant(
+                    $"/at/{axis}: a view projected {WireNames.ForEnum(request.Direction)} shares {_parent}'s {(horizontal ? "horizontal" : "vertical")} centre line, {axis} = {(horizontal ? parent.Position.Y : parent.Position.X):0.###} mm; give that {axis} or leave at out"));
+            }
+            _at = asked;
+        }
+        else
+        {
+            var box = drawing.ModelOf(_parent)?.BoundingBox(precise: true)
+                ?? throw ViewRequests.Invalid("/at", $"/at: {_parent}'s model gives no bounding box to place the view beside it by; give at");
+            var extents = DrawingReader.Extents(drawing, parent) ?? ViewGeometry.Project(t, box);
+            _at = ViewGeometry.ProjectedPlace(parent.Position, extents, ViewGeometry.Depth(t, box), request.Direction, sheet.Projection, GapMm);
+            ViewRequests.OnSheet(_at, sheet, "/at");
+        }
+        string name = drawing.ProjectView(_parent, _at)
+            ?? throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS made no view projected from {_parent}", new JsonObject { ["parent"] = _parent });
+        MadeView(doc, drawing, tx, name);
+        context.Log.Info($"view.project: {name} from {_parent}, seen from {WireNames.ForEnum(request.Direction)} ({WireNames.ForEnum(sheet.Projection)}) at {_at}");
+        return new ViewResult { View = new ViewInfo { Name = name, Sheet = parent.Sheet }, ModelUnsaved = drawing.ModelOf(_parent)?.Info().Dirty == true };
+    }
+
+    /// <summary>A projected view of the parent where asked, at its scale, turned toward the side asked and on its centre line, drawing the model's projected box.</summary>
+    protected override void Check(ISwDocument doc, ISwDrawing drawing, ViewProjectRequest request, ViewResult result)
+    {
+        string name = result.View.Name;
+        var facts = drawing.ReadView(name) ?? throw ViewCreateOperation.Failed(name, "exists", "the view on its sheet", "no such view");
+        var parent = drawing.ReadView(_parent)!;
+        if (facts.Type != ViewType.Projected) throw ViewCreateOperation.Failed(name, "type", "projected", WireNames.ForEnum(facts.Type));
+        if (facts.Parent != _parent) throw ViewCreateOperation.Failed(name, "parent", _parent, facts.Parent ?? "none");
+        if (!ViewGeometry.Near(facts.Position, _at)) throw ViewCreateOperation.Failed(name, "position", _at.ToString(), facts.Position.ToString());
+        if (!DrawingReader.SameScale(facts.Scale, parent.Scale)) throw ViewCreateOperation.Failed(name, "scale", $"{_parent}'s, {parent.Scale}", facts.Scale.ToString());
+        var parentT = drawing.Transform(_parent)!;
+        var t = ViewChecks.Scale(drawing, name, parentT.Scale);
+        if (ViewGeometry.AlignmentMismatch(parentT, t, request.Direction) is string why) throw ViewCreateOperation.Failed(name, "alignment", $"aligned with {_parent}, seen from {WireNames.ForEnum(request.Direction)}", why);
+        ViewChecks.Drawn(drawing, name, parentT.Scale, null);
+        result.View = Describe(doc, drawing, name);
+    }
+}
+
 public sealed class ViewCreateOperation : DrawingChangeOperation<ViewCreateRequest, ViewResult>
 {
     public ViewCreateOperation(AddInServices services)

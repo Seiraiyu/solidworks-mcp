@@ -35,6 +35,24 @@ public sealed class ViewCreateRequest
     public ViewDisplay? Display { get; set; }
 }
 
+[Operation("view.project", typeof(ViewResult))]
+[Description("Projects a view from another (IDrawingDoc.CreateUnfoldedViewAt3 with the parent selected): the parent's model seen from its left, right, above or below, drawn on the side the sheet's projection implies (third angle: the view from the right on the right; first angle: on the left) and aligned with the parent, as SOLIDWORKS aligns projected views. at (sheet mm) must be on that side and on the parent's centre line (its y for left and right, its x for above and below); beside the parent with a 20 mm gap when absent. Checked by measuring: a projected view of the parent, at the parent's scale, centred where asked within 0.01 mm, turned 90° from the parent toward that side and sharing its centre line (from both views' transforms), drawing the model's box projected and scaled within 0.01 mm; and the model is unchanged. Otherwise the view is deleted again (rolled back).")]
+public sealed class ViewProjectRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The view to project from: a reference (r1.view.…) or its name (Drawing View1).")]
+    public string Parent { get; set; } = "";
+
+    [Description("Which side of the model the new view shows: left, right, above or below.")]
+    public ProjectDirection Direction { get; set; }
+
+    [Description("Where its centre goes, sheet mm: on the side the sheet's projection implies, on the parent's centre line. Beside the parent when absent.")]
+    public SheetPoint? At { get; set; }
+}
+
 [Description("The view made or changed.")]
 public sealed class ViewResult : IDrawingChangeResult
 {
