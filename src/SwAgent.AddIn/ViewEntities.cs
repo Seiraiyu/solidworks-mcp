@@ -47,10 +47,10 @@ public static class ViewEntities
             : given.Component != null
                 ? references.ResolveInComponent(model, given.Entity!, given.Component, field + "/entity", field + "/component", accepted)
                 : references.Resolve(model, given.Entity!, field + "/entity", accepted);
-        // The entity as the view shows it (IView.GetCorrespondingEntity), which is what is selected through the view and
+        // The entity as the view shows it (ShownEntities.InView: SOLIDWORKS' correspondence, or the one shown entity of its shape), which is what is selected through the view and
         // what SOLIDWORKS attaches an annotation to; the model's own when the view gives none (ResolveShown then refuses
         // what the view does not show).
-        return new ResolvedViewEntity(view, model, drawing.InView(view, entity) ?? entity, kind);
+        return new ResolvedViewEntity(view, model, ShownEntities.InView(model, drawing, view, entity) ?? entity, kind);
     }
 
     /// <summary>

@@ -325,13 +325,31 @@ public class ViewEntitiesTests : DrawingTestBase
     }
 
     [Fact]
-    public void A_view_proxy_with_no_model_entity_gets_no_reference_rather_than_a_twin()
+    public void A_view_proxy_SOLIDWORKS_maps_to_nothing_is_named_by_the_one_entity_of_the_part_with_its_shape()
     {
+        // The 5.C live run (round 3): SP4's correspondence verified none of the front view's proxies.
         var side = Drw.AddView("Sheet1", Block, "right", new SheetPoint(300, 150));
         var left = Block.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, Origin = new Point3(0, 20, 20), Axis = new Vector3(0, 1, 0), LengthMm = 40 });
-        Drw.ShowAsProxy(side, left, corresponds: false);
+        var shown = Drw.ShowAsProxy(side, left, corresponds: false);
         var result = Entities(new ViewEntitiesRequest { View = side.Facts.Name, Kinds = new List<ViewEntityKind> { ViewEntityKind.Edge } });
-        Assert.Null(Assert.Single(result.Entities).Reference);
+        string reference = Assert.Single(result.Entities).Reference!;
+        Assert.Same(left, Services.References.Resolve(Block, reference, "edge").Entity);
+        Assert.Same(shown, ViewEntities.ResolveShown(Services.References, Doc, Drw, new ViewEntity { View = side.Facts.Name, Reference = reference }, "/attach_to").Entity);
+    }
+
+    [Fact]
+    public void A_view_proxy_whose_shape_the_part_has_twice_or_not_at_all_gets_no_reference()
+    {
+        var side = Drw.AddView("Sheet1", Block, "right", new SheetPoint(300, 150));
+        var twin = new EntityInfo { Geometry = GeometryType.Line, Origin = new Point3(0, 20, 20), Axis = new Vector3(0, 1, 0), LengthMm = 40 };
+        var left = Block.Add(ReferenceKind.Edge, twin);
+        Block.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, Origin = new Point3(0, 20, 20), Axis = new Vector3(0, 1, 0), LengthMm = 40 });
+        Drw.ShowAsProxy(side, left, corresponds: false);
+        var stray = new FakeEntity(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, Origin = new Point3(99, 99, 99), Axis = new Vector3(1, 0, 0), LengthMm = 7 });
+        Drw.ShowAsProxy(side, stray, corresponds: false);
+        var result = Entities(new ViewEntitiesRequest { View = side.Facts.Name, Kinds = new List<ViewEntityKind> { ViewEntityKind.Edge } });
+        Assert.Equal(2, result.Entities.Count);
+        Assert.All(result.Entities, e => Assert.Null(e.Reference));
     }
 
     [Fact]
