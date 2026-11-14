@@ -105,6 +105,7 @@ public class DrawingContractTests
     [InlineData("view.entities", "view", true)]
     [InlineData("view.section", "view", false)]
     [InlineData("view.detail", "view", false)]
+    [InlineData("view.flat_pattern", "view", false)]
     public void The_operations_are_catalogued_in_their_families(string method, string family, bool readOnly)
     {
         var op = OperationCatalog.Find(method);

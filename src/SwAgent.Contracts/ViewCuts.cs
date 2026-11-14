@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.ComponentModel;
 
 namespace SwAgent.Contracts;
@@ -159,5 +160,71 @@ public sealed class ViewDetailResult : IDrawingChangeResult
 
     [Required]
     [Description("What changed in the drawing: created holds the detail view; models each model shown, unchanged.")]
+    public DrawingChange Change { get; set; } = new DrawingChange();
+}
+
+[Operation("view.flat_pattern", typeof(ViewFlatPatternResult))]
+[Description("Places a sheet-metal part's flat pattern on a drawing sheet as a view (IDrawingDoc.CreateFlatPatternViewFromModelView3), centred at a point in sheet mm, at the sheet's scale or its own, with its bend lines and, unless bend_notes is false, each bend's direction and angle as bend notes. The model must be a saved sheet-metal part (a part that is not sheet metal is wrong_document_type with needs sheet_metal; a never-saved one is refused before SOLIDWORKS is called: save it with sw_document_save_as first); it is opened (opened says so) when it is not, since SOLIDWORKS makes no flat-pattern view of a part that is not open. Checked by measuring: a flat_pattern view of the part where asked within 0.01 mm, at the scale asked exactly, whose drawn extents equal the flat size sheetmetal.read gives (the cut list's Bounding Box Length × Width) × scale within 0.01 mm beyond the cut list's own rounding (either way round), with one bend line per bend and the bend notes as asked; and the part is still folded or flattened as it was. SOLIDWORKS adds a derived configuration (…SM-FLAT-PATTERN) to the part to draw it: that is reported in configurations_added, and when it marks a saved part as changed the result says marked_dirty and the part's volume, bends and flat size are measured unchanged (nothing is saved behind the user). Otherwise the view, the configuration it added and a part it opened are removed again (rolled back).")]
+public sealed class ViewFlatPatternRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("The sheet to put it on: a reference (r1.sheet.…) or a name. The sheet shown when absent; another is shown first.")]
+    public string? Sheet { get; set; }
+
+    [Required]
+    [Description("The sheet-metal part: the full path of a saved .SLDPRT, or the title of an open part that has been saved.")]
+    public string Model { get; set; } = "";
+
+    [Description("The part's configuration to flatten; its active one when absent.")]
+    public string? Configuration { get; set; }
+
+    [Required]
+    [Description("Where its centre goes on the sheet, sheet mm from the lower-left corner.")]
+    public SheetPoint At { get; set; } = new SheetPoint();
+
+    [Description("Its own scale; it follows the sheet's scale when absent.")]
+    public ScaleRatio? Scale { get; set; }
+
+    [Description("False to hide the bend notes (each bend's direction and angle). Shown when absent.")]
+    public bool? BendNotes { get; set; }
+}
+
+[Description("The flat-pattern view made.")]
+public sealed class ViewFlatPatternResult : IDrawingChangeResult
+{
+    [Required]
+    [Description("The flat-pattern view, as read back.")]
+    public ViewInfo View { get; set; } = new ViewInfo();
+
+    [Required]
+    [Description("The part's flat size by its cut list, model mm, which the view's drawn extents were measured against.")]
+    public FlatSize Flat { get; set; } = new FlatSize();
+
+    [Description("The bend lines the view draws, as read back: one per bend.")]
+    public int BendLines { get; set; }
+
+    [Description("True when the view shows its bend notes, as read back.")]
+    public bool BendNotes { get; set; }
+
+    [Description("folded or flattened: the part's state, the same before and after.")]
+    public SheetState State { get; set; }
+
+    [Description("True when the part was not open and was opened for the view (SOLIDWORKS makes none of a part that is not open); it stays open.")]
+    public bool Opened { get; set; }
+
+    [Required]
+    [Description("Configurations SOLIDWORKS added to the part to draw its flat pattern (…SM-FLAT-PATTERN).")]
+    public List<string> ConfigurationsAdded { get; set; } = new List<string>();
+
+    [Description("True when SOLIDWORKS marked the saved part as having unsaved changes in making the view; its volume, bends and flat size were measured unchanged, and it was not saved.")]
+    public bool MarkedDirty { get; set; }
+
+    [Description("True when the part has unsaved changes: the view draws it as it is in memory.")]
+    public bool ModelUnsaved { get; set; }
+
+    [Required]
+    [Description("What changed in the drawing: created holds the view; changed the part opened and the configurations added; models each model shown.")]
     public DrawingChange Change { get; set; } = new DrawingChange();
 }

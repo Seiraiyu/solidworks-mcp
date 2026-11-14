@@ -551,7 +551,7 @@ sealed class FakeDrawing : ISwDrawing
         var scale = new ScaleRatio(sheet.Facts.Scale.Numerator, sheet.Facts.Scale.Denominator);
         var facts = new ViewFacts
         {
-            Name = "Drawing View" + ++_views, Sheet = sheet.Facts.Name, Type = ViewType.FlatPattern, Model = model.Document.Path, Configuration = derived,
+            Name = "Drawing View" + ++_views, Sheet = sheet.Facts.Name, Type = ViewType.FlatPattern, Model = model.Document.Path, Configuration = model.Configurations.Contains(derived) ? derived : configuration,
             Scale = scale, SheetScale = true, Display = ViewDisplay.HiddenLinesRemoved, Position = new SheetPoint(at.X + LandsOffByMm, at.Y),
         };
         var view = new FakeView(facts, model, new ViewTransform(new double[] { 1, 0, 0, 0, 1, 0, 0, 0, 1 }, at.X, at.Y, 0, Ratio(scale)))
