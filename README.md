@@ -185,7 +185,7 @@ You need Windows and SOLIDWORKS 2026 SP4, started from the 3DEXPERIENCE dashboar
 1. Download `solidworks-mcp-<version>-win-x64.zip` from the [releases](https://github.com/Seiraiyu/solidworks-mcp/releases), and check it against the `.sha256` file beside it:
 
    ```powershell
-   (Get-FileHash .\solidworks-mcp-0.1.0-win-x64.zip -Algorithm SHA256).Hash
+   (Get-FileHash .\solidworks-mcp-0.4.0-win-x64.zip -Algorithm SHA256).Hash
    ```
 
 2. Unzip it anywhere, such as your Downloads folder.
@@ -237,7 +237,7 @@ Or in a project's `.mcp.json`:
 {
   "mcpServers": {
     "solidworks": {
-      "command": "C:\\Users\\<you>\\AppData\\Local\\solidworks-mcp\\app\\0.1.0\\swmcp.exe",
+      "command": "C:\\Users\\<you>\\AppData\\Local\\solidworks-mcp\\app\\0.4.0\\swmcp.exe",
       "args": ["serve"]
     }
   }
@@ -304,7 +304,7 @@ Logs are in `%LOCALAPPDATA%\solidworks-mcp\logs\` and are kept 14 days:
 
 ## Upgrading and uninstalling
 
-To upgrade, install the new release the same way. Its `swmcp.exe` is in a new version folder, so run `claude mcp remove --scope user solidworks` and then the `claude_code` line it prints. The add-in speaks protocol version 12, and a SOLIDWORKS that still has an older add-in loaded answers `addin_incompatible`. Close SOLIDWORKS and start it again from the 3DEXPERIENCE dashboard, and the next call loads the new add-in. The earlier version's folder stays until you uninstall.
+To upgrade, install the new release the same way. Its `swmcp.exe` is in a new version folder, so run `claude mcp remove --scope user solidworks` and then the `claude_code` line it prints. The add-in speaks protocol version 17, and a SOLIDWORKS that still has an older add-in loaded answers `addin_incompatible`. Close SOLIDWORKS and start it again from the 3DEXPERIENCE dashboard, and the next call loads the new add-in. The earlier version's folder stays until you uninstall.
 
 ```powershell
 & "$app\swmcp.exe" uninstall

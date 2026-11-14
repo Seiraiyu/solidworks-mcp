@@ -7,7 +7,7 @@ namespace SwAgent.Contracts;
 [Description("Reads a drawing as a drafter reads it: every sheet (name, reference, size in sheet mm and the standard size it is, scale, projection, sheet format) and every view on it (reference, name, type, model, configuration, orientation, parent, centre and drawn extents in sheet mm, scale, display, exploded, annotation and table counts), the drawing's unsaved-changes flag, and each model it shows with its own. Sheets and views are named by reference (r1.sheet.…, r1.view.…) or by name (Sheet1, Drawing View1). Changes nothing.")]
 public sealed class DrawingReadRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 }
 
@@ -15,7 +15,7 @@ public sealed class DrawingReadRequest
 [Description("Adds a sheet to a drawing (IDrawingDoc.NewSheet4): a standard size (a4 … a0, a … e, landscape or portrait) or a custom width_mm and height_mm (sheet mm), a scale, a projection, and a sheet format (.SLDDRT), each the drawing's first sheet's when absent. The new sheet is shown. Checked: there is one more sheet, and its size reads back within 0.01 mm, its scale exactly, its projection and format as asked. Otherwise it is deleted again (rolled back)." + DrawingChangeText.Waits)]
 public sealed class SheetAddRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("The new sheet's name; one no sheet has. SOLIDWORKS' next free SheetN when absent.")]
@@ -50,7 +50,7 @@ public sealed class SheetAddRequest
 [Description("Changes a sheet in place: its name, size (a standard size or width_mm and height_mm, sheet mm), scale, projection or sheet format (.SLDDRT). Values not given stay. Through ISheet.SetProperties2, the scale through ISheet.SetScale. Checked: every value reads back (sizes within 0.01 mm, the scale exactly), and every view that follows the sheet's scale is drawn at the new scale (its transform's scale, and its drawn edges equal to its model's box projected at that scale). Otherwise the sheet's old values are put back (rolled back)." + DrawingChangeText.Waits)]
 public sealed class SheetSetRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -89,7 +89,7 @@ public sealed class SheetSetRequest
 [Description("Shows a sheet of a drawing (IDrawingDoc.ActivateSheet), so new views go on it. Changes what is shown only, not the drawing, so nothing is rolled back. Waits, like a change, while the user edits a sketch, the sheet format or has a command open. Checked: the sheet is the one shown.")]
 public sealed class SheetActivateRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -116,7 +116,7 @@ public sealed class SheetActivateResult
 [Description("Deletes sheets of a drawing, and every view on them, by selecting each (SelectByID2 \"SHEET\") and deleting the selection. A drawing keeps at least one sheet: deleting its last is refused. Checked: each sheet is gone and every other sheet is still there. Not rolled back (a deleted sheet's views cannot be made again as they were): a failed check says what is left." + DrawingChangeText.Waits)]
 public sealed class SheetDeleteRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]

@@ -776,6 +776,27 @@ public class DocumentCloseTests : DocumentTestBase
     }
 
     [Fact]
+    public void A_drawing_named_by_its_file_name_closes_the_drawing_not_its_part()
+    {
+        // Issue #36: extensions hidden, so the part is titled e2e-plate and its drawing e2e-plate - Sheet1.
+        Sw.Track(FakeDocument.Part("e2e-plate", PathOf("e2e-plate.SLDPRT")));
+        Sw.Track(FakeDocument.NewDrawing("e2e-plate - Sheet1", PathOf("e2e-plate.SLDDRW")));
+        var result = Close(new DocumentCloseRequest { Document = "e2e-plate.SLDDRW", UsersDocument = true });
+        Assert.Equal(DocumentType.Drawing, result.Closed.Type);
+        Assert.Equal(new[] { "e2e-plate - Sheet1" }, Sw.ClosedTitles);
+    }
+
+    [Fact]
+    public void A_bare_name_shared_by_a_part_and_its_drawing_closes_nothing()
+    {
+        Sw.Track(FakeDocument.Part("e2e-plate", PathOf("e2e-plate.SLDPRT")));
+        Sw.Track(FakeDocument.NewDrawing("e2e-plate - Sheet1", PathOf("e2e-plate.SLDDRW")));
+        var e = Fails(() => Close(new DocumentCloseRequest { Document = "e2e-plate", UsersDocument = true, Discard = true }));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Empty(Sw.ClosedTitles);
+    }
+
+    [Fact]
     public void A_part_saved_under_a_new_name_is_still_the_agents()
     {
         Sw.Track(FakeDocument.Part("Part1"));

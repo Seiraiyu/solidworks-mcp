@@ -40,7 +40,7 @@ public sealed class ComponentPatternDirection
 [Description("Repeats components in rows along a direction, and optionally in columns along a second one (a component pattern; SOLIDWORKS' LocalLPattern). Lengths in mm. The direction is a straight edge, an axis, or a plane or planar face (along its normal): a reference issued in the assembly, name@component (Axis1@plate-1), or with direction_component a reference issued in that component's own part. The seeds must be top-level, resolved components that are not themselves pattern instances. Checked: the pattern has the instances asked for, and each one sits at its seed's position moved by spacing × i along the direction (and spacing × j along the second), axes unchanged, within 0.001 mm and 0.01 degrees; SOLIDWORKS chooses which way along an edge to go, and sense says which (reverse flips it). Otherwise the pattern is deleted and every moved component put back (rolled back). Delete it later with component.delete and its name or reference. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class ComponentLinearPatternRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -71,7 +71,7 @@ public sealed class ComponentLinearPatternRequest
 [Description("Repeats components around an axis (a component pattern; SOLIDWORKS' LocalCirPattern). Angles in degrees. The axis is an axis, a straight or circular edge, or a cylindrical or conical face (its axis): a reference issued in the assembly, name@component (Axis1@plate-1), or with axis_component a reference issued in that component's own part. With equal_spacing (the default) the instances share angle_deg (360 unless given): 360 is split into count steps, any smaller angle into count - 1; without it, angle_deg is the angle from one instance to the next. The seeds must be top-level, resolved components that are not themselves pattern instances. Checked: the pattern has the instances asked for, and each one is its seed turned about the axis by the step × i, origin and axes, within 0.001 mm and 0.01 degrees; sense says which way it turned (reverse flips it). Otherwise the pattern is deleted and every moved component put back (rolled back). Delete it later with component.delete. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class ComponentCircularPatternRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -102,7 +102,7 @@ public sealed class ComponentCircularPatternRequest
 [Description("Puts one instance of the components on every hole of a part's pattern or Hole Wizard feature (a pattern driven component pattern), so one fastener becomes one in every hole. driving_feature names the feature in the assembly: name@component (CirPattern1@plate-1, CSK for M5 Flat Head Machine Screw1@plate-1) or a reference issued in the assembly. Each seed must already sit on one of the feature's holes (place or mate it there first); the feature must make at least two holes (cylindrical faces), since they are what the check measures. Checked: every other hole gets exactly one instance of each seed, at the seed's distance from its hole's axis and the seed's height along it, within 0.001 mm. Otherwise the pattern is deleted and every moved component put back (rolled back). Delete it later with component.delete. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class ComponentFeaturePatternRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]

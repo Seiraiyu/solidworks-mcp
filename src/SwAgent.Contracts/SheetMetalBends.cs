@@ -7,7 +7,7 @@ namespace SwAgent.Contracts;
 [Description("Bends a sheet-metal part along lines the agent drew on one of its planar faces (sketch.create on that face): each line is one bend, so two lines make a U channel in one call. The side of the lines that holds the fixed face's centre stays where it is; the rest turns angle_deg about each line. Folded parts only: a flattened part is refused. Lengths in mm, angles in degrees. Checked before SOLIDWORKS is called: the sketch is lines only, on the fixed face's plane, and the fixed face's centre is on the face and off every line. Checked after: one new bend per line at the angle, inner radius and allowance asked; the volume changed by exactly the bend arithmetic's folded material less what each bend develops to (nothing at K 0.5), wherever a bend's width can be measured; a face of the sheet still lies in the fixed face's plane through its centre, facing the same way; the thickness is unchanged. Otherwise the bend is deleted and the part is as it was (rolled back); the sketch stays. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class SheetMetalSketchedBendRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -38,7 +38,7 @@ public sealed class SheetMetalSketchedBendRequest
 [Description("Flattens a sheet-metal part (flat true) or folds it back (flat false), by turning its Flat-Pattern feature on or off; a part already in that state is left as it is. The state persists until it is changed again, and sheetmetal.read reports it; the flange, hem, bend, convert and parameter tools need the part folded. Checked: the state reads back from the Flat-Pattern feature; the volume changed by exactly the bend arithmetic's sum over the bends, each developing to its allowance (nothing at K 0.5), where every bend is whole, and where one is cut into, between nothing and that sum give or take the material the cut took from the bend; flattened, no bend has a cylindrical face left and the sheet is its thickness thin across its base face. Otherwise the Flat-Pattern feature is put back as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open.")]
 public sealed class SheetMetalFlattenRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("True to flatten the part, false to fold it back.")]
@@ -70,7 +70,7 @@ public sealed class SheetMetalFlattenResult : IModelChangeResult
 [Description("Unfolds chosen bends of a sheet-metal part with an Unfold feature, keeping fixed_face where it is, so a cut can be made across them (feature.extrude); sheetmetal.fold folds them back with the cut in them, as long as the cut stays inside the bends or reaches only into the side that stays put (SOLIDWORKS folds nothing once a cut reaches past a bend into the side that turns). bends names the bends (sheetmetal.read lists them, by name or reference); every folded bend when absent. A bend already unfolded is refused. Folded parts only: a flattened part is refused. Checked: the feature is an Unfold; each bend named has no cylindrical face left; a face of the sheet still lies in the fixed face's plane through its centre; the volume changed by exactly the bend arithmetic's sum over those bends where each is whole, and between nothing and that, give or take the material the cut took from the bend, where one is cut into. Otherwise it is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class SheetMetalUnfoldRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -85,7 +85,7 @@ public sealed class SheetMetalUnfoldRequest
 [Description("Folds back bends a sheet-metal part's Unfold features unfolded, with a Fold feature, keeping the face fixed that the unfold kept (or fixed_face): what was cut in them while unfolded is folded with them. SOLIDWORKS folds nothing once a cut reaches past a bend into the side that turns: that fold fails (operation_failed) with nothing changed, so keep a cut inside the bend or reaching only into the side that stays put. bends names the bends; every unfolded bend when absent. A bend that is not unfolded is refused. Folded parts only (the Flat-Pattern feature off): a flattened part is refused. Checked: the feature is a Fold; each bend named has its cylindrical faces back; the fixed face is where it was; the volume changed by exactly the bend arithmetic's sum over those bends, the other way, where each is whole again, and between nothing and that, give or take the material the cut took from the bend, where one was cut into (SOLIDWORKS folds a cut's walls up to a few percent of the cut's volume off the arithmetic). Otherwise it is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class SheetMetalFoldRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("The bends to fold, each by name (EdgeBend1) or reference. Every unfolded bend when absent.")]
@@ -99,7 +99,7 @@ public sealed class SheetMetalFoldRequest
 [Description("Turns an ordinary solid of constant wall thickness (an L or U profile extruded) into the part's sheet metal: fixed_face stays where it is, and each sharp inner edge named becomes a bend of bend_radius_mm (inner radius). The allowance becomes the part's default (SOLIDWORKS' own when absent). Refused on a part that is already sheet metal: a part has one sheet-metal body. Lengths in mm. Checked before SOLIDWORKS is called: the fixed face is planar and borders a bend edge; each bend edge is straight, between two planar faces, and an inner (concave) corner. Checked after: the part is sheet metal with one sheet body, Sheet-Metal and Flat-Pattern exist, the thickness reads back and measures thickness_mm; one bend per edge named at the radius asked; the part's box is unchanged within the thickness. Otherwise everything it made is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class SheetMetalConvertRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]

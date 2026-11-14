@@ -75,7 +75,7 @@ public sealed class BendInfo
 [Description("Starts a sheet-metal part from a sketch: a closed profile becomes a flat tab thickness_mm thick; an open chain is extruded depth_mm and each of its sharp corners becomes a bend of bend_radius_mm (inner radius). The allowance becomes the part's default (K-factor 0.5 when absent), and the relief its automatic relief. One sheet-metal body per part: a part that already has one is refused, because thickness belongs to the part and a second body would change the first. Lengths in mm, angles in degrees. Checked: the part is sheet metal with one sheet body, Sheet-Metal and Flat-Pattern exist, the thickness reads back and measures between the sheet's two faces, the radius and allowance read back; a closed profile adds exactly its area times the thickness, and an open chain of lines its straight legs plus each bend's material, with a bend at each corner. Otherwise everything it made is deleted and the part is as it was (rolled back); the sketch stays. Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class SheetMetalBaseFlangeRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -135,7 +135,7 @@ public sealed class SheetMetalFeatureResult : IModelChangeResult
 [Description("Reads a part as a sheet-metal designer does: whether it is sheet metal, whether it is folded or flattened, its thickness, default bend radius, allowance and relief, its sheet-metal body and any ordinary bodies beside it, every bend with its angle, inner radius, allowance and width, its base face (the sheet's largest planar face, whose edges usually take flanges), and the flat pattern's size from SOLIDWORKS' cut list with the cut list's other properties. An ordinary part answers sheet_metal false and nothing more. Lengths in mm, angles in degrees. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class SheetMetalReadRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 }
 
@@ -192,7 +192,7 @@ public sealed class SheetMetalReadResult
 [Description("Changes a sheet-metal part's thickness, default bend radius, default allowance or automatic relief; give at least one. The radius and allowance reach every bend that uses the part's default (SOLIDWORKS says it does, or it has the old default's value). Folded parts only: a flattened part is refused. Lengths in mm. Checked on the part, never on SOLIDWORKS' answer: every value reads back; the thickness measures between the sheet's two faces; every bend that follows the default reads back the new radius and allowance, and its cylindrical faces measure the new radius; an allowance-only change moves the flat size by exactly what the bend arithmetic predicts when the bends are square to each other, and leaves the folded volume as it was. Otherwise every value is put back (rolled back). Busy with user_editing while the user is editing a sketch or has a command open.")]
 public sealed class SheetMetalSetParametersRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("The new thickness, mm, more than 0.")]

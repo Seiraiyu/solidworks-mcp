@@ -7,7 +7,7 @@ namespace SwAgent.Contracts;
 [Description("Places a model view of a saved part or assembly on a drawing sheet (IDrawingDoc.CreateDrawViewFromModelView3): front, back, left, right, top, bottom, isometric, dimetric, trimetric, or a named view the model has, centred at a point in sheet mm (from the sheet's lower-left corner), at the sheet's scale or its own. The model must be a saved file: a never-saved model is refused before SOLIDWORKS is called (save it with sw_document_save_as first); a model with unsaved changes is drawn as it is in memory (model_unsaved says so). Checked by measuring: the view is on the sheet with the model, configuration and display asked; its centre reads back within 0.01 mm and its scale exactly; it faces the orientation asked (the model axis toward the reader from its model-to-sheet transform: +Z front, -Z back, +Y top, -Y bottom, +X right, -X left; equal components for isometric); what it draws (its edges) equals the model's bounding box projected and scaled within 0.01 mm for the six orthographic views, and lies inside it for the others; and the model is unchanged. With exploded, a view of an assembly shows its configuration's exploded view (explode.create makes one), and is checked by measuring instead of against the box: where the explode steps put each component is read in the assembly (its placement and box shown exploded, as explode.list reads them; the configuration must be the assembly's active one), and the view must draw each component inside its exploded box projected and scaled within 0.01 mm, and outside its collapsed one when its steps move it across the sheet. Otherwise the view is deleted again (rolled back)." + DrawingChangeText.Waits)]
 public sealed class ViewCreateRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("The sheet to put it on: a reference (r1.sheet.…) or a name. The sheet shown when absent; another is shown first.")]
@@ -42,7 +42,7 @@ public sealed class ViewCreateRequest
 [Description("Projects a view from another (IDrawingDoc.CreateUnfoldedViewAt3 with the parent selected): the parent's model seen from its left, right, above or below, drawn on the side the sheet's projection implies (third angle: the view from the right on the right; first angle: on the left) and aligned with the parent, as SOLIDWORKS aligns projected views. at (sheet mm) must be on that side and on the parent's centre line (its y for left and right, its x for above and below); beside the parent with a 20 mm gap when absent. Checked by measuring: a projected view of the parent, at the parent's scale, centred where asked within 0.01 mm, turned 90° from the parent toward that side and sharing its centre line (from both views' transforms), drawing the model's box projected and scaled within 0.01 mm; and the model is unchanged. Otherwise the view is deleted again (rolled back)." + DrawingChangeText.Waits)]
 public sealed class ViewProjectRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -60,7 +60,7 @@ public sealed class ViewProjectRequest
 [Description("Moves, rescales, restyles, reconfigures or explodes a drawing view in place: at (its centre, sheet mm; for a detail, the centre of what its circle shows), scale (its own) or sheet_scale (follow the sheet's), display, configuration (a model view's), exploded (a model view of an assembly: its configuration's exploded view, as view.create checks it). Values not given stay; moved without at, a view keeps its centre. A projected or section view is drawn at its parent's scale and moves only along its parent's centre line (SOLIDWORKS silently keeps the aligned coordinate): moving it off that line is refused naming the parent. Each value is recorded before and put back on failure. Checked by measuring: every value reads back (the centre within 0.01 mm, the scale exactly), what it draws equals the model's box projected at its scale within 0.01 mm (orthographic model and projected views; inside it for others; a section, detail or flat pattern draws what it drew, moved and rescaled about its centre; a detail's centre is where it draws its circle's centre), the views projected or cut from it are still on its centre lines, and the model is unchanged." + DrawingChangeText.Waits)]
 public sealed class ViewSetRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -90,7 +90,7 @@ public sealed class ViewSetRequest
 [Description("Deletes drawing views by selecting each (SelectByID2 \"DRAWINGVIEW\") and deleting the selection, a sheet at a time with that sheet shown. A view other views were made from (projected, section, detail) is refused unless they are deleted in the same request. A section or detail view takes its section line or detail circle with it from a parent that is kept. Checked: each view is gone (with its section line or detail circle) and every other view is still there. Not rolled back (a deleted view's annotations cannot be made again as they were): a failed check says what is left, and when SOLIDWORKS refuses one sheet's views after deleting another's, operation_failed gives the views deleted and remaining (rollback_failed). A reference to a deleted view no longer resolves." + DrawingChangeText.Waits)]
 public sealed class ViewDeleteRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -143,7 +143,7 @@ public enum DrawnShape
 [Description("Lists what a view shows (IView.GetVisibleEntities2): each visible edge, silhouette edge and vertex of the model, with its model reference (r1.edge.…, r1.vertex.…, issued in the part, when SOLIDWORKS gives the part a persistent id for it), its description in model mm, and how it is drawn on the sheet in sheet mm: a line's start and end, a circle's or arc's centre and radius (a circle seen face on), a vertex's point, computed from the model's geometry through the view's model-to-sheet transform. In a view of an assembly, component by component (every component it shows, or the one named): each entity names its component, and its reference is the assembly-context one model.find gives in the assembly (naming the component), matched to the component's own entity the same way. This is how to find the edge to dimension or the hole to tolerance, and to check that a reference already held is visible in a view. Changes nothing.")]
 public sealed class ViewEntitiesRequest
 {
-    [Description("The drawing: its title or full path. The active document when absent.")]
+    [Description("The drawing: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]

@@ -37,7 +37,7 @@ public sealed class ExplodeStep
 [Description("Makes an exploded view of an assembly in one call (SOLIDWORKS' Explode): a new view in the active configuration holding every step given, in order, named by SOLIDWORKS (Exploded View1). Lengths in mm. A step's direction is x, y or z (the assembly's axes), a straight edge, an axis, or a plane or planar face's normal: a reference issued in the assembly, name@component (Axis1@plate-1), or with direction_component a reference issued in that component's own part. Checked step by step: after each step the view is shown exploded and every component read; the step's components must have moved distance_mm along the direction from where the previous steps left them, within 0.001 mm and 0.01 degrees, and no other component may have moved. SOLIDWORKS chooses which way along a direction it goes; each step's sense says which, and reverse flips it. Then the assembly is collapsed again (or shows what it showed before) and every component must be back where it was. Otherwise the change is rolled back as far as SOLIDWORKS 2026 SP4 allows: every step is deleted, but its API cannot delete an exploded view, so an empty view is left, and the error says so (rollback_failed, remaining). On SOLIDWORKS 2026 SP4 a step cannot be turned (rotate_about is refused) and the view cannot be named (name is refused). Show it with explode.show, list it with explode.list, empty it with explode.delete. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class ExplodeCreateRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("The configuration to make the view in; it must be the active one (configuration.activate changes that). The active configuration when absent.")]
@@ -163,7 +163,7 @@ public sealed class ExplodeCreateResult : IAssemblyChangeResult
 [Description("Lists an assembly's exploded views, by configuration, with their steps (the components each moves, its distance in mm and angle in degrees). SOLIDWORKS gives a view's steps only while it is shown, so each view of the active configuration is shown for a moment and the assembly then shows what it showed before; views of other configurations are listed without steps. Changes nothing.")]
 public sealed class ExplodeListRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 }
 
@@ -190,7 +190,7 @@ public sealed class ExplodeListResult
 [Description("Explodes an assembly to one of its exploded views of the active configuration, or collapses it. Changes what is shown only, not the assembly, so nothing is rolled back. Waits, like a change, while the user edits a sketch, has a command open or edits a component in context. Checked: the assembly shows the view exploded, or no view, as asked.")]
 public sealed class ExplodeShowRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -223,7 +223,7 @@ public sealed class ExplodeShowResult
 [Description("Empties an exploded view of the active configuration: SOLIDWORKS 2026 SP4's API cannot delete an exploded view, so this deletes every one of its steps and leaves the view itself, empty (view_left_empty says so). A view shown exploded is collapsed first. Components stay where they are collapsed. Checked: the view has no steps. Not rolled back: a failed check says what is left.")]
 public sealed class ExplodeDeleteRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]

@@ -7,7 +7,7 @@ namespace SwAgent.Contracts;
 [Description("Inserts a part or assembly file into an assembly as a component, at a point (mm, assembly coordinates; the assembly origin by default) with its axes aligned to the assembly's unless x_axis and z_axis are given. The first component of an empty assembly is fixed unless fixed is false; later ones float unless fixed is true. Checked: one more component, of that file and configuration, where it was asked to be; otherwise it is removed again. Returns its reference (r1.component.…): opaque, pass it back exactly as given.")]
 public sealed class AssemblyInsertRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -34,7 +34,7 @@ public sealed class AssemblyInsertRequest
 [Description("Lists an assembly's components in tree order, the top level only or the whole tree (each subassembly's components after it): name, reference, file, configuration, whether it is resolved, lightweight, suppressed or missing, fixed, hidden, where it sits (mm, assembly coordinates), its box, how a subassembly solves, and how far its position is defined. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class AssemblyComponentsRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("List the components inside subassemblies too. Default false: the top level only.")]
@@ -57,7 +57,7 @@ public sealed class AssemblyComponentsResult
 [Description("Moves a component to a point (mm, assembly coordinates), with new axes when x_axis and z_axis are given, so it sits near where it belongs before it is mated (a mate's closest alignment depends on where things are). Refuses a fixed component, one its mates leave no freedom (fully defined), and one inside a rigid subassembly. A component with mates is placed and then solved: solved says whether the solve moved it from where it was put. Checked: an unmated component reads back where it was put. Rolled back on failure.")]
 public sealed class ComponentPlaceRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -94,7 +94,7 @@ public sealed class ComponentPlaceResult : IAssemblyChangeResult
 [Description("Changes the state of components in the active configuration: fixed or floating, suppressed or resolved, the configuration of its file each uses, how a subassembly solves (rigid or flexible), hidden or shown. Give at least one property; each component gets every property given. Checked: every property reads back as asked; otherwise every edit is put back.")]
 public sealed class ComponentSetRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -133,7 +133,7 @@ public sealed class ComponentSetResult : IAssemblyChangeResult
 [Description("Deletes top-level components from an assembly, and with them the mates that use them (listed in mates_deleted). An entry may instead name a component pattern, by its name (LocalLPattern1) or reference (r1.feature.…): the pattern is deleted with every instance it made, and its seeds stay. A pattern's seed is refused unless the pattern is deleted in the same request, and a single pattern instance is refused (delete its pattern). A component inside a subassembly is deleted in that subassembly's own document. Checked: the components, patterns, instances and their mates are gone. A deletion is not rolled back: what SOLIDWORKS deleted stays deleted, and a failed check says what is left.")]
 public sealed class ComponentDeleteRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]

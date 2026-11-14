@@ -3,6 +3,77 @@
 Each release of solidworks-mcp. The version numbers follow semantic versioning; until 1.0.0 a minor version may change
 tools and their parameters.
 
+## 0.4.0 (2026-11-14)
+
+The drawings release: an agent can now make a drawing of a saved part or assembly, from its sheets and views to its
+dimensions, notes, tolerances, bill of materials and balloons, and write it as PDF, DXF or DWG. Every change to a
+drawing is checked by measuring what SOLIDWORKS drew, and one that does not hold leaves the drawing as it was. There
+is no 0.3.0. The add-in and swmcp speak protocol 17 (0.2.0 spoke 12). After upgrading, close SOLIDWORKS and start it
+again from the 3DEXPERIENCE dashboard so it loads the new add-in; until then every call answers `addin_incompatible`.
+
+### Drawings
+
+- Drawing documents: `sw_document_new` with `type: drawing` makes a drawing, with its first sheet set up if asked;
+  `sw_drawing_read` lists its sheets, views and the models it shows. A drawing shows saved files: a model never saved
+  is refused before SOLIDWORKS is asked, and one with unsaved changes is drawn as it is in memory (`model_unsaved`).
+- Sheets: `sw_sheet_add`, `sw_sheet_set`, `sw_sheet_activate` and `sw_sheet_delete`.
+- Views: `sw_view_create` (model views, exploded for an assembly) and `sw_view_project`, `sw_view_set` (move,
+  rescale, restyle) and `sw_view_delete`. Each view's drawn extents must be the model's box projected through the
+  view at its scale, within 0.01 mm. `sw_view_entities` lists what a view draws, with references the model tools take.
+- `sw_view_section` (a full section through a point or entity of the model, its hatched faces checked in the cut
+  plane), `sw_view_detail` (a circular detail, checked at its scale inside its circle) and `sw_view_flat_pattern` (a
+  sheet-metal part's flat pattern, checked against its flat size, one bend line per bend).
+- Dimensions and annotations: `sw_annotation_import` (the model's own dimensions, each equal to the model's value),
+  `sw_annotation_dimension` (reference dimensions, each equal to the same quantity measured on the model),
+  `sw_annotation_note`, `sw_annotation_centre_marks`, `sw_annotation_centre_lines`, `sw_annotation_datum`,
+  `sw_annotation_gtol`, and `sw_annotation_list`, `sw_annotation_set` and `sw_annotation_delete`. Everything an
+  annotation attaches to is selected through its view, never picked by sheet coordinates.
+- `sw_drawing_properties` fills the title block through the drawing's own custom properties.
+- Assembly drawings: `sw_table_bom` (a bill of materials, its rows checked against the assembly's components),
+  `sw_table_read`, `sw_table_delete`, and `sw_annotation_balloons` (one balloon per item, numbered as the bill numbers
+  its row).
+- `sw_export_drawing`: a drawing's sheets as one PDF (a page per sheet, each its sheet's size) or as a DXF or DWG per
+  sheet, each file checked on disk; the drawing must have been saved, and your export preferences are left as they
+  were.
+- A drawing change waits (`busy`, `user_editing`) while you edit a view's sketch or the sheet format, and never edits,
+  rebuilds or marks a model as changed.
+
+### Changed
+
+- `sw_document_open` of a drawing lists the models it could not find or found elsewhere; `sw_document_save` of a
+  drawing saves the models it shows that have unsaved changes first; `sw_document_close` of a drawing refuses, unless
+  `discard`, when a model only it shows has unsaved changes.
+- `wrong_document_type` from `sw_export_part`, `sw_export_assembly` and `sw_export_flat_pattern` names
+  `sw_export_drawing` for a drawing.
+
+### Known limits
+
+- Drawings: sheets, views, annotations and tables are named by name (SOLIDWORKS gives them no persistent id), so a
+  renamed one no longer resolves; no sheet-format or title-block geometry editing, automatic dimensioning,
+  broken-out, half or aligned sections, auxiliary, crop or break views, or hole, revision or weldment tables
+  (`sw_api_call` reaches them); a bill with a component excluded by hand is refused; projected, section and detail
+  views are not shown exploded; a DWG is checked by its header and size only.
+- Assemblies: no editing a component in the assembly's context; no advanced or mechanical mates, mirrored components,
+  subassembly forming or dissolving, component replacement or Pack and Go (`sw_api_call` reaches them);
+  `sw_assembly_dof` counts free motion only for fixed, fully defined and unmated components; an exploded view cannot
+  be renamed or deleted through SOLIDWORKS' API, so `sw_explode_delete` leaves it empty, and a step cannot be turned.
+- Sheet metal: no teardrop or rolled hems, corners, jogs, lofted bends, cross breaks, rips, gussets, tabs and slots,
+  vents, forming tools, bend or gauge tables, or more than one sheet-metal body; a cut that reaches past a bend into
+  the side that turns cannot be folded back on SOLIDWORKS 2026 SP4.
+- SOLIDWORKS 2026 SP4 or later, started from the 3DEXPERIENCE dashboard. swmcp never starts SOLIDWORKS.
+- The binaries are not signed.
+- The dialog watcher can match a 3DEXPERIENCE sign-in window that opens while it is looking for another dialog,
+  and close it (#10). Sign in before you start an agent.
+- For contributors: some MCP handshake tests fail now and then in CI (#34); a rerun passes. The released binaries are
+  not affected.
+
+### Fixed before release
+
+- A document named by its file name with an extension (`plate.SLDDRW`) now names only a document of that type: a
+  drawing named so is no longer taken for its part, so `sw_document_close` no longer closes the part instead. A name
+  without an extension that fits more than one open document, such as a part and its drawing, is refused with the
+  candidates in `details.candidates` (#36).
+
 ## 0.2.0 (2026-11-13)
 
 The assemblies release: an agent can now mate, pattern, check, explode and export assemblies, and sheet metal goes

@@ -24,7 +24,7 @@ public sealed class PatternDirection
 [Description("Repeats features, or faces, in rows along a direction, and optionally in columns along a second one. Lengths in mm. Faces are repeated as SOLIDWORKS' geometry pattern and checked by the instances and that the volume moved. For features, the seeds' own volume is measured first by suppressing them for a moment and putting them back, unless another feature is built on them. Checked: the feature exists as a linear pattern with the instances asked, rebuilds without error, and the volume changed by the seeds' volume once for each new instance (or, when it could not be measured, changed at all); an instance that runs off the part or into another changes it by a different amount and is refused. Otherwise the pattern is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class FeatureLinearPatternRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("The features to repeat (the seeds): their names (Cut-Extrude1) or references. Give features or faces.")]
@@ -54,7 +54,7 @@ public sealed class FeatureLinearPatternRequest
 [Description("Repeats features, or faces, around an axis. Angles in degrees. Faces are repeated as SOLIDWORKS' geometry pattern and checked by the instances and that the volume moved. With equal_spacing (the default) the instances share angle_deg (360 unless given) equally; without it, angle_deg is the angle from one instance to the next. The seeds' own volume is measured first by suppressing them for a moment and putting them back, unless another feature is built on them. Checked: the feature exists as a circular pattern with the instances asked, rebuilds without error, and the volume changed by the seeds' volume once for each new instance (or, when it could not be measured, changed at all); an instance that runs off the part or into another changes it by a different amount and is refused. Otherwise the pattern is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class FeatureCircularPatternRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("The features to repeat (the seeds): their names or references. Give features or faces.")]
@@ -84,7 +84,7 @@ public sealed class FeatureCircularPatternRequest
 [Description("Mirrors features, or the part's whole solid body, about a plane or planar face; a mirrored body is merged with the original. With features, their own volume is measured first by suppressing them for a moment and putting them back, unless another feature is built on them. Checked: the feature exists as a mirror, rebuilds without error, and for features the volume changed by their volume once more (or, when it could not be measured, changed at all), for a body it grew and at most doubled. Otherwise the mirror is deleted and the part is as it was (rolled back). Busy with user_editing while the user is editing a sketch or has a command open. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class FeatureMirrorRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("The features to mirror: their names or references. Give features, or body: true.")]

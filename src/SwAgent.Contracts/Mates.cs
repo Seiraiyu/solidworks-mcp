@@ -116,7 +116,7 @@ public sealed class MateInfo
 [Description("Adds a standard mate between two entities of an assembly's components, or two components for lock. Lengths in mm, angles in degrees, everything in the assembly's coordinates. An entity is a reference issued in the assembly (model.find), name@component for a component's planes, axes and points (front@bracket-1, Axis1@sub-1/pin-1), the assembly's own front, top, right or origin, or a reference issued in a component's own part with its component. Checked by measuring after the solve, not by SOLIDWORKS' word: the mate exists without an error, nothing is newly over defined, and its condition holds within 0.001 mm and 0.01 degrees (coincident and tangent touch, concentric axes collinear, parallel at 0, perpendicular at 90, distance and angle at their values, lock leaves the two where they were). Otherwise the mate is deleted and every component the solve moved is put back where it was. measured gives each condition; change.moved lists the components the solve moved. Busy with user_editing while the user is editing a sketch, has a command open or edits a component in context. Place components near where they belong first (component.place): closest alignment depends on where they are. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class MateAddRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -163,7 +163,7 @@ public sealed class MateAddResult : IAssemblyChangeResult
 [Description("Changes a standard mate in place, in the active configuration: a distance mate's distance_mm, an angle mate's angle_deg, the alignment, the flip, or whether it is suppressed. Give at least one. Checked by measuring as mate.add is (a suppressed mate imposes nothing, so only its state is checked); otherwise the old values are put back, and so is every component the solve moved. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class MateEditRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -206,7 +206,7 @@ public sealed class MateEditResult : IAssemblyChangeResult
 [Description("Deletes mates. The components they joined stay where the mates left them (listed in stayed) and can then move as their other mates allow. Checked: the mates are gone. A deletion is not rolled back: what SOLIDWORKS deleted stays deleted, and a failed check says what is left.")]
 public sealed class MateDeleteRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Required]
@@ -234,7 +234,7 @@ public sealed class MateDeleteResult : IAssemblyChangeResult
 [Description("Lists an assembly's mates in tree order, all of them or those of one component: name, reference, type (and SOLIDWORKS' own type name for advanced and mechanical mates), the two things each joins (each naming its component, in the assembly's coordinates), alignment, distance or angle, whether it is suppressed, and its error. The assembly's own mates only; a subassembly's are in its own document. References are opaque: pass one back exactly as it was given, and never build or change one.")]
 public sealed class MateListRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("Only the mates of this component: its reference or name (bracket-1).")]
@@ -257,7 +257,7 @@ public sealed class MateListResult
 [Description("How far each component's position is defined (fixed, fully_defined, under_defined, over_defined) and, when under defined, how it can still move: free translations and rotations as counts, with their directions (and each rotation's axis point) in the assembly's coordinates, mm. An unmated floating component is free in all six. Free motion is read from SOLIDWORKS (IComponent2.GetRemainingDOFs), never probed by moving anything; when SOLIDWORKS cannot describe it the counts are absent and note says why. SOLIDWORKS 2026 SP4 does not describe it for a component with mates (it answers unavailable), so there only the constrained state is given: counts come for fixed, fully defined and unmated components. The top-level components, or the ones named.")]
 public sealed class AssemblyDofRequest
 {
-    [Description("The assembly: its title or full path. The active document when absent.")]
+    [Description("The assembly: its title, its full path, or its file name with the extension (e.g. part.SLDPRT, part.SLDDRW), which picks exactly that document. A name several open documents share is refused with the candidates. The active document when absent.")]
     public string? Document { get; set; }
 
     [Description("Only these components: each a reference or a name (bracket-1, sub-1/pin-1). Every top-level component when absent.")]
