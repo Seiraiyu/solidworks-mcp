@@ -165,7 +165,10 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
         Assert.Single(read.Sheets);
         Assert.Empty(read.Sheets[0].Views);
         Assert.Null((await _run.AddinStateAsync()).Dialog);
-        return $"made {Path.GetFileName(Drawing)} from {Path.GetFileName(made.Template)}: {sheet.Name} {sheet.WidthMm} x {sheet.HeightMm} mm, {sheet.Scale}, format {Path.GetFileName(sheet.Format ?? "none")}; no command was left open";
+        // The default template's sheet has its format held in the template ("*.drt"): read as that, not as none (5.A review).
+        Assert.True(sheet.Format != null, "the default template's sheet read back with no format");
+        Assert.Equal(sheet.Format, read.Sheets[0].Format);
+        return $"made {Path.GetFileName(Drawing)} from {Path.GetFileName(made.Template)}: {sheet.Name} {sheet.WidthMm} x {sheet.HeightMm} mm, {sheet.Scale}, format {sheet.Format}; no command was left open";
     });
 
     [SkippableFact, Step(4)]
@@ -240,6 +243,10 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
         Near(297, details.Sheet.HeightMm, "A4 portrait height");
         Assert.Equal(2, details.Sheet.Scale.Numerator);
         Assert.Equal(Projection.FirstAngle, details.Sheet.Projection);
+        // No format asked: the first sheet's, the template's own one included (5.A review).
+        string? firstFormat = (await Read()).Sheets.Single(s => s.Name == "Sheet1").Format;
+        Assert.True(firstFormat != null, "Sheet1 read back with no format");
+        Assert.Equal(firstFormat, details.Sheet.Format);
         var wide = await Call<SheetAddRequest, SheetResult>(new SheetAddRequest { Document = Drawing, Name = "Wide", WidthMm = 500, HeightMm = 300 });
         Assert.Null(wide.Sheet.Size);
         Near(500, wide.Sheet.WidthMm, "custom width");
@@ -255,7 +262,7 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
         var read = await Read();
         Assert.Equal(new[] { "Sheet1", "Details" }, read.Sheets.Select(s => s.Name));
         Assert.Equal("Sheet1", read.ActiveSheet);
-        return $"Details {details.Sheet.WidthMm} x {details.Sheet.HeightMm} {details.Sheet.Scale} first angle; Wide 500 x 300 then {set.Sheet.Scale}; Sheet1 shown; Wide deleted; deleting the rest refused ({last.Message})";
+        return $"Details {details.Sheet.WidthMm} x {details.Sheet.HeightMm} {details.Sheet.Scale} first angle, format {details.Sheet.Format} as Sheet1's; Wide 500 x 300 then {set.Sheet.Scale}; Sheet1 shown; Wide deleted; deleting the rest refused ({last.Message})";
     });
 
     [SkippableFact, Step(7)]
@@ -406,8 +413,79 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
         return $"opened with warnings {string.Join(", ", opened.Warnings.DefaultIfEmpty("none"))}; active {status.ActiveDocument?.Title}; the block loaded with a window: {hidden.Visible}; front still at {front.Position}";
     });
 
+    /// <summary>A sheet format file SOLIDWORKS installs (its sheetformat folder), for a format change to roll back.</summary>
+    static string? InstalledFormat()
+    {
+        string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SOLIDWORKS");
+        if (!Directory.Exists(root)) return null;
+        var all = Directory.EnumerateFiles(root, "*.slddrt", SearchOption.AllDirectories).ToList();
+        return all.FirstOrDefault(p => string.Equals(Path.GetFileName(p), "a3 - iso.slddrt", StringComparison.OrdinalIgnoreCase)) ?? all.FirstOrDefault();
+    }
+
+    /// <summary>ISheet values of the sheet shown, through api.call (in the add-in): GetProperties2 and GetTemplateName.</summary>
+    async Task<string> ShownSheet(string drawing)
+    {
+        var props = await Call<ApiCallRequest, ApiCallResult>(new ApiCallRequest { Document = drawing, Target = "document", Member = "GetCurrentSheet.GetProperties2", Rebuild = false });
+        var name = await Call<ApiCallRequest, ApiCallResult>(new ApiCallRequest { Document = drawing, Target = "document", Member = "GetCurrentSheet.GetTemplateName", Rebuild = false });
+        return $"GetProperties2 {JsonCodec.Serialize(props.Result)}, GetTemplateName {JsonCodec.Serialize(name.Result)}";
+    }
+
     [SkippableFact, Step(14)]
-    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(14, "the suite's documents closed", async () =>
+    public Task A_template_s_own_format_is_kept_by_sheet_add_and_never_reported_put_back_when_it_was_not() => _run.CaseAsync(14, "on a new drawing from the default template: sheet.add with no format gets Sheet1's own format (*.drt); sheet.set to a format file, cancelled mid-change, either reads the old format back or says rollback_failed", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        string formats = New("formats", ".SLDDRW");
+        await Call<DocumentNewRequest, DocumentNewResult>(new DocumentNewRequest { Type = DocumentType.Drawing, Path = formats });
+        var notes = new List<string>();
+        var failures = new List<string>();
+        try
+        {
+            async Task<SheetInfo> SheetOf(string name) =>
+                (await Call<DrawingReadRequest, DrawingReadResult>(new DrawingReadRequest { Document = formats })).Sheets.Single(s => s.Name == name);
+            string? own = (await SheetOf("Sheet1")).Format;
+            notes.Add($"Sheet1 format {own ?? "none"} ({await ShownSheet(formats)})");
+            Assert.True(own != null, "the default template's Sheet1 read back with no format");
+
+            try
+            {
+                var added = await Call<SheetAddRequest, SheetResult>(new SheetAddRequest { Document = formats, Name = "Second" });
+                notes.Add($"sheet.add Second: format {added.Sheet.Format ?? "none"} ({await ShownSheet(formats)})");
+                if (!string.Equals(own, added.Sheet.Format, StringComparison.OrdinalIgnoreCase)) failures.Add($"sheet.add gave Second the format {added.Sheet.Format ?? "none"}, not Sheet1's {own}");
+            }
+            catch (SwAgentException e)
+            {
+                failures.Add($"sheet.add with no format failed: {WireNames.ForEnum(e.Code)}: {e.Message}");
+            }
+
+            string file = InstalledFormat() ?? throw _run.Stop($"no .slddrt under {Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)}\\SOLIDWORKS for the format change");
+            await Call<SheetActivateRequest, SheetActivateResult>(new SheetActivateRequest { Document = formats, Sheet = "Sheet1" });
+            const string Title = "swmcp live 5.A format rollback";
+            await Call<DiagArmDialogRequest, DiagArmDialogResult>(new DiagArmDialogRequest { Title = Title, Text = "Drawings suite: a dialog during a sheet format change", Buttons = DiagDialogButtons.OkCancel });
+            var open = await Refused(() => Call<SheetSetRequest, SheetResult>(new SheetSetRequest { Document = formats, Sheet = "Sheet1", Format = file }));
+            Assert.Equal(ErrorCode.DialogOpen, open.Code);
+            var dialog = (await _run.AddinStateAsync()).Dialog!;
+            Assert.Equal(Title, dialog.Title);
+            var cancel = await Call<DialogRespondRequest, DialogRespondResult>(new DialogRespondRequest { Dialog = dialog.Id, Button = "Cancel", WaitMs = 30000 });
+            Assert.Equal(DialogOutcome.Error, cancel.Outcome);
+            Assert.Equal(ErrorCode.OperationFailed, cancel.Error!.Code);
+            bool rollbackFailed = cancel.Error.Details?["rollback_failed"] is true;
+            string? after = (await SheetOf("Sheet1")).Format;
+            bool restored = string.Equals(after, own, StringComparison.OrdinalIgnoreCase);
+            notes.Add($"sheet.set {Path.GetFileName(file)} cancelled: rollback_failed {rollbackFailed}, Sheet1 format after {after ?? "none"} ({await ShownSheet(formats)}); {cancel.Error.Message}");
+            // Never a clean rollback that is not one: the format read back is the old one, or the answer says it is not.
+            if (!restored && !rollbackFailed) failures.Add($"the rollback was reported clean, but Sheet1 reads {after ?? "none"}, not {own}");
+            if (restored && rollbackFailed) failures.Add($"rollback_failed reported, but Sheet1 reads its old format {own}");
+        }
+        finally
+        {
+            await Call<DocumentCloseRequest, DocumentCloseResult>(new DocumentCloseRequest { Document = formats, Discard = true });
+        }
+        Assert.True(failures.Count == 0, string.Join("; ", failures) + " | " + string.Join("; ", notes));
+        return string.Join("; ", notes);
+    });
+
+    [SkippableFact, Step(15)]
+    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(15, "the suite's documents closed", async () =>
     {
         var state = await _run.RequireOnlyOwnDocumentsAsync();
         int closed = 0;
