@@ -94,6 +94,67 @@ public interface ISwDrawing
     IReadOnlyList<VisibleEntity> VisibleEntities(string view, bool edges, bool vertices);
 
     /// <summary>
+    /// A full section view of <paramref name="parent"/> centred near <paramref name="at"/>: the add-in draws a line from
+    /// <paramref name="from"/> to <paramref name="to"/> (sheet mm) in the parent's own sketch (the parent activated; the
+    /// points converted with ViewCutGeometry.ToViewSketch, which CADapter measured: a line in sheet coordinates cuts
+    /// nothing and reports success), selects that line, and calls IDrawingDoc.CreateSectionViewAt5 with the label, the
+    /// cut's direction reversed when asked, aligned, and no excluded components (null, never an array). Its name, or null
+    /// when SOLIDWORKS made none, in which case the line is deleted again.
+    /// </summary>
+    string? CutSection(string parent, SheetPoint from, SheetPoint to, SheetPoint at, string label, bool reversed);
+
+    /// <summary>The section a section view shows (IView.GetSection): its label, whether its cut is reversed, and its section line's name; null for any other view.</summary>
+    SectionFacts? ReadSection(string view);
+
+    /// <summary>Each face a section view hatches (IView.GetFaceHatches, IFaceHatch.Face), model mm; empty when it hatches none.</summary>
+    IReadOnlyList<CutFace> CutFaces(string view);
+
+    /// <summary>The labels of the section lines and detail circles <paramref name="view"/> holds (IView.GetSectionLines, GetDetailCircles): the views cut or detailed from it.</summary>
+    IReadOnlyList<string> CutLabels(string view);
+
+    /// <summary>
+    /// Deletes the section line labelled <paramref name="label"/> that <paramref name="parent"/> holds by selecting it
+    /// (SelectByID2 "SECTIONLINE" with its name) and DeleteSelection2. Nothing to do when it holds none; false when
+    /// SOLIDWORKS refused.
+    /// </summary>
+    bool DeleteSectionLine(string parent, string label);
+
+    /// <summary>
+    /// A detail view of <paramref name="parent"/> centred near <paramref name="at"/> at <paramref name="scale"/>: the add-in
+    /// draws a circle centred at <paramref name="centre"/>, <paramref name="radiusMm"/> in radius (both sheet mm, as drawn
+    /// in the parent) in the parent's own sketch (as for <see cref="CutSection"/>), selects it, and calls
+    /// IDrawingDoc.CreateDetailViewAt4 with the label, a standard style and a full circular outline. Its name, or null
+    /// when SOLIDWORKS made none, in which case the circle is deleted again.
+    /// </summary>
+    string? DetailView(string parent, SheetPoint centre, double radiusMm, SheetPoint at, ScaleRatio scale, string label);
+
+    /// <summary>The detail a detail view shows (IView.GetDetail): its label and its circle's name; null for any other view.</summary>
+    DetailFacts? ReadDetail(string view);
+
+    /// <summary>
+    /// Deletes the detail circle labelled <paramref name="label"/> that <paramref name="parent"/> holds by selecting it
+    /// (IDetailCircle.Select) and DeleteSelection2. Nothing to do when it holds none; false when SOLIDWORKS refused.
+    /// </summary>
+    bool DeleteDetailCircle(string parent, string label);
+
+    /// <summary>
+    /// A flat-pattern view of the sheet-metal part at <paramref name="modelPath"/> in <paramref name="configuration"/>,
+    /// centred near <paramref name="at"/> on the active sheet (IDrawingDoc.CreateFlatPatternViewFromModelView3, bend
+    /// lines shown, not flipped): its name, or null when SOLIDWORKS made none (CADapter: it makes none of a part that is
+    /// not open).
+    /// </summary>
+    string? FlatPatternView(string modelPath, string configuration, SheetPoint at);
+
+    /// <summary>How many bend lines a flat-pattern view draws (IView.GetBendLineCount).</summary>
+    int BendLines(string view);
+
+    /// <summary>Whether a flat-pattern view shows its bend notes (IView.ShowSheetMetalBendNotes).</summary>
+    bool BendNotes(string view);
+
+    /// <summary>Shows or hides a flat-pattern view's bend notes (IView.ShowSheetMetalBendNotes).</summary>
+    void SetBendNotes(string view, bool show);
+
+    /// <summary>
     /// The drawing's own document settings the agent sets on a drawing it creates (design 611, Session preferences: origins,
     /// planes, axes, sketches and points hidden in its views; nothing inserted automatically when a view is made), by the
     /// names in <see cref="DrawingSettings.All"/>, read now.
@@ -178,6 +239,27 @@ public sealed class ViewFacts
         Position = new SheetPoint(Position.X, Position.Y), Scale = new ScaleRatio(Scale.Numerator, Scale.Denominator), SheetScale = SheetScale,
         Display = Display, Exploded = Exploded, Annotations = Annotations, Tables = Tables,
     };
+}
+
+/// <summary>The section a section view shows, as SOLIDWORKS holds it.</summary>
+public sealed class SectionFacts
+{
+    public string Label { get; set; } = "";
+
+    /// <summary>True when its cut looks the other way from SOLIDWORKS' default (IDrSection.GetReversedCutDirection).</summary>
+    public bool Reversed { get; set; }
+
+    /// <summary>Its section line's name in its parent (IDrSection.GetName), which selects it.</summary>
+    public string Line { get; set; } = "";
+}
+
+/// <summary>The detail a detail view shows, as SOLIDWORKS holds it.</summary>
+public sealed class DetailFacts
+{
+    public string Label { get; set; } = "";
+
+    /// <summary>Its detail circle's name in its parent (IDetailCircle.GetName).</summary>
+    public string Circle { get; set; } = "";
 }
 
 /// <summary>A model entity a view shows: the view's model's own object, and whether it is a silhouette edge or a vertex.</summary>
