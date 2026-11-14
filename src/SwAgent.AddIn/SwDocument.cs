@@ -64,6 +64,9 @@ public interface ISwDocument
     /// <summary>The document as an assembly, or null when it is a part or a drawing.</summary>
     ISwAssembly? Assembly();
 
+    /// <summary>The document as a drawing, or null when it is a part or an assembly (design 611).</summary>
+    ISwDrawing? Drawing();
+
     /// <summary>Makes it the active document, without rebuilding it.</summary>
     void Activate();
 
