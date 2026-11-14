@@ -263,7 +263,7 @@
             ],
             "additionalProperties": false
           },
-          "description": "What it made (sheets, views, annotations), in the order it made them."
+          "description": "What it made (sheets, views, annotations, tables), in the order it made them."
         },
         "changed": {
           "type": "array",
@@ -322,6 +322,14 @@
           "type": "integer",
           "description": "Annotations after the change, on every sheet and in every view."
         },
+        "tables_before": {
+          "type": "integer",
+          "description": "Tables before the change, on every sheet."
+        },
+        "tables_after": {
+          "type": "integer",
+          "description": "Tables after the change, on every sheet."
+        },
         "models": {
           "type": "array",
           "items": {
@@ -375,6 +383,8 @@
         "views_after",
         "annotations_before",
         "annotations_after",
+        "tables_before",
+        "tables_after",
         "models"
       ],
       "additionalProperties": false,

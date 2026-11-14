@@ -25,9 +25,10 @@
               "centre_line",
               "datum",
               "gtol",
+              "balloon",
               "other"
             ],
-            "description": "dimension, note, centre_mark, centre_line, datum, gtol or other."
+            "description": "dimension, note, centre_mark, centre_line, datum, gtol, balloon or other."
           },
           "sheet": {
             "type": "string",
@@ -146,6 +147,14 @@
             ],
             "additionalProperties": false,
             "description": "A geometric tolerance frame's contents."
+          },
+          "item_number": {
+            "type": "string",
+            "description": "A balloon's item number as it shows it."
+          },
+          "component": {
+            "type": "string",
+            "description": "A balloon's component (pin-1): the component the entity it is attached to belongs to."
           },
           "attached": {
             "type": "array",
@@ -331,7 +340,7 @@
             ],
             "additionalProperties": false
           },
-          "description": "What it made (sheets, views, annotations), in the order it made them."
+          "description": "What it made (sheets, views, annotations, tables), in the order it made them."
         },
         "changed": {
           "type": "array",
@@ -390,6 +399,14 @@
           "type": "integer",
           "description": "Annotations after the change, on every sheet and in every view."
         },
+        "tables_before": {
+          "type": "integer",
+          "description": "Tables before the change, on every sheet."
+        },
+        "tables_after": {
+          "type": "integer",
+          "description": "Tables after the change, on every sheet."
+        },
         "models": {
           "type": "array",
           "items": {
@@ -443,6 +460,8 @@
         "views_after",
         "annotations_before",
         "annotations_after",
+        "tables_before",
+        "tables_after",
         "models"
       ],
       "additionalProperties": false,

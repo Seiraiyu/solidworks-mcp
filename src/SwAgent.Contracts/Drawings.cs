@@ -331,7 +331,7 @@ public sealed class DrawingChange
     public DocumentInfo Document { get; set; } = new DocumentInfo();
 
     [Required]
-    [Description("What it made (sheets, views, annotations), in the order it made them.")]
+    [Description("What it made (sheets, views, annotations, tables), in the order it made them.")]
     public List<CreatedItem> Created { get; set; } = new List<CreatedItem>();
 
     [Required]
@@ -355,6 +355,12 @@ public sealed class DrawingChange
 
     [Description("Annotations after the change, on every sheet and in every view.")]
     public int AnnotationsAfter { get; set; }
+
+    [Description("Tables before the change, on every sheet.")]
+    public int TablesBefore { get; set; }
+
+    [Description("Tables after the change, on every sheet.")]
+    public int TablesAfter { get; set; }
 
     [Required]
     [Description("Each model the drawing shows, before and after: unsaved changes and rebuild errors, which must not have changed.")]

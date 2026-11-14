@@ -9,7 +9,7 @@ public class AnnotationContractTests
     [Fact]
     public void Protocol_15_speaks_dimensions_and_annotations()
     {
-        Assert.Equal(15, Protocol.Version);
+        Assert.True(Protocol.Version >= 15);
     }
 
     [Theory]

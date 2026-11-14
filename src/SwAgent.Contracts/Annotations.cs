@@ -24,7 +24,10 @@ public enum AnnotationKind
     [Description("A geometric tolerance frame.")]
     Gtol,
 
-    [Description("Any other kind (a balloon, a surface finish or weld symbol, a hole callout): listed and deleted, never made here.")]
+    [Description("A balloon numbering a component to a bill of materials' item (annotation.balloons makes them).")]
+    Balloon,
+
+    [Description("Any other kind (a surface finish or weld symbol, a hole callout): listed and deleted, never made here.")]
     Other,
 }
 
@@ -136,7 +139,7 @@ public sealed class AnnotationInfo
     [Description("Its reference (r1.annotation.…). It names the annotation by its sheet, view and name: one deleted, or whose view is renamed or deleted, no longer resolves. References are opaque: pass one back exactly as it was given, and never build or change one.")]
     public string? Reference { get; set; }
 
-    [Description("dimension, note, centre_mark, centre_line, datum, gtol or other.")]
+    [Description("dimension, note, centre_mark, centre_line, datum, gtol, balloon or other.")]
     public AnnotationKind Kind { get; set; }
 
     [Required]
@@ -172,6 +175,12 @@ public sealed class AnnotationInfo
 
     [Description("A geometric tolerance frame's contents.")]
     public GtolFrame? Gtol { get; set; }
+
+    [Description("A balloon's item number as it shows it.")]
+    public string? ItemNumber { get; set; }
+
+    [Description("A balloon's component (pin-1): the component the entity it is attached to belongs to.")]
+    public string? Component { get; set; }
 
     [Required]
     [Description("The model entities it is attached to, each as its view shows it (view and the reference issued in the view's model; reference is absent when SOLIDWORKS gives none). Empty when it is attached to none.")]
