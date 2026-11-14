@@ -26,7 +26,8 @@ public sealed class DrawingsSuiteRun : LiveRun
 /// notes, imported and reference dimensions, centre marks and lines, datums and tolerance frames in cases 20 to 27 and
 /// the user editing the sheet format or a view's sketch, by hand, in cases 28 and 29, plan 5.D the assembly drawing in
 /// cases 30 to 35: the block and case 24's pin assembled with an exploded view, drawn exploded, its entities read
-/// component by component, a bill of materials, balloons numbered to it, and the bill read and deleted): every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve
+/// component by component, a bill of materials, balloons numbered to it, and the bill read and deleted; plan 5.E the drawing
+/// exported as PDF, DXF and DWG in cases 36 to 39 and the make-a-drawing scenario in case 40): every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve
 /// does, in [Step] order, and checks against exact values. It builds its own model first, a 60 x 40 x 20 mm block (x 0..60,
 /// y 0..40, z 0..20) with a Ø10 mm hole through it along z at (20, 20), and draws it on an A3 sheet at 1:1 in third-angle
 /// projection, so every view's drawn extents are known to 0.01 mm. It records each document before creating it, never
@@ -34,7 +35,7 @@ public sealed class DrawingsSuiteRun : LiveRun
 /// Skipped unless SWMCP_LIVE=1.
 /// </summary>
 [TestCaseOrderer(StepOrderer.TypeName, StepOrderer.AssemblyName)]
-public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
+public sealed partial class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
 {
     /// <summary>Sheet positions and extents agree within this, mm (design 611, How a view is checked).</summary>
     const double Tol = 0.01;
@@ -1074,8 +1075,8 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
         return $"read {bom.Name} ({bom.Rows.Count} rows); deleted; the reference now: {gone.Message}; balloons left: {string.Join(", ", left.Where(a => a.Kind == AnnotationKind.Balloon).Select(a => $"{a.Name} {a.ItemNumber}"))}";
     });
 
-    [SkippableFact, Step(36)]
-    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(36, "the suite's documents closed", async () =>
+    [SkippableFact, Step(41)]
+    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(41, "the suite's documents closed", async () =>
     {
         var state = await _run.RequireOnlyOwnDocumentsAsync();
         int closed = 0;
