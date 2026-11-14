@@ -28,7 +28,28 @@ internal sealed partial class SolidWorksDocument : ISwDocument
 
     public bool ReadOnly => Doc.IsOpenedReadOnly();
 
-    public string? EditingSketch() => Doc.GetActiveSketch2() is ISketch sketch ? ((sketch as IFeature)?.Name ?? "a sketch") : null;
+    public string? EditingSketch()
+    {
+        if (!(Doc.GetActiveSketch2() is ISketch sketch)) return null;
+        if (Doc is IDrawingDoc drawing && OwnSketchOfASheetOrView(drawing, sketch)) return null;
+        return (sketch as IFeature)?.Name ?? "a sketch";
+    }
+
+    /// <summary>
+    /// In a drawing, GetActiveSketch2 gives the current sheet's own sketch (or an activated view's) whenever nothing else
+    /// is being edited (5.A live run): that is the drawing at rest, not the user editing a sketch.
+    /// </summary>
+    static bool OwnSketchOfASheetOrView(IDrawingDoc drawing, ISketch sketch)
+    {
+        string? name = (sketch as IFeature)?.Name;
+        for (var view = drawing.GetFirstView() as IView; view != null; view = view.GetNextView() as IView)
+        {
+            if (!(view.GetSketch() is ISketch own)) continue;
+            if (ReferenceEquals(own, sketch)) return true;
+            if (name != null && string.Equals((own as IFeature)?.Name, name, StringComparison.Ordinal)) return true;
+        }
+        return false;
+    }
 
     public void Activate()
     {
