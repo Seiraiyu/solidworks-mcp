@@ -18,6 +18,14 @@ namespace SwAgent.AddIn;
 /// view). Its reference is kept only when it resolves back to that entity and no other entity of the view would be given
 /// it. Anything else is not issued: null, never a twin or a guess.
 /// <para>
+/// In a view of an assembly (plan 5.D) the same matching is done component by component: the view's proxies of one
+/// component (IView.GetVisibleEntities2 with that component) against that component's own faces, edges and vertices in
+/// the assembly (ISwAssembly.Topology), both described as the assembly describes a component's entity (ISwAssembly.Describe,
+/// in the assembly's coordinates), and the reference issued is the assembly-context one model.find gives (naming the
+/// component), verified by resolving it back in the assembly. Which frame SP4 gives an assembly view's proxies is the
+/// live run's to measure; the offset vote covers one shared shift in the view's plane, as for a part.
+/// </para>
+/// <para>
 /// An instance reads each view it is asked about once: what the view shows, the part's topology described, and every
 /// shown entity's verified reference, so a call that resolves or describes many entities (annotation.list, an annotation
 /// on several edges) pays for each view once rather than once per entity (PR #32 review). An instance lives for one read
@@ -32,8 +40,8 @@ public sealed class ShownEntities
 
     readonly ReferenceService _references;
     readonly ISwDrawing _drawing;
-    readonly Dictionary<string, (ISwDocument Model, List<object> Shown, IReadOnlyList<string?> Refs)> _views = new Dictionary<string, (ISwDocument, List<object>, IReadOnlyList<string?>)>(StringComparer.Ordinal);
-    readonly List<(ISwDocument Model, Part Part)> _parts = new List<(ISwDocument, Part)>();
+    readonly Dictionary<string, (ISwDocument Model, List<object> Shown, IReadOnlyList<string?> Refs)> _views = new Dictionary<string, (ISwDocument, List<object>, IReadOnlyList<string?>)>(StringComparer.OrdinalIgnoreCase);
+    readonly List<(ISwDocument Model, string? Component, Part Part)> _parts = new List<(ISwDocument, string?, Part)>();
 
     public ShownEntities(ReferenceService references, ISwDrawing drawing)
     {
@@ -41,18 +49,63 @@ public sealed class ShownEntities
         _drawing = drawing;
     }
 
-    /// <summary>How many times this instance read a view (what it shows and their references): once per view asked about.</summary>
+    /// <summary>How many times this instance read a view (what it shows and their references): once per view (and, in an assembly view, per component) asked about.</summary>
     public int ViewsRead { get; private set; }
 
     /// <summary>The verified reference for <paramref name="shown"/>, or null.</summary>
     public string? Reference(ISwDocument model, string view, object shown)
     {
-        var (all, refs) = Of(model, view);
+        string? component = ComponentName(model, shown);
+        if (model.Assembly() != null)
+        {
+            // SP4 (5.D live run, case 32): what a note reads back attached to is the view's proxy, whose component does not
+            // read as the assembly names it. The view decides: the one component it shows the entity under (SameEntity);
+            // when it shows it under more than one, no reference is issued (which is never guessed); the model's answer
+            // only when the view lists it under none, and only when the view shows that component. Whichever component is
+            // taken, the reference is still verified below by resolving it back to the entity.
+            var visible = _drawing.VisibleComponents(view);
+            var (one, ambiguous) = ShownOf(view, visible, shown);
+            if (ambiguous) return null;
+            component = one ?? (component != null && visible.Contains(component, StringComparer.OrdinalIgnoreCase) ? component : null);
+        }
+        var (all, refs) = Of(model, view, component);
         int at = all.FindIndex(s => ReferenceEquals(s, shown) || _drawing.SameEntity(s, shown));
         if (at >= 0) return refs[at];
         // Not among what the view lists: judged with them, as one more of the view's entities.
         var with = new List<object>(all) { shown };
-        return References(_references, model, _drawing, view, with, PartOf(model))[with.Count - 1];
+        return References(_references, model, _drawing, view, with, PartOf(model, component))[with.Count - 1];
+    }
+
+    /// <summary>
+    /// The one component of <paramref name="visible"/> the view shows <paramref name="entity"/> of (SameEntity): that
+    /// component; (null, false) when it shows it under none; (null, true) when under more than one.
+    /// </summary>
+    (string? One, bool Ambiguous) ShownOf(string view, IReadOnlyList<string> visible, object entity)
+    {
+        string? found = null;
+        foreach (var c in visible)
+        {
+            bool shows = _drawing.VisibleEntities(view, edges: true, vertices: true, c).Any(v => ReferenceEquals(v.Entity, entity) || _drawing.SameEntity(v.Entity, entity))
+                || _drawing.VisibleFaces(view, c).Any(f => ReferenceEquals(f, entity) || _drawing.SameEntity(f, entity));
+            if (!shows) continue;
+            if (found != null) return (null, true);
+            found = c;
+        }
+        return (found, false);
+    }
+
+    /// <summary>The name of the component an entity of an assembly belongs to; null in a part, or for the assembly's own.</summary>
+    string? ComponentName(ISwDocument model, object entity)
+    {
+        if (!(model.Assembly() is ISwAssembly asm)) return null;
+        try
+        {
+            return _references.ComponentOf(model, entity) is object c ? asm.Identify(c).Name : null;
+        }
+        catch (Exception e) when (e is SwAgentException || e is System.Runtime.InteropServices.COMException || e is InvalidCastException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -71,7 +124,7 @@ public sealed class ShownEntities
             return null;
         }
         if (own == null) return null;
-        var (shown, refs) = Of(model, view);
+        var (shown, refs) = Of(model, view, ComponentName(model, entity));
         for (int i = 0; i < shown.Count; i++)
         {
             if (refs[i] != null && string.Equals(refs[i], own, StringComparison.Ordinal)) return shown[i];
@@ -79,34 +132,60 @@ public sealed class ShownEntities
         return null;
     }
 
-    (List<object> Shown, IReadOnlyList<string?> Refs) Of(ISwDocument model, string view)
+    (List<object> Shown, IReadOnlyList<string?> Refs) Of(ISwDocument model, string view, string? component)
     {
-        if (_views.TryGetValue(view, out var read) && ReferenceEquals(read.Model, model)) return (read.Shown, read.Refs);
+        string key = view + "\n" + (component ?? "");
+        if (_views.TryGetValue(key, out var read) && ReferenceEquals(read.Model, model)) return (read.Shown, read.Refs);
         ViewsRead++;
-        var shown = Shown(_drawing, view);
-        var refs = References(_references, model, _drawing, view, shown, PartOf(model));
-        _views[view] = (model, shown, refs);
+        var shown = Shown(_drawing, view, component);
+        var refs = References(_references, model, _drawing, view, shown, PartOf(model, component));
+        _views[key] = (model, shown, refs);
         return (shown, refs);
     }
 
-    Part PartOf(ISwDocument model)
+    Part PartOf(ISwDocument model, string? component)
     {
-        foreach (var (m, p) in _parts)
+        foreach (var (m, c, p) in _parts)
         {
-            if (ReferenceEquals(m, model)) return p;
+            if (ReferenceEquals(m, model) && string.Equals(c, component, StringComparison.OrdinalIgnoreCase)) return p;
         }
-        var part = new Part(model);
-        _parts.Add((model, part));
+        var part = new Part(model, component);
+        _parts.Add((model, component, part));
         return part;
     }
 
-    /// <summary>The verified references for each of <paramref name="shown"/>, in order; any two would share are dropped from both.</summary>
-    public static IReadOnlyList<string?> References(ReferenceService references, ISwDocument model, ISwDrawing drawing, string view, IReadOnlyList<object> shown) =>
-        References(references, model, drawing, view, shown, new Part(model));
+    /// <summary>
+    /// The verified references for each of <paramref name="shown"/>, in order; any two would share are dropped from both.
+    /// In a view of an assembly, <paramref name="component"/> names the component they are all entities of.
+    /// </summary>
+    public static IReadOnlyList<string?> References(ReferenceService references, ISwDocument model, ISwDrawing drawing, string view, IReadOnlyList<object> shown, string? component = null) =>
+        References(references, model, drawing, view, shown, new Part(model, component));
+
+    /// <summary>
+    /// For the add-in log, when a view's proxies of a component found no reference: the first proxy's form and position,
+    /// and where the component's own entities of that form are, so the frame SP4 gives an assembly view's proxies can be
+    /// read from the log (5.D live run). Null when every proxy has a reference, or none can be described.
+    /// </summary>
+    public static string? Unmatched(ISwDocument model, string? component, IReadOnlyList<object> shown, IReadOnlyList<string?> refs)
+    {
+        var part = new Part(model, component);
+        for (int i = 0; i < shown.Count; i++)
+        {
+            if (refs[i] != null || !(part.Describe(shown[i]) is EntityInfo p)) continue;
+            var own = part.OfKind(p.Kind).Where(c => SameForm(c.Info, p)).Select(c => Where(c.Info.Origin)).ToList();
+            return $"{p.Kind} {p.Geometry} at {Where(p.Origin)} (r {p.RadiusMm?.ToString("0.###") ?? "-"}, length {p.LengthMm?.ToString("0.###") ?? "-"}); the component's own of its form: {(own.Count == 0 ? $"none of {part.OfKind(p.Kind).Count} {p.Kind}" : string.Join(", ", own.Take(6)))}";
+        }
+        return null;
+    }
+
+    static string Where(Point3? p) => p == null ? "-" : $"({p.X:0.###}, {p.Y:0.###}, {p.Z:0.###})";
+
+    /// <summary>An entity as its model describes it: a part's own way, or a component's in the assembly's coordinates; null for one that is not a face, edge or vertex.</summary>
+    public static EntityInfo? DescribeIn(ISwDocument model, string? component, object entity) => new Part(model, component).Describe(entity);
 
     static IReadOnlyList<string?> References(ReferenceService references, ISwDocument model, ISwDrawing drawing, string view, IReadOnlyList<object> shown, Part part)
     {
-        var seen = shown.Select(s => Describe(model, s)).ToList();
+        var seen = shown.Select(part.Describe).ToList();
         var forms = seen.Select(p => p == null ? new List<(object, EntityInfo Info)>() : part.OfKind(p.Kind).Where(c => SameForm(c.Info, p)).ToList()).ToList();
         // Where the proxy is as given wins; only proxies with no entity of their form there vote for the view's offset,
         // which lies in the view's plane (round 4: (130, 180, 0) for the front view), so a front edge and the back edge
@@ -124,14 +203,14 @@ public sealed class ShownEntities
                 continue;
             }
             var at = exact[i].Count > 0 ? exact[i] : offset == null ? exact[i] : forms[i].Where(c => Shifted(c.Info, p, offset)).ToList();
-            refs.Add(at.Count == 1 ? Verified(references, model, at[0].Item1, at[0].Item2) : null);
+            refs.Add(at.Count == 1 ? Verified(references, model, part, at[0].Item1, at[0].Item2) : null);
         }
         var twins = new HashSet<string>(refs.Where(r => r != null).GroupBy(r => r!, StringComparer.Ordinal).Where(g => g.Count() > 1).Select(g => g.Key), StringComparer.Ordinal);
         return refs.Select(r => r != null && twins.Contains(r) ? null : r).ToList();
     }
 
-    static List<object> Shown(ISwDrawing drawing, string view) =>
-        drawing.VisibleEntities(view, edges: true, vertices: true).Select(v => v.Entity).Concat(drawing.VisibleFaces(view)).ToList();
+    static List<object> Shown(ISwDrawing drawing, string view, string? component) =>
+        drawing.VisibleEntities(view, edges: true, vertices: true, component).Select(v => v.Entity).Concat(drawing.VisibleFaces(view, component)).ToList();
 
     /// <summary>
     /// The offset the view's proxies share with the part, beyond none: the most common difference between a proxy's
@@ -186,14 +265,14 @@ public sealed class ShownEntities
     }
 
     /// <summary>The reference issued for the part's own <paramref name="entity"/> when it resolves back to an entity of its form at its position; null otherwise.</summary>
-    static string? Verified(ReferenceService references, ISwDocument model, object entity, EntityInfo info)
+    static string? Verified(ReferenceService references, ISwDocument model, Part part, object entity, EntityInfo info)
     {
         try
         {
             string? reference = references.Describe(model, entity).Reference;
             if (reference == null) return null;
             var back = references.Resolve(model, reference, "").Entity;
-            return Describe(model, back) is EntityInfo b && SameForm(b, info) && At(info, b, null) ? reference : null;
+            return part.Describe(back) is EntityInfo b && SameForm(b, info) && At(info, b, null) ? reference : null;
         }
         catch (Exception e) when (e is SwAgentException || e is System.Runtime.InteropServices.COMException)
         {
@@ -201,30 +280,41 @@ public sealed class ShownEntities
         }
     }
 
-    static EntityInfo? Describe(ISwDocument model, object entity)
-    {
-        try
-        {
-            if (model.KindOf(entity) is not ReferenceKind kind || !(kind == ReferenceKind.Edge || kind == ReferenceKind.Vertex || kind == ReferenceKind.Face)) return null;
-            var info = model.Describe(entity);
-            info.Kind = kind;
-            return info;
-        }
-        catch (Exception e) when (e is SwAgentException || e is System.Runtime.InteropServices.COMException || e is InvalidCastException)
-        {
-            return null;
-        }
-    }
-
-    /// <summary>The part's own faces, edges and vertices with their descriptions, read once per kind.</summary>
+    /// <summary>
+    /// The model's own faces, edges and vertices with their descriptions, read once per kind: a part's, or one component's
+    /// of an assembly (ISwAssembly.Topology, described with ISwAssembly.Describe in the assembly's coordinates).
+    /// </summary>
     sealed class Part
     {
         readonly ISwDocument _model;
+        readonly ISwAssembly? _asm;
+        readonly object? _component;
         readonly Dictionary<ReferenceKind, List<(object, EntityInfo Info)>> _own = new Dictionary<ReferenceKind, List<(object, EntityInfo Info)>>();
 
-        public Part(ISwDocument model)
+        public Part(ISwDocument model, string? component)
         {
             _model = model;
+            if (component != null && model.Assembly() is ISwAssembly asm)
+            {
+                _asm = asm;
+                _component = asm.ComponentByName(component);
+            }
+        }
+
+        /// <summary>Null for an entity that is not a face, edge or vertex, or that SOLIDWORKS will not describe.</summary>
+        public EntityInfo? Describe(object entity)
+        {
+            try
+            {
+                if (_model.KindOf(entity) is not ReferenceKind kind || !(kind == ReferenceKind.Edge || kind == ReferenceKind.Vertex || kind == ReferenceKind.Face)) return null;
+                var info = _component != null ? _asm!.Describe(_component, entity) : _model.Describe(entity);
+                info.Kind = kind;
+                return info;
+            }
+            catch (Exception e) when (e is SwAgentException || e is System.Runtime.InteropServices.COMException || e is InvalidCastException)
+            {
+                return null;
+            }
         }
 
         public List<(object, EntityInfo Info)> OfKind(ReferenceKind kind)
@@ -232,9 +322,10 @@ public sealed class ShownEntities
             if (_own.TryGetValue(kind, out var list)) return list;
             var topology = kind == ReferenceKind.Edge ? TopologyKind.Edge : kind == ReferenceKind.Vertex ? TopologyKind.Vertex : TopologyKind.Face;
             list = new List<(object, EntityInfo Info)>();
-            foreach (var e in _model.Topology(topology))
+            var entities = _component != null ? _asm!.Topology(_component, topology) : _asm != null ? new List<object>() : _model.Topology(topology);
+            foreach (var e in entities)
             {
-                if (Describe(_model, e) is EntityInfo info) list.Add((e, info));
+                if (Describe(e) is EntityInfo info) list.Add((e, info));
             }
             _own[kind] = list;
             return list;

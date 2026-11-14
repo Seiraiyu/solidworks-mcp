@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "Lists what a view of a part shows (IView.GetVisibleEntities2): each visible edge, silhouette edge and vertex of the model, with its model reference (r1.edge.…, r1.vertex.…, issued in the part, when SOLIDWORKS gives the part a persistent id for it), its description in model mm, and how it is drawn on the sheet in sheet mm: a line's start and end, a circle's or arc's centre and radius (a circle seen face on), a vertex's point, computed from the model's geometry through the view's model-to-sheet transform. This is how to find the edge to dimension or the hole to tolerance, and to check that a reference already held is visible in a view. Views of parts only: an assembly view is refused. Changes nothing.",
+  "description": "Lists what a view shows (IView.GetVisibleEntities2): each visible edge, silhouette edge and vertex of the model, with its model reference (r1.edge.…, r1.vertex.…, issued in the part, when SOLIDWORKS gives the part a persistent id for it), its description in model mm, and how it is drawn on the sheet in sheet mm: a line's start and end, a circle's or arc's centre and radius (a circle seen face on), a vertex's point, computed from the model's geometry through the view's model-to-sheet transform. In a view of an assembly, component by component (every component it shows, or the one named): each entity names its component, and its reference is the assembly-context one model.find gives in the assembly (naming the component), matched to the component's own entity the same way. This is how to find the edge to dimension or the hole to tolerance, and to check that a reference already held is visible in a view. Changes nothing.",
   "properties": {
     "document": {
       "type": "string",
@@ -20,6 +20,10 @@
         ]
       },
       "description": "edge, vertex or both. Both when absent."
+    },
+    "component": {
+      "type": "string",
+      "description": "In a view of an assembly: only this component's entities, by reference (r1.component.…) or name (pin-1). Every component the view shows when absent."
     }
   },
   "required": [

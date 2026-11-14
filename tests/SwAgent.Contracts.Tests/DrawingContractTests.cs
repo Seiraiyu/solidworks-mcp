@@ -117,6 +117,10 @@ public class DrawingContractTests
     [InlineData("annotation.set", "annotation", false)]
     [InlineData("annotation.delete", "annotation", false)]
     [InlineData("drawing.properties", "drawing", false)]
+    [InlineData("annotation.balloons", "annotation", false)]
+    [InlineData("table.bom", "table", false)]
+    [InlineData("table.read", "table", true)]
+    [InlineData("table.delete", "table", false)]
     public void The_operations_are_catalogued_in_their_families(string method, string family, bool readOnly)
     {
         var op = OperationCatalog.Find(method);

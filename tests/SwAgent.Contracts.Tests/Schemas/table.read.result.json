@@ -1,0 +1,140 @@
+{
+  "type": "object",
+  "description": "The drawing's tables, read back.",
+  "properties": {
+    "tables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A table on a drawing, read back: its columns and rows as text, and for a bill of materials each row's component file and configuration.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Its name, as SOLIDWORKS names its annotation (unique on its sheet)."
+          },
+          "reference": {
+            "type": "string",
+            "description": "Its reference (r1.table.…). It names the table by its sheet and name: one deleted, or whose sheet is renamed or deleted, no longer resolves. References are opaque: pass one back exactly as it was given, and never build or change one."
+          },
+          "sheet": {
+            "type": "string",
+            "description": "The sheet it is on."
+          },
+          "view": {
+            "type": "string",
+            "description": "The view it is anchored to (a bill of materials' view); absent for one on the sheet itself."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bom",
+              "other"
+            ],
+            "description": "bom or other."
+          },
+          "bom_kind": {
+            "type": "string",
+            "enum": [
+              "top_level",
+              "parts_only",
+              "indented"
+            ],
+            "description": "A bill of materials' kind: top_level, parts_only or indented."
+          },
+          "configuration": {
+            "type": "string",
+            "description": "The assembly configuration a bill of materials lists."
+          },
+          "feature": {
+            "type": "string",
+            "description": "A bill of materials' feature name (Bill of Materials1)."
+          },
+          "position": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "Mm to the right of the sheet's lower-left corner."
+              },
+              "y": {
+                "type": "number",
+                "description": "Mm above the sheet's lower-left corner."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "Where SOLIDWORKS says the table is, sheet mm (its annotation's position); read back, not checked."
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Its column titles, left to right."
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "A row of a table, as read back.",
+              "properties": {
+                "cells": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Its cells' text as shown, column by column."
+                },
+                "item_number": {
+                  "type": "string",
+                  "description": "A bill of materials row's item number, as SOLIDWORKS numbers it."
+                },
+                "quantity": {
+                  "type": "integer",
+                  "description": "A bill of materials row's quantity, from its quantity column; absent when the table has none or it is not a number."
+                },
+                "path": {
+                  "type": "string",
+                  "description": "A bill of materials row's component file, full path; absent when its components have none or several."
+                },
+                "configuration": {
+                  "type": "string",
+                  "description": "The configuration of that file its components use."
+                },
+                "components": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "A bill of materials row's components (pin-1, sub-1/pin-1), as SOLIDWORKS lists them for the row; empty for another table."
+                }
+              },
+              "required": [
+                "cells",
+                "components"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Its rows below the header, top to bottom."
+          }
+        },
+        "required": [
+          "name",
+          "sheet",
+          "kind",
+          "columns",
+          "rows"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Each table, sheet by sheet."
+    }
+  },
+  "required": [
+    "tables"
+  ],
+  "additionalProperties": false
+}

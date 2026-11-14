@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "description": "Balloons the components a view of an assembly shows (IDrawingDoc.AutoBalloon5 with the view selected by its name, never picked by sheet coordinates): one balloon on one instance of each item (a component file and configuration, as a bill of materials groups them), numbered as the view's bill of materials numbers its rows when the view has one (table.bom), laid out square, circular, top, bottom, left or right of the view. An item already ballooned in the view is skipped (already). Checked by walking the view's annotations, not by SOLIDWORKS' answer: every item the view shows has a balloon, no item gained two, each balloon made is attached to one component the view shows, and its item number is that component's row's in the bill (without a bill, an item's balloons share a number and two items never do); the model is unchanged. Otherwise the balloons made are deleted again (rolled back). The view's configuration must be the assembly's active one. Waits, changing nothing (busy, user_editing), while the user edits a view's sketch or the sheet format (sheet_format: true) or has a command open. After the user exits a view's sketch, SOLIDWORKS keeps that view activated and changes keep waiting until the user lets go of it: ask them to double-click the sheet outside every view.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "view": {
+      "type": "string",
+      "description": "The view of the assembly: a reference (r1.view.…) or its name (Drawing View1)."
+    },
+    "layout": {
+      "type": "string",
+      "enum": [
+        "square",
+        "circular",
+        "top",
+        "bottom",
+        "left",
+        "right"
+      ],
+      "description": "square, circular, top, bottom, left or right; square when absent."
+    }
+  },
+  "required": [
+    "view"
+  ],
+  "additionalProperties": false
+}

@@ -106,6 +106,20 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
                 throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not delete the annotation {made.Name} from {DrawingAnnotations.Where(made)}");
         });
 
+    /// <summary>The table <paramref name="text"/> names, by reference or name, as SOLIDWORKS holds it now.</summary>
+    protected TableFacts Table(ISwDocument doc, ISwDrawing drawing, string text, string field) => Services.References.ResolveTable(doc, drawing, text, field);
+
+    /// <summary>Records a table the change made, with its reference; a rollback deletes it by selection (its sheet shown) and checks it is gone.</summary>
+    protected void MadeTable(ISwDocument doc, ISwDrawing drawing, ModelTransaction tx, TableFacts made) =>
+        tx.Made(new CreatedItem { Name = made.Name, Kind = ReferenceKind.Table, Reference = Services.References.IssueTable(doc, made) }, () =>
+        {
+            if (!drawing.DeleteTables(made.Sheet, new[] { made.Name }) || DrawingTables.Read(drawing, made.Sheet, made.Name) != null)
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not delete the table {made.Name} from {made.Sheet}");
+        });
+
+    /// <summary>A table as results report it.</summary>
+    protected TableInfo DescribeTable(ISwDocument doc, TableFacts table) => DrawingTables.Info(Services.References, doc, table);
+
     /// <summary>An annotation as results report it.</summary>
     protected AnnotationInfo DescribeAnnotation(ISwDocument doc, ISwDrawing drawing, AnnotationFacts annotation) =>
         DrawingAnnotations.Info(Services.References, doc, drawing, annotation);
@@ -168,7 +182,7 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
     TResult RunChange(ISwDocument doc, ISwDrawing drawing, TRequest request, IOperationContext context)
     {
         var models = ModelStates.Take(Services.SolidWorks, doc);
-        int sheetsBefore = drawing.SheetNames().Count, viewsBefore = DrawingReader.ViewCount(drawing), annotationsBefore = DrawingAnnotations.Count(drawing);
+        int sheetsBefore = drawing.SheetNames().Count, viewsBefore = DrawingReader.ViewCount(drawing), annotationsBefore = DrawingAnnotations.Count(drawing), tablesBefore = DrawingTables.Count(drawing);
         var tx = new ModelTransaction();
         TResult result;
         try
@@ -183,7 +197,7 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         try
         {
             Check(doc, drawing, request, result);
-            result.Change = Evidence(doc, drawing, tx, sheetsBefore, viewsBefore, annotationsBefore, models);
+            result.Change = Evidence(doc, drawing, tx, sheetsBefore, viewsBefore, annotationsBefore, tablesBefore, models);
         }
         catch (Exception e)
         {
@@ -214,7 +228,7 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         }
     }
 
-    static DrawingChange Evidence(ISwDocument doc, ISwDrawing drawing, ModelTransaction tx, int sheetsBefore, int viewsBefore, int annotationsBefore, ModelStates before) => new DrawingChange
+    static DrawingChange Evidence(ISwDocument doc, ISwDrawing drawing, ModelTransaction tx, int sheetsBefore, int viewsBefore, int annotationsBefore, int tablesBefore, ModelStates before) => new DrawingChange
     {
         Document = doc.Info(),
         Created = tx.Created.ToList(),
@@ -225,6 +239,8 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         ViewsAfter = DrawingReader.ViewCount(drawing),
         AnnotationsBefore = annotationsBefore,
         AnnotationsAfter = DrawingAnnotations.Count(drawing),
+        TablesBefore = tablesBefore,
+        TablesAfter = DrawingTables.Count(drawing),
         Models = before.Shown(ModelStates.Take(before.Sw, doc)),
     };
 

@@ -56,6 +56,8 @@ public static class DrawingAnnotations
             ModelDimension = dimension ? model : (bool?)null,
             Label = a.Label,
             Gtol = a.Gtol,
+            ItemNumber = a.ItemNumber,
+            Component = a.Kind == AnnotationKind.Balloon && a.Components.Count == 1 ? a.Components[0] : null,
         };
         var modelDoc = a.View == null ? null : drawing.ModelOf(a.View);
         foreach (var e in a.Attached) info.Attached.Add(new ViewEntity { View = a.View ?? a.Sheet, Reference = modelDoc == null ? null : Reference(shown, modelDoc, a.View!, e) });

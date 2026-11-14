@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using SwAgent.AddIn.Core;
 using SwAgent.Contracts;
 
@@ -91,10 +92,55 @@ public interface ISwDrawing
     ISwDocument? ModelOf(string view);
 
     /// <summary>
-    /// The model's edges, silhouette edges and vertices a view shows (IView.GetVisibleEntities2 with no component), as the
-    /// view's model's own objects, each once.
+    /// The model's edges, silhouette edges and vertices a view shows (IView.GetVisibleEntities2), as the view's model's own
+    /// objects, each once: a part's with no component; in a view of an assembly, those of the component named
+    /// <paramref name="component"/> (as <see cref="VisibleComponents"/> names it; empty when the view shows no such one).
     /// </summary>
-    IReadOnlyList<VisibleEntity> VisibleEntities(string view, bool edges, bool vertices);
+    IReadOnlyList<VisibleEntity> VisibleEntities(string view, bool edges, bool vertices, string? component = null);
+
+    /// <summary>The components a view of an assembly shows (IView.GetVisibleComponents), by name (IComponent2.Name2), each once; empty for a view of a part.</summary>
+    IReadOnlyList<string> VisibleComponents(string view);
+
+    /// <summary>
+    /// The box around what a view of an assembly draws for each component, sheet mm, by component name: each edge
+    /// IView.GetPolylines7 draws (option 0, no crosshatch) with its polyline, given to the component its edge belongs to
+    /// (IEntity.GetComponent), read with ExplodedImages.PerComponent. api_error when SOLIDWORKS' numbers do not read as
+    /// one polyline per edge.
+    /// </summary>
+    IReadOnlyDictionary<string, SheetBox> ComponentImages(string view);
+
+    /// <summary>Shows a view's assembly exploded, or collapsed (IView.ShowExploded); false when SOLIDWORKS refused. The caller reads it back.</summary>
+    bool ShowExploded(string view, bool exploded);
+
+    /// <summary>
+    /// Every table on a sheet (IView.GetTableAnnotations of the sheet's own view and each of its views), each once, as
+    /// SOLIDWORKS holds it now: its name, the view it is anchored to, its columns and rows as shown, and for a bill of
+    /// materials its kind, configuration and each row's components (IBomTableAnnotation.GetComponents2, read only). Empty
+    /// for no such sheet.
+    /// </summary>
+    IReadOnlyList<TableFacts> Tables(string sheet);
+
+    /// <summary>
+    /// A bill of materials of <paramref name="view"/>'s assembly in <paramref name="configuration"/> (IView.InsertBomTable4
+    /// with the configuration named, never empty: CADapter measured an empty name making a table with no rows), with
+    /// SOLIDWORKS' standard template, its <paramref name="anchor"/> corner at <paramref name="at"/> (sheet mm) or at the
+    /// sheet format's anchor point when null: its table's name, or null when SOLIDWORKS made none.
+    /// </summary>
+    string? InsertBom(string view, BomKind kind, string configuration, SheetPoint? at, TableAnchor anchor);
+
+    /// <summary>
+    /// Deletes tables of one sheet by selecting each (its annotation, IAnnotation.Select3, with the sheet shown; a bill
+    /// of materials by its feature when that leaves it) and deleting the selection; false when one could not be selected
+    /// or was left. The caller reads what is left.
+    /// </summary>
+    bool DeleteTables(string sheet, IReadOnlyList<string> names);
+
+    /// <summary>
+    /// Balloons the components of an assembly view (IDrawingDoc.AutoBalloon5 with the view selected by name): one balloon
+    /// per item (ignore multiple instances), item numbers as the bill of materials has them (do not change item numbers),
+    /// laid out as asked. Its answer is not evidence, so none is returned: the caller reads what the view gained.
+    /// </summary>
+    void AutoBalloon(string view, BalloonLayout layout);
 
     /// <summary>
     /// A full section view of <paramref name="parent"/> centred near <paramref name="at"/>: the add-in draws a line from
@@ -223,8 +269,8 @@ public interface ISwDrawing
     /// </summary>
     bool Shows(string view, object entity, object? component);
 
-    /// <summary>The model faces a view of a part shows (IView.GetVisibleEntities2, faces), as the part's own objects.</summary>
-    IReadOnlyList<object> VisibleFaces(string view);
+    /// <summary>The model faces a view shows (IView.GetVisibleEntities2, faces), as the model's own objects; in a view of an assembly, those of <paramref name="component"/>.</summary>
+    IReadOnlyList<object> VisibleFaces(string view, string? component = null);
 
     /// <summary>
     /// Puts the drawing back at rest (ViewActivations.Settle): when a drawing change ends (<paramref name="adopt"/>), the
@@ -442,15 +488,64 @@ public sealed class AnnotationFacts
 
     public GtolFrame? Gtol { get; set; }
 
+    /// <summary>A balloon's item number as it shows it (INote.GetText).</summary>
+    public string? ItemNumber { get; set; }
+
     /// <summary>The model entities it is attached to, as SOLIDWORKS gives them.</summary>
     public IReadOnlyList<object> Attached { get; set; } = new List<object>();
+
+    /// <summary>The names of the components the entities it is attached to belong to (IEntity.GetComponent), each once; empty in a view of a part.</summary>
+    public IReadOnlyList<string> Components { get; set; } = new List<string>();
+
+    /// <summary>When it is attached to something but no component reads from it: what SOLIDWORKS gave (its interfaces), for a refusal to say.</summary>
+    public string? AttachedNote { get; set; }
 
     public AnnotationFacts Copy() => new AnnotationFacts
     {
         Name = Name, Sheet = Sheet, View = View, Kind = Kind, Position = Position == null ? null : new SheetPoint(Position.X, Position.Y), PositionNote = PositionNote, Text = Text, LinkedText = LinkedText,
         DimensionKind = DimensionKind, DimensionNote = DimensionNote, Value = Value, DimensionName = DimensionName, Driven = Driven, Label = Label,
         Gtol = Gtol == null ? null : new GtolFrame { Characteristic = Gtol.Characteristic, ToleranceMm = Gtol.ToleranceMm, Diameter = Gtol.Diameter, MaterialCondition = Gtol.MaterialCondition, Datums = new List<string>(Gtol.Datums) },
-        Attached = new List<object>(Attached),
+        ItemNumber = ItemNumber, Attached = new List<object>(Attached), Components = new List<string>(Components),
+    };
+}
+
+/// <summary>A table on a sheet as SOLIDWORKS holds it: its rows as shown, and for a bill of materials what it lists.</summary>
+public sealed class TableFacts
+{
+    /// <summary>Its annotation's name (IAnnotation.GetName), unique on its sheet.</summary>
+    public string Name { get; set; } = "";
+
+    public string Sheet { get; set; } = "";
+
+    /// <summary>The view it is anchored to; null for one on the sheet itself.</summary>
+    public string? View { get; set; }
+
+    /// <summary>True for a bill of materials (swTableAnnotation_BillOfMaterials).</summary>
+    public bool Bom { get; set; }
+
+    /// <summary>A bill of materials' model (IBomFeature.GetReferencedModelName), full path; null when SOLIDWORKS gives none.</summary>
+    public string? Model { get; set; }
+
+    public BomKind? BomKind { get; set; }
+
+    /// <summary>The configuration a bill of materials lists (IBomFeature.Configuration).</summary>
+    public string? Configuration { get; set; }
+
+    /// <summary>A bill of materials' feature name (IBomFeature.Name).</summary>
+    public string? Feature { get; set; }
+
+    public SheetPoint? Position { get; set; }
+
+    public List<string> Columns { get; set; } = new List<string>();
+
+    /// <summary>Its rows below the header: cells as shown, and for a bill of materials the item number, quantity cell, and components.</summary>
+    public List<TableRow> Rows { get; set; } = new List<TableRow>();
+
+    public TableFacts Copy() => new TableFacts
+    {
+        Name = Name, Sheet = Sheet, View = View, Model = Model, Bom = Bom, BomKind = BomKind, Configuration = Configuration, Feature = Feature,
+        Position = Position == null ? null : new SheetPoint(Position.X, Position.Y), Columns = new List<string>(Columns),
+        Rows = Rows.Select(r => new TableRow { Cells = new List<string>(r.Cells), ItemNumber = r.ItemNumber, Quantity = r.Quantity, Path = r.Path, Configuration = r.Configuration, Components = new List<string>(r.Components) }).ToList(),
     };
 }
 

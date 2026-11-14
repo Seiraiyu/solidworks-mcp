@@ -22,7 +22,11 @@
         "properties": {
           "reference": {
             "type": "string",
-            "description": "Its model reference, issued in the part from the part's own entity and checked to name exactly this one; absent when SOLIDWORKS gives none that can be checked (a silhouette edge, or a view proxy SOLIDWORKS maps to no entity of the part), never one another entity shares. References are opaque: pass one back exactly as it was given, and never build or change one."
+            "description": "Its model reference, issued in the part from the part's own entity (in an assembly view, in the assembly from the component's entity) and checked to name exactly this one; absent when SOLIDWORKS gives none that can be checked (a silhouette edge, or a view proxy SOLIDWORKS maps to no entity of the model), never one another entity shares. References are opaque: pass one back exactly as it was given, and never build or change one."
+          },
+          "component": {
+            "type": "string",
+            "description": "In a view of an assembly, the component it belongs to (pin-1); absent in a view of a part."
           },
           "kind": {
             "type": "string",
@@ -352,7 +356,7 @@
         ],
         "additionalProperties": false
       },
-      "description": "Each entity it shows: edges first, then vertices."
+      "description": "Each entity it shows: edges first, then vertices (in an assembly view, component by component)."
     }
   },
   "required": [

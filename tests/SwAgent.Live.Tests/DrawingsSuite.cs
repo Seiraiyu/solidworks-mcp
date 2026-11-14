@@ -24,7 +24,9 @@ public sealed class DrawingsSuiteRun : LiveRun
 /// The drawings live suite (design 611, Testing; plan 5.A covers drawing documents, session preferences, sheets and
 /// model and projected views, plan 5.B sections, details and flat-pattern views in cases 15 to 19, plan 5.C properties,
 /// notes, imported and reference dimensions, centre marks and lines, datums and tolerance frames in cases 20 to 27 and
-/// the user editing the sheet format or a view's sketch, by hand, in cases 28 and 29): every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve
+/// the user editing the sheet format or a view's sketch, by hand, in cases 28 and 29, plan 5.D the assembly drawing in
+/// cases 30 to 35: the block and case 24's pin assembled with an exploded view, drawn exploded, its entities read
+/// component by component, a bill of materials, balloons numbered to it, and the bill read and deleted): every case drives seiraiyu2's SOLIDWORKS through SwAgent.Client exactly as swmcp serve
 /// does, in [Step] order, and checks against exact values. It builds its own model first, a 60 x 40 x 20 mm block (x 0..60,
 /// y 0..40, z 0..20) with a Ø10 mm hole through it along z at (20, 20), and draws it on an A3 sheet at 1:1 in third-angle
 /// projection, so every view's drawn extents are known to 0.01 mm. It records each document before creating it, never
@@ -935,8 +937,145 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
         return $"busy, user_editing, {what}, detected before ({busy.Message}); worked again {waited.TotalSeconds:0} s after asking for it to be closed";
     });
 
+    string Assembly => Path.Combine(_run.Guard.ScratchDirectory, "pinblock.SLDASM");
+
+    /// <summary>The assembly not marked as changed, and every other model the drawing shows as it was (an earlier case may have left one marked).</summary>
+    void Unmarked(IEnumerable<DrawingModelState> models)
+    {
+        var all = models.ToList();
+        Assert.Contains(all, m => string.Equals(m.Path, Assembly, StringComparison.OrdinalIgnoreCase));
+        Assert.All(all, m => Assert.False(m.DirtyAfter && (!m.DirtyBefore || string.Equals(m.Path, Assembly, StringComparison.OrdinalIgnoreCase)), $"{m.Path} marked as changed"));
+    }
+
     [SkippableFact, Step(30)]
-    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(30, "the suite's documents closed", async () =>
+    public Task The_pin_in_the_block_is_assembled_with_an_exploded_view() => _run.CaseAsync(30, "document.new assembly pinblock: the block fixed at the origin, case 24's pin (Ø10 x 30) at (20, 20, 0) standing in the hole; explode.create one step, the pin 40 mm along y; saved", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        Assert.True(File.Exists(Pin), "case 24's pin is not on disk");
+        await Call<DocumentNewRequest, DocumentNewResult>(new DocumentNewRequest { Type = DocumentType.Assembly, Path = New("pinblock", ".SLDASM") });
+        var block = await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = Assembly, Path = Block, At = new Point3(0, 0, 0), Fixed = true });
+        var pin = await Call<AssemblyInsertRequest, AssemblyInsertResult>(new AssemblyInsertRequest { Document = Assembly, Path = Pin, At = new Point3(20, 20, 0), Fixed = true });
+        var explode = new ExplodeCreateRequest { Document = Assembly };
+        explode.Steps.Add(new ExplodeStep { Components = { pin.Component.Name }, Direction = "y", DistanceMm = 40 });
+        var made = await Call<ExplodeCreateRequest, ExplodeCreateResult>(explode);
+        await Call<DocumentSaveRequest, DocumentSaveResult>(new DocumentSaveRequest { Document = Assembly });
+        Made["block"] = block.Component.Name;
+        Made["pin"] = pin.Component.Name;
+        Made["exploded"] = made.View.Name;
+        Made["sense"] = made.Steps[0].Sense;
+        return $"{block.Component.Name} and {pin.Component.Name} at {pin.Component.Transform.Origin}; {made.View.Name}: the pin {made.Steps[0].Sense} y by 40";
+    });
+
+    [SkippableFact, Step(31)]
+    public Task The_assembly_drawn_exploded_draws_the_pin_40_mm_up() => _run.CaseAsync(31, "sheet.add Assembly (A3, 1:1); view.create of pinblock's front exploded at (130, 150): the pin's image moved 40 mm along the sheet's y, the block's not, each inside its exploded box; view.set collapses it (the assembly's box, x 100..160, y 130..170) and explodes it again; the assembly not marked as changed", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        await Call<SheetAddRequest, SheetResult>(new SheetAddRequest { Document = Drawing, Name = "Assembly", Size = SheetSize.A3, Orientation = SheetOrientation.Landscape, Scale = new ScaleRatio(1, 1) });
+        var clock = Stopwatch.StartNew();
+        var exploded = await Call<ViewCreateRequest, ViewResult>(new ViewCreateRequest { Document = Drawing, Sheet = "Assembly", Model = Assembly, Orientation = "front", At = new SheetPoint(130, 150), Exploded = true });
+        var created = clock.Elapsed;
+        Assert.True(exploded.View.Exploded);
+        Assert.Equal(Made["exploded"], exploded.ExplodedView);
+        var pin = exploded.Images!.Single(i => i.Name == Made["pin"]);
+        Near(0, pin.Moved.X, "the pin's move along x");
+        Near(40, Math.Abs(pin.Moved.Y), "the pin's move along y");
+        Assert.True(pin.Drawn != null, "the view draws none of the pin");
+        Near(0, exploded.Images!.Single(i => i.Name == Made["block"]).Moved.Y, "the block's move");
+        Unmarked(exploded.Change.Models);
+        string view = exploded.View.Name;
+        var collapsed = await Call<ViewSetRequest, ViewResult>(new ViewSetRequest { Document = Drawing, View = view, Exploded = false });
+        Assert.False(collapsed.View.Exploded);
+        Box(collapsed.View.Extents, 100, 160, 130, 170, "collapsed");
+        var again = await Call<ViewSetRequest, ViewResult>(new ViewSetRequest { Document = Drawing, View = view, Exploded = true });
+        Assert.True(again.View.Exploded);
+        Made["view"] = view;
+        return $"{view} exploded in {created.TotalMilliseconds:0} ms ({exploded.ExplodedView}): pin moved {pin.Moved}, drawn {pin.Drawn} inside {pin.Expected}; collapsed {collapsed.View.Extents}; exploded again, images {string.Join(", ", again.Images!.Select(i => $"{i.Name} {i.Drawn}"))}";
+    });
+
+    [SkippableFact, Step(32)]
+    public Task An_assembly_views_entities_are_read_component_by_component() => _run.CaseAsync(32, "view.create of pinblock's front collapsed at (330, 150); view.entities of it for the pin: its front circle r 5 at (320, 150) with an assembly reference naming pin-1; annotation.note PIN attached to it by that reference at (370, 200), read back attached to it", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var front = await Call<ViewCreateRequest, ViewResult>(new ViewCreateRequest { Document = Drawing, Sheet = "Assembly", Model = Assembly, Orientation = "front", At = new SheetPoint(330, 150) });
+        Box(front.View.Extents, 300, 360, 130, 170, "the collapsed front");
+        var clock = Stopwatch.StartNew();
+        var all = await Call<ViewEntitiesRequest, ViewEntitiesResult>(new ViewEntitiesRequest { Document = Drawing, View = front.View.Name });
+        var read = clock.Elapsed;
+        var components = all.Entities.Select(e => e.Component).Distinct().ToList();
+        Assert.Contains(Made["pin"], components);
+        Assert.Contains(Made["block"], components);
+        var pin = await Call<ViewEntitiesRequest, ViewEntitiesResult>(new ViewEntitiesRequest { Document = Drawing, View = front.View.Name, Component = Made["pin"], Kinds = new List<ViewEntityKind> { ViewEntityKind.Edge } });
+        var circle = Assert.Single(pin.Entities, e => e.Shape == DrawnShape.Circle && e.Reference != null);
+        Near(320, circle.Centre!.X, "the pin circle's x");
+        Near(150, circle.Centre.Y, "the pin circle's y");
+        Near(5, circle.RadiusMm!.Value, "the pin circle's radius");
+        Assert.Equal(Made["pin"], circle.Entity!.Component);
+        var note = await Call<AnnotationNoteRequest, AnnotationNoteResult>(new AnnotationNoteRequest
+        {
+            Document = Drawing, Text = "PIN", At = new SheetPoint(370, 200), AttachTo = new ViewEntity { View = front.View.Name, Reference = circle.Reference },
+        });
+        Assert.Equal(circle.Reference, Assert.Single(note.Annotation.Attached).Reference);
+        Made["front"] = front.View.Name;
+        int issued = all.Entities.Count(e => e.Reference != null);
+        return $"{front.View.Name}: {all.Entities.Count} entities of {components.Count} components in {read.TotalMilliseconds:0} ms, {issued} with a reference; the pin's circle at {circle.Centre} r {circle.RadiusMm}; {note.Annotation.Name} attached to it";
+    });
+
+    [SkippableFact, Step(33)]
+    public Task A_bill_of_materials_lists_the_block_and_the_pin() => _run.CaseAsync(33, "table.bom top_level on the exploded view, its top-left corner at (20, 280): two rows, the block x1 and the pin x1, each its file and Default; the assembly not marked as changed", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var clock = Stopwatch.StartNew();
+        var bom = await Call<TableBomRequest, TableResult>(new TableBomRequest { Document = Drawing, View = Made["view"], Kind = BomKind.TopLevel, At = new SheetPoint(20, 280), Anchor = TableAnchor.TopLeft });
+        var took = clock.Elapsed;
+        var t = bom.Table;
+        Assert.Equal(TableKind.Bom, t.Kind);
+        Assert.Equal(2, t.Rows.Count);
+        Assert.Equal(1, t.Rows.Single(r => string.Equals(r.Path, Block, StringComparison.OrdinalIgnoreCase)).Quantity);
+        Assert.Equal(1, t.Rows.Single(r => string.Equals(r.Path, Pin, StringComparison.OrdinalIgnoreCase)).Quantity);
+        Unmarked(bom.Change.Models);
+        Made["bom"] = t.Reference!;
+        return $"{t.Name} ({t.Feature}) in {took.TotalMilliseconds:0} ms on {t.Sheet}, view {t.View ?? "none"}, at {t.Position}: columns {string.Join(" | ", t.Columns)}; rows {string.Join("; ", t.Rows.Select(r => $"{r.ItemNumber}: {string.Join(" | ", r.Cells)} ({string.Join(", ", r.Components)})"))}";
+    });
+
+    [SkippableFact, Step(34)]
+    public Task Balloons_are_numbered_to_the_bill() => _run.CaseAsync(34, "annotation.balloons on the exploded view, square: one balloon on the block and one on the pin, each numbered as the bill numbers its row; again: both already ballooned, none made", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var bom = Assert.Single((await Call<TableReadRequest, TableReadResult>(new TableReadRequest { Document = Drawing, Table = Made["bom"] })).Tables);
+        var clock = Stopwatch.StartNew();
+        var balloons = await Call<AnnotationBalloonsRequest, AnnotationBalloonsResult>(new AnnotationBalloonsRequest { Document = Drawing, View = Made["view"], Layout = BalloonLayout.Square });
+        var took = clock.Elapsed;
+        Assert.Equal(bom.Name, balloons.Bom);
+        Assert.Equal(2, balloons.Made.Count);
+        foreach (var b in balloons.Made)
+        {
+            var row = bom.Rows.Single(r => r.Components.Contains(b.Component!, StringComparer.OrdinalIgnoreCase));
+            Assert.Equal(row.ItemNumber, b.ItemNumber);
+        }
+        var again = await Call<AnnotationBalloonsRequest, AnnotationBalloonsResult>(new AnnotationBalloonsRequest { Document = Drawing, View = Made["view"] });
+        Assert.Empty(again.Made);
+        Assert.Equal(2, again.Already);
+        return $"{string.Join(", ", balloons.Made.Select(b => $"{b.Name} item {b.ItemNumber} on {b.Component} at {b.Position}"))} in {took.TotalMilliseconds:0} ms; again: {again.Already} of {again.Items} already";
+    });
+
+    [SkippableFact, Step(35)]
+    public Task The_bill_is_read_and_deleted_and_the_balloons_stay() => _run.CaseAsync(35, "table.read of the Assembly sheet: the bill; table.delete of it by reference: gone, its reference no longer resolves, the balloons still in the view", async () =>
+    {
+        await _run.RequireOnlyOwnDocumentsAsync();
+        var read = await Call<TableReadRequest, TableReadResult>(new TableReadRequest { Document = Drawing, Sheet = "Assembly" });
+        var bom = Assert.Single(read.Tables);
+        var deleted = await Call<TableDeleteRequest, TableDeleteResult>(new TableDeleteRequest { Document = Drawing, Tables = { Made["bom"] } });
+        Assert.Equal(bom.Name + "@Assembly", Assert.Single(deleted.Deleted));
+        Assert.Equal((1, 0), (deleted.Change.TablesBefore, deleted.Change.TablesAfter));
+        var gone = await Refused(() => Call<TableReadRequest, TableReadResult>(new TableReadRequest { Document = Drawing, Table = Made["bom"] }));
+        Assert.Equal(ErrorCode.ReferenceUnresolved, gone.Code);
+        var left = (await Call<AnnotationListRequest, AnnotationListResult>(new AnnotationListRequest { Document = Drawing, View = Made["view"] })).Annotations;
+        Assert.Equal(2, left.Count(a => a.Kind == AnnotationKind.Balloon));
+        return $"read {bom.Name} ({bom.Rows.Count} rows); deleted; the reference now: {gone.Message}; balloons left: {string.Join(", ", left.Where(a => a.Kind == AnnotationKind.Balloon).Select(a => $"{a.Name} {a.ItemNumber}"))}";
+    });
+
+    [SkippableFact, Step(36)]
+    public Task Everything_the_suite_made_is_closed() => _run.CaseAsync(36, "the suite's documents closed", async () =>
     {
         var state = await _run.RequireOnlyOwnDocumentsAsync();
         int closed = 0;

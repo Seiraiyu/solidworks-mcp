@@ -52,7 +52,7 @@ internal sealed partial class SolidWorksDrawing
         return owner == null ? NoAnnotations : AnnotationsOf(owner).Select(a => Read(a, sheet, view, view == null ? null : owner)).ToList();
     }
 
-    static AnnotationFacts Read(IAnnotation a, string sheet, string? view, IView? inView)
+    AnnotationFacts Read(IAnnotation a, string sheet, string? view, IView? inView)
     {
         var facts = new AnnotationFacts
         {
@@ -63,6 +63,14 @@ internal sealed partial class SolidWorksDrawing
             Position = a.GetPosition() is double[] p && p.Length >= 2 ? new SheetPoint(p[0] * Mm, p[1] * Mm) : null,
             Attached = a.GetAttachedEntities3() is object[] attached ? attached.Where(o => o != null).ToList() : new List<object>(),
         };
+        string? root = inView == null ? null : RootOf(inView);
+        // Only a view of an assembly has components to match against: in a part's view, GetVisibleEntities2 per
+        // component left the view activated in SP4 (5.D live run, round 4), so it is never called there.
+        bool assemblyView = inView != null && Try(() => inView.ReferencedDocument) is IAssemblyDoc;
+        facts.Components = facts.Attached.Select(o => ComponentName(o, root) ?? (assemblyView ? ShownComponentOf(inView!, o, root) : null))
+            .Where(n => n != null).Select(n => n!).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (facts.Components.Count == 0 && facts.Attached.Count > 0)
+            facts.AttachedNote = string.Join(", ", facts.Attached.Select(Interfaces)) + " (no component by IEntity.GetComponent, IDrawingComponent, or the one component the view shows it of)";
         switch (a.GetSpecificAnnotation())
         {
             case IDisplayDimension d:
@@ -82,6 +90,12 @@ internal sealed partial class SolidWorksDrawing
             case INote note:
                 facts.Text = note.GetText();
                 facts.LinkedText = note.PropertyLinkedText;
+                // An Auto Balloon is a note with a balloon showing its item number (design 611, Assembly drawings).
+                if (note.IsBomBalloon() || note.HasBalloon())
+                {
+                    facts.Kind = AnnotationKind.Balloon;
+                    facts.ItemNumber = facts.Text?.Trim();
+                }
                 break;
             case IDatumTag tag:
                 facts.Label = tag.GetLabel();
@@ -106,6 +120,79 @@ internal sealed partial class SolidWorksDrawing
                 break;
         }
         return facts;
+    }
+
+    /// <summary>The name of the component an attached entity belongs to (the component itself, or IEntity.GetComponent); null for none.</summary>
+    static string? ComponentName(object attached, string? root) => attached switch
+    {
+        IComponent2 c => NameIn(c, root),
+        IDrawingComponent d => NameIn(Try(() => d.Component) as IComponent2, root),
+        IEntity e => NameIn(Try(() => e.GetComponent()) as IComponent2, root),
+        _ => null,
+    };
+
+    /// <summary>
+    /// The one component of <paramref name="view"/> whose shown entities (IView.GetVisibleEntities2 with that component,
+    /// read only) include <paramref name="entity"/>, by ISldWorks.IsSame; null when none does, or more than one does: a
+    /// match must be unique, never a guess. SP4 gave balloons and notes in an assembly view entities IEntity.GetComponent
+    /// does not name (5.D live run, cases 32 and 34).
+    /// </summary>
+    string? ShownComponentOf(IView view, object entity, string? root)
+    {
+        string? found = null;
+        string viewName = view.GetName2();
+        foreach (var c in Components(view))
+        {
+            // Guarded (ViewSweepGuard): SP4 can open a view's PropertyManager on these reads (5.D live run, round 4).
+            bool shows = Try(() => Swept(viewName, "reading which component an annotation is attached to", () => ShowsOf(view, c, entity))) is true;
+            if (!shows) continue;
+            string? name = NameIn(c, root);
+            if (name == null) continue;
+            if (found != null && !string.Equals(found, name, StringComparison.OrdinalIgnoreCase)) return null;
+            found = name;
+        }
+        return found;
+    }
+
+    /// <summary>The title of the command (PropertyManager) SOLIDWORKS has open, or null (ISldWorks.GetRunningCommandInfo, a plain read).</summary>
+    string? RunningCommand()
+    {
+        _sw.GetRunningCommandInfo(out int _, out string title, out bool _);
+        return string.IsNullOrEmpty(title) ? null : title;
+    }
+
+    /// <summary>
+    /// A per-component read of what <paramref name="view"/> shows (IView.GetVisibleEntities2 with a component), run inside
+    /// ViewSweepGuard: one that leaves SOLIDWORKS in a command it was not in before is cleared and refused. Every such
+    /// sweep of the seam goes through here (ShownComponentOf, Shows, VisibleEntities, VisibleFaces; PR #33 review).
+    /// </summary>
+    T Swept<T>(string view, string what, Func<T> read) =>
+        ViewSweepGuard.Read(RunningCommand, () => _doc.ClearSelection2(true), view, what, read);
+
+    bool ShowsOf(IView view, IComponent2 component, object entity)
+    {
+        foreach (var type in new[] { swViewEntityType_e.swViewEntityType_Edge, swViewEntityType_e.swViewEntityType_SilhouetteEdge, swViewEntityType_e.swViewEntityType_Vertex, swViewEntityType_e.swViewEntityType_Face })
+        {
+            if (view.GetVisibleEntities2(component as Component2, (int)type) is object[] found && found.Any(o => o != null && SameEntity(o, entity))) return true;
+        }
+        return false;
+    }
+
+    /// <summary>The SOLIDWORKS interfaces an attached object answers to, for a refusal to say what it was.</summary>
+    static string Interfaces(object o)
+    {
+        var names = new List<string>();
+        if (o is IEdge) names.Add("IEdge");
+        if (o is IFace2) names.Add("IFace2");
+        if (o is IVertex) names.Add("IVertex");
+        if (o is IEntity) names.Add("IEntity");
+        if (o is IComponent2) names.Add("IComponent2");
+        if (o is IDrawingComponent) names.Add("IDrawingComponent");
+        if (o is ISketchSegment) names.Add("ISketchSegment");
+        if (o is ISketchPoint) names.Add("ISketchPoint");
+        if (o is IAnnotation) names.Add("IAnnotation");
+        if (o is IView) names.Add("IView");
+        return names.Count == 0 ? "an object of no known interface" : string.Join("/", names);
     }
 
     /// <summary>A centre mark's own position, sheet mm (ICenterMark.GetPosition, index 0, else 1), with the index that gave it.</summary>
@@ -314,15 +401,25 @@ internal sealed partial class SolidWorksDrawing
     public bool Shows(string view, object entity, object? component)
     {
         var v = View(view);
-        foreach (var type in new[] { swViewEntityType_e.swViewEntityType_Edge, swViewEntityType_e.swViewEntityType_SilhouetteEdge, swViewEntityType_e.swViewEntityType_Vertex, swViewEntityType_e.swViewEntityType_Face })
+        bool Read()
         {
-            if (v.GetVisibleEntities2(component as Component2, (int)type) is object[] found && found.Any(o => o != null && SameEntity(o, entity))) return true;
+            foreach (var type in new[] { swViewEntityType_e.swViewEntityType_Edge, swViewEntityType_e.swViewEntityType_SilhouetteEdge, swViewEntityType_e.swViewEntityType_Vertex, swViewEntityType_e.swViewEntityType_Face })
+            {
+                if (v.GetVisibleEntities2(component as Component2, (int)type) is object[] found && found.Any(o => o != null && SameEntity(o, entity))) return true;
+            }
+            return false;
         }
-        return false;
+        return component == null ? Read() : Swept(view, "checking that the view shows an entity", Read);
     }
 
-    public IReadOnlyList<object> VisibleFaces(string view) =>
-        View(view).GetVisibleEntities2(null, (int)swViewEntityType_e.swViewEntityType_Face) is object[] found ? found.Where(o => o != null).ToList() : new List<object>();
+    public IReadOnlyList<object> VisibleFaces(string view, string? component = null)
+    {
+        var v = View(view);
+        var of = ComponentIn(v, component);
+        if (component != null && of == null) return new List<object>();
+        List<object> Read() => v.GetVisibleEntities2(of, (int)swViewEntityType_e.swViewEntityType_Face) is object[] found ? found.Where(o => o != null).ToList() : new List<object>();
+        return of == null ? Read() : Swept(view, $"reading the faces the view shows of {component}", Read);
+    }
 
     static object? Try(Func<object?> call)
     {

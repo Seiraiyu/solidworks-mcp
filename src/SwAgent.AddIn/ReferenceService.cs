@@ -370,6 +370,60 @@ public sealed class ReferenceService
         return found ?? throw Unresolved(text, field, data, "not_found", "no annotation of that name is in that view now: it, or its view or sheet, was deleted or renamed", hint);
     }
 
+    /// <summary>
+    /// A reference to a table of <paramref name="drawing"/> (design 611, plan 5.D): its persistent-id block holds its sheet
+    /// and its name, which is unique on its sheet (SOLIDWORKS gives a table's annotation no persistent id, as 5.C measured
+    /// for annotations); described by its kind, name and sheet.
+    /// </summary>
+    public string IssueTable(ISwDocument drawing, TableFacts table)
+    {
+        string description = $"{(table.Bom ? "bill of materials" : "table")} {table.Name} on {table.Sheet}";
+        byte[] id = Encoding.UTF8.GetBytes(table.Sheet + "\n" + table.Name);
+        return References.Encode(new ReferenceData(ReferenceKind.Table, DocumentKeys.Of(drawing.Info()), id, description));
+    }
+
+    /// <summary>
+    /// The table <paramref name="text"/> names in <paramref name="drawing"/>, as SOLIDWORKS holds it now: a table reference
+    /// issued in this drawing, or a name: one no other table of the drawing has, or name@sheet when names repeat.
+    /// reference_unresolved for one deleted, or whose sheet was renamed or deleted, since; invalid_argument for a name no
+    /// table has, or one that names several.
+    /// </summary>
+    public TableFacts ResolveTable(ISwDocument doc, ISwDrawing drawing, string text, string field)
+    {
+        const string hint = "table.read lists them";
+        var all = DrawingTables.All(drawing);
+        if (!References.IsReference(text))
+        {
+            var named = all.Where(t => string.Equals(t.Name, text, StringComparison.Ordinal)).ToList();
+            int at = text.LastIndexOf('@');
+            if (named.Count == 0 && at > 0)
+            {
+                string name = text.Substring(0, at), sheet = text.Substring(at + 1);
+                named = all.Where(t => string.Equals(t.Name, name, StringComparison.Ordinal) && string.Equals(t.Sheet, sheet, StringComparison.Ordinal)).ToList();
+            }
+            if (named.Count == 1) return named[0];
+            string what = named.Count == 0
+                ? $"{doc.Info().Title} has no table named '{text}' ({hint}: {string.Join(", ", all.Select(t => t.Name + "@" + t.Sheet).DefaultIfEmpty("none"))})"
+                : $"'{text}' names {named.Count} tables ({string.Join(", ", named.Select(t => t.Name + "@" + t.Sheet))}); give its reference, or name@sheet";
+            throw new SwAgentException(ErrorCode.InvalidArgument, $"{field}: {what}", new JsonObject { ["field"] = field, ["name"] = text });
+        }
+        var data = References.Decode(text, field);
+        if (data.Kind != ReferenceKind.Table)
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"{field} names a {Wire(data.Kind)}, but this needs a table",
+                new JsonObject { ["field"] = field, ["kind"] = Wire(data.Kind), ["accepted"] = new List<object?> { Wire(ReferenceKind.Table) } });
+        }
+        string docKey = DocumentKeys.Of(doc.Info());
+        string now = _renames.Current(data.DocumentKey);
+        if (!DocumentKeys.Same(now, docKey))
+            throw Unresolved(text, field, data, "other_document", $"it belongs to {now}, not {docKey}", hint);
+        var parts = Encoding.UTF8.GetString(data.PersistId).Split('\n');
+        if (parts.Length != 2) throw Unresolved(text, field, data, "not_found", "it does not name a table's sheet and name", hint);
+        var found = all.FirstOrDefault(t => t.Sheet == parts[0] && t.Name == parts[1]);
+        return found ?? throw Unresolved(text, field, data, "not_found", "no table of that name is on that sheet now: it, or its sheet, was deleted or renamed", hint);
+    }
+
     string ResolveByName(ISwDocument doc, string text, string field, ReferenceKind kind, IReadOnlyList<string> names, string hint)
     {
         if (!References.IsReference(text))

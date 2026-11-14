@@ -178,6 +178,147 @@
       "type": "boolean",
       "description": "True when its model has unsaved changes: the view draws the model as it is in memory, not as its file is (document.save of the drawing saves the model first)."
     },
+    "exploded_view": {
+      "type": "string",
+      "description": "For a view shown exploded: the assembly's exploded view it draws (Exploded View1), the one whose placements its images fit."
+    },
+    "images": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "Where an exploded view draws one component, against where its explode steps put it.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The component (pin-1)."
+          },
+          "moved": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "Mm to the right of the sheet's lower-left corner."
+              },
+              "y": {
+                "type": "number",
+                "description": "Mm above the sheet's lower-left corner."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "How far its explode steps move its origin, as the view draws that move, sheet mm (the assembly's move turned through the view's transform and scaled)."
+          },
+          "expected": {
+            "type": "object",
+            "properties": {
+              "min": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "Mm to the right of the sheet's lower-left corner."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Mm above the sheet's lower-left corner."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "additionalProperties": false,
+                "description": "The lower-left corner."
+              },
+              "max": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "Mm to the right of the sheet's lower-left corner."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Mm above the sheet's lower-left corner."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "additionalProperties": false,
+                "description": "The upper-right corner."
+              }
+            },
+            "required": [
+              "min",
+              "max"
+            ],
+            "additionalProperties": false,
+            "description": "Its box exploded, read in the assembly and projected through the view's transform and scaled, sheet mm: what it draws must lie inside this."
+          },
+          "drawn": {
+            "type": "object",
+            "properties": {
+              "min": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "Mm to the right of the sheet's lower-left corner."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Mm above the sheet's lower-left corner."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "additionalProperties": false,
+                "description": "The lower-left corner."
+              },
+              "max": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "Mm to the right of the sheet's lower-left corner."
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Mm above the sheet's lower-left corner."
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "additionalProperties": false,
+                "description": "The upper-right corner."
+              }
+            },
+            "required": [
+              "min",
+              "max"
+            ],
+            "additionalProperties": false,
+            "description": "The box around the edges the view draws for it, sheet mm; absent when it draws none of its edges (hidden behind another)."
+          }
+        },
+        "required": [
+          "name",
+          "moved",
+          "expected"
+        ],
+        "additionalProperties": false
+      },
+      "description": "For a view shown exploded: each component's image against where its explode steps put it, sheet mm."
+    },
     "change": {
       "type": "object",
       "properties": {
@@ -263,7 +404,7 @@
             ],
             "additionalProperties": false
           },
-          "description": "What it made (sheets, views, annotations), in the order it made them."
+          "description": "What it made (sheets, views, annotations, tables), in the order it made them."
         },
         "changed": {
           "type": "array",
@@ -322,6 +463,14 @@
           "type": "integer",
           "description": "Annotations after the change, on every sheet and in every view."
         },
+        "tables_before": {
+          "type": "integer",
+          "description": "Tables before the change, on every sheet."
+        },
+        "tables_after": {
+          "type": "integer",
+          "description": "Tables after the change, on every sheet."
+        },
         "models": {
           "type": "array",
           "items": {
@@ -375,6 +524,8 @@
         "views_after",
         "annotations_before",
         "annotations_after",
+        "tables_before",
+        "tables_after",
         "models"
       ],
       "additionalProperties": false,

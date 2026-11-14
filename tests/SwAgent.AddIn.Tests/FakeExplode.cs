@@ -47,6 +47,7 @@ sealed partial class FakeAssembly
     int _views, _steps;
     string? _making;
     Dictionary<FakeComponent, Transform>? _collapsed;
+    Dictionary<FakeComponent, Box3?>? _collapsedBoxes;
 
     public List<FakeExplodeView> Views { get; } = new List<FakeExplodeView>();
 
@@ -88,6 +89,7 @@ sealed partial class FakeAssembly
         Collapse();
         if (!exploded) return true;
         _collapsed = Items.ToDictionary(c => c, c => JsonCodec.Deserialize<Transform>(JsonCodec.Serialize(c.Info.Transform)));
+        _collapsedBoxes = Items.ToDictionary(c => c, c => c.Info.Box);
         for (int i = 0; i < v.Steps.Count; i++) Apply(v.Steps[i], i);
         Shown = v.Name;
         return true;
@@ -98,8 +100,10 @@ sealed partial class FakeAssembly
         if (_collapsed != null && !CollapseStays)
         {
             foreach (var p in _collapsed) p.Key.Info.Transform = p.Value;
+            foreach (var p in _collapsedBoxes!) p.Key.Info.Box = p.Value;
         }
         _collapsed = null;
+        _collapsedBoxes = null;
         Shown = null;
     }
 
@@ -110,6 +114,12 @@ sealed partial class FakeAssembly
             var t = PatternGeometry.Shift(c.Info.Transform, s.Move);
             if (s.Axis is (Point3 through, Vector3 axis)) t = PatternGeometry.Turn(t, through, axis, s.AngleDeg);
             if (StepStrays?.Invoke(c, index) is Vector3 extra) t = PatternGeometry.Shift(t, extra);
+            // Its box moves with it (a step that turns it is refused, so a shift is enough).
+            if (c.Info.Box is Box3 box)
+            {
+                double dx = t.Origin.X - c.Info.Transform.Origin.X, dy = t.Origin.Y - c.Info.Transform.Origin.Y, dz = t.Origin.Z - c.Info.Transform.Origin.Z;
+                c.Info.Box = new Box3 { Min = new Point3(box.Min.X + dx, box.Min.Y + dy, box.Min.Z + dz), Max = new Point3(box.Max.X + dx, box.Max.Y + dy, box.Max.Z + dz) };
+            }
             c.Info.Transform = t;
         }
     }

@@ -23,6 +23,15 @@ public static class ViewChecks
         return t;
     }
 
+    /// <summary>The view is drawn at <paramref name="scale"/> and faces <paramref name="orientation"/> (when given), from its transform.</summary>
+    public static ViewTransform Turned(ISwDrawing drawing, string view, double scale, string? orientation)
+    {
+        var t = Scale(drawing, view, scale);
+        if (orientation != null && ViewGeometry.OrientationMismatch(orientation, t) is string why)
+            throw Failed(view, "orientation", orientation, why);
+        return t;
+    }
+
     /// <summary>
     /// The view is drawn at <paramref name="scale"/>, faces <paramref name="orientation"/> (when given), and draws its
     /// model's box as design 611 checks it. Returns what it draws.

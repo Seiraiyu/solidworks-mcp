@@ -17,7 +17,8 @@ public static class Protocol
     /// 13: drawings: document.new makes drawings; the drawing, sheet and view families; sheet and view references.
     /// 14: sections, details and flat patterns: view.section, view.detail, view.flat_pattern.
     /// 15: dimensions and annotations: annotation.import, annotation.dimension, annotation.note, annotation.centre_marks, annotation.centre_lines, annotation.datum, annotation.gtol, annotation.list, annotation.set, annotation.delete, drawing.properties; annotation references.
-    public const int Version = 15;
+    /// 16: assembly drawings: table.bom, table.read, table.delete, annotation.balloons; view.create and view.set show exploded views; view.entities reads assembly views; table references.
+    public const int Version = 16;
 
     public const string PipeNamePrefix = "solidworks-mcp-";
 

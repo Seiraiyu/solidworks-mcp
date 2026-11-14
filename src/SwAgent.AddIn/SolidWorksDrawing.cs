@@ -274,24 +274,32 @@ internal sealed partial class SolidWorksDrawing : ISwDrawing
     public ISwDocument? ModelOf(string view) =>
         Find(view)?.ReferencedDocument is IModelDoc2 model ? new SolidWorksDocument(_sw, model) : null;
 
-    public IReadOnlyList<VisibleEntity> VisibleEntities(string view, bool edges, bool vertices)
+    public IReadOnlyList<VisibleEntity> VisibleEntities(string view, bool edges, bool vertices, string? component = null)
     {
         var v = View(view);
         var list = new List<VisibleEntity>();
+        var of = ComponentIn(v, component);
+        if (component != null && of == null) return list;
         void Add(swViewEntityType_e type, bool vertex, bool silhouette)
         {
-            if (!(v.GetVisibleEntities2(null, (int)type) is object[] found)) return;
+            if (!(v.GetVisibleEntities2(of, (int)type) is object[] found)) return;
             foreach (var o in found)
             {
                 if (o != null && !list.Any(e => ReferenceEquals(e.Entity, o))) list.Add(new VisibleEntity(o, vertex, silhouette));
             }
         }
-        if (edges)
+        void Read()
         {
-            Add(swViewEntityType_e.swViewEntityType_Edge, false, false);
-            Add(swViewEntityType_e.swViewEntityType_SilhouetteEdge, false, true);
+            if (edges)
+            {
+                Add(swViewEntityType_e.swViewEntityType_Edge, false, false);
+                Add(swViewEntityType_e.swViewEntityType_SilhouetteEdge, false, true);
+            }
+            if (vertices) Add(swViewEntityType_e.swViewEntityType_Vertex, true, false);
         }
-        if (vertices) Add(swViewEntityType_e.swViewEntityType_Vertex, true, false);
+        // Per component, guarded (ViewSweepGuard): SP4 can open a view's PropertyManager on these reads (5.D live run, round 4).
+        if (of == null) Read();
+        else Swept(view, $"reading the edges and vertices the view shows of {component}", () => { Read(); return true; });
         return list;
     }
 
