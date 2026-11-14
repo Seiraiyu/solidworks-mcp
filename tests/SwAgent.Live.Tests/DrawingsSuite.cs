@@ -1010,7 +1010,7 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
         Near(150, circle.Centre.Y, "the pin circle's y");
         Near(5, circle.RadiusMm!.Value, "the pin circle's radius");
         Assert.Equal(Made["pin"], circle.Entity!.Component);
-        var note = await Call<AnnotationNoteRequest, AnnotationResult>(new AnnotationNoteRequest
+        var note = await Call<AnnotationNoteRequest, AnnotationNoteResult>(new AnnotationNoteRequest
         {
             Document = Drawing, Text = "PIN", At = new SheetPoint(370, 200), AttachTo = new ViewEntity { View = front.View.Name, Reference = circle.Reference },
         });

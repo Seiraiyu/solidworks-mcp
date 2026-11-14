@@ -99,4 +99,22 @@ public class BomRowsTests
     {
         Assert.Equal(quantity, BomRows.ParseQuantity(text));
     }
+
+    [Fact]
+    public void A_bills_configuration_is_its_own_or_else_the_one_it_shows()
+    {
+        // SP4 (5.D live run, case 33): IBomFeature.Configuration read "" for a top-level bill made for Default.
+        Assert.Equal("Default", BomRows.ConfigurationOf("Default", null, null));
+        Assert.Equal("Default", BomRows.ConfigurationOf("", new object[] { "Default" }, new object[] { true }));
+        Assert.Equal("Default", BomRows.ConfigurationOf(null, new object[] { "Other", "Default" }, new object[] { false, true }));
+        Assert.Equal("Default", BomRows.ConfigurationOf("", new[] { "Default" }, null));
+    }
+
+    [Fact]
+    public void A_bill_that_shows_no_one_configuration_has_none()
+    {
+        Assert.Null(BomRows.ConfigurationOf("", null, null));
+        Assert.Null(BomRows.ConfigurationOf("", new object[] { "A", "B" }, new object[] { true, true }));
+        Assert.Null(BomRows.ConfigurationOf("", new object[] { "A" }, new object[] { false }));
+    }
 }

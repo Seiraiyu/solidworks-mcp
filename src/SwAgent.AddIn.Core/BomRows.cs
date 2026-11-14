@@ -72,6 +72,20 @@ public static class BomRows
             .ToList();
 
     /// <summary>What names a row: its file and configuration, without regard to case.</summary>
+    /// <summary>
+    /// The configuration a bill lists: IBomFeature.Configuration when it names one, else the one configuration
+    /// IBomFeature.GetConfigurations(true, out visible) shows (SP4 read Configuration as "" for a top-level bill, 5.D live
+    /// run); null when it shows none, or more than one.
+    /// </summary>
+    public static string? ConfigurationOf(string? configuration, object? names, object? visible)
+    {
+        if (!string.IsNullOrEmpty(configuration)) return configuration;
+        var all = names is System.Collections.IEnumerable n && !(names is string) ? n.Cast<object?>().Select(o => o as string).ToList() : new List<string?>();
+        var shown = visible is System.Collections.IEnumerable v && !(visible is string) ? v.Cast<object?>().Select(o => o is bool b && b).ToList() : null;
+        var listed = all.Where((name, i) => !string.IsNullOrEmpty(name) && (shown == null || (i < shown.Count && shown[i]))).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        return listed.Count == 1 ? listed[0] : null;
+    }
+
     public static string Key(string path, string? configuration) => path.ToUpperInvariant() + "|" + (configuration ?? "").ToUpperInvariant();
 
     /// <summary>

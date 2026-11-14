@@ -106,6 +106,23 @@ internal sealed partial class SolidWorksDrawing
 
     public IReadOnlyList<TableFacts> Tables(string sheet) => TablesOf(sheet).Select(t => ReadTable(t.Table, t.Name, sheet, t.View)).ToList();
 
+    /// <summary>The configurations a bill shows (IBomFeature.GetConfigurations, read only), with which of them are visible.</summary>
+    static object? ShownConfigurations(IBomFeature feature, out object? visible)
+    {
+        object flags = null!;
+        try
+        {
+            var names = feature.GetConfigurations(true, ref flags);
+            visible = flags;
+            return names;
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            visible = null;
+            return null;
+        }
+    }
+
     TableFacts ReadTable(ITableAnnotation table, string name, string sheet, string? view)
     {
         var facts = new TableFacts
@@ -123,7 +140,7 @@ internal sealed partial class SolidWorksDrawing
         {
             var feature = bom.BomFeature;
             facts.Bom = true;
-            facts.Configuration = feature?.Configuration;
+            facts.Configuration = feature == null ? null : BomRows.ConfigurationOf(feature.Configuration, ShownConfigurations(feature, out object? visible), visible);
             facts.Feature = feature?.Name;
             facts.BomKind = feature == null ? (BomKind?)null : BomKindOf(feature.TableType);
             for (int c = 0; c < columns; c++)
