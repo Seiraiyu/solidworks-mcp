@@ -28,8 +28,15 @@ public sealed class AssemblyInterferenceOperation : Operation<AssemblyInterferen
         var (doc, asm) = DocumentLocator.FindAssembly(_services.SolidWorks, request.Document, Name);
         var only = Listed(doc, asm, request.Components);
         var options = new InterferenceOptions { CoincidentIsInterference = request.CoincidentIsInterference == true, IncludeHidden = request.IncludeHidden == true };
+        // #29 (v0.2.0 e2e, SOLIDWORKS 2026 SP4): the interference session marks a saved assembly as having unsaved changes,
+        // and the API has no call to clear the flag. That is reported (marked_dirty), never undone by saving the user's file;
+        // since the flag then no longer guards the assembly, where its components are and its mate count are compared.
+        // The flag is logged after each step so a live run shows which one sets it.
+        bool wasDirty = doc.Info().Dirty;
+        var before = wasDirty ? null : Snapshot.Take(asm);
         var session = asm.OpenInterference(options);
         _services.Runtime.InterferenceOpened();
+        var dirtyAt = new List<string> { $"opened {doc.Info().Dirty}" };
         IReadOnlyList<InterferenceFacts> found;
         string? notClosed = null;
         try
@@ -41,6 +48,7 @@ public sealed class AssemblyInterferenceOperation : Operation<AssemblyInterferen
                 System.Threading.Thread.Sleep(delay);
             }
             found = session.Read();
+            dirtyAt.Add($"read {doc.Info().Dirty}");
         }
         catch (COMException e)
         {
@@ -58,7 +66,12 @@ public sealed class AssemblyInterferenceOperation : Operation<AssemblyInterferen
         }
         if (DateTime.UtcNow > context.DeadlineUtc)
             context.Log.Warn("assembly.interference finished after its deadline; the interference session was closed (Done)");
-        var result = new AssemblyInterferenceResult { Document = doc.Info(), Components = asm.Components(false).Count };
+        var after = doc.Info();
+        dirtyAt.Add($"done {after.Dirty}");
+        bool markedDirty = !wasDirty && after.Dirty;
+        if (markedDirty) Unmoved(after, before!, Snapshot.Take(asm));
+        context.Log.Info($"assembly.interference: unsaved-changes flag {wasDirty} before, then {string.Join(", ", dirtyAt)}");
+        var result = new AssemblyInterferenceResult { Document = after, Components = asm.Components(false).Count, MarkedDirty = markedDirty };
         foreach (var f in found.OrderByDescending(f => f.VolumeMm3))
         {
             var names = f.Components.Select(c => asm.Identify(c).Name).ToList();
@@ -68,6 +81,24 @@ public sealed class AssemblyInterferenceOperation : Operation<AssemblyInterferen
         result.TotalVolumeMm3 = result.Interferences.Sum(i => i.VolumeMm3);
         context.Log.Info($"assembly.interference: {result.Interferences.Count} of {found.Count} interferences reported, {result.TotalVolumeMm3:0.###} mm³; coincident {options.CoincidentIsInterference}; {session.Note}");
         return result;
+    }
+
+    /// <summary>
+    /// With the unsaved-changes flag set by the session, the assembly must still be what it was: the same components, each
+    /// where it was, and the same mate count. Otherwise verification_failed (document_unchanged).
+    /// </summary>
+    static void Unmoved(DocumentInfo asm, Snapshot before, Snapshot after)
+    {
+        var changed = before.Components.Keys.Where(n => !after.Components.ContainsKey(n)).Select(n => $"{n} is gone")
+            .Concat(after.Components.Keys.Where(n => !before.Components.ContainsKey(n)).Select(n => $"{n} appeared"))
+            .Concat(before.Components.Where(b => after.Components.TryGetValue(b.Key, out var a) && Placement.Moved(b.Value.Transform, a.Transform))
+                .Select(b => $"{b.Key} moved"))
+            .ToList();
+        if (after.Mates != before.Mates) changed.Add($"the mate count went from {before.Mates} to {after.Mates}");
+        if (changed.Count == 0) return;
+        throw new SwAgentException(ErrorCode.VerificationFailed,
+            $"the interference check marked {asm.Title} as having unsaved changes and changed it: {string.Join("; ", changed)}",
+            new JsonObject { ["check"] = "document_unchanged", ["measured"] = changed.Select(c => (object?)c).ToList() });
     }
 
     /// <summary>Done, always; what went wrong when it threw (logged), or null.</summary>

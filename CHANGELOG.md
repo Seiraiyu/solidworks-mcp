@@ -3,6 +3,83 @@
 Each release of solidworks-mcp. The version numbers follow semantic versioning; until 1.0.0 a minor version may change
 tools and their parameters.
 
+## 0.2.0 (2026-11-13)
+
+The assemblies release: an agent can now mate, pattern, check, explode and export assemblies, and sheet metal goes
+from the base flange to flanges, hems, bends, flattening and flat-pattern export. The add-in and swmcp speak protocol
+12 (0.1.0 spoke 5). After upgrading, close SOLIDWORKS and start it again from the 3DEXPERIENCE dashboard so it loads the
+new add-in; until then every call answers `addin_incompatible`.
+
+### Assemblies
+
+- References into components: a component's faces, edges, planes and axes are named in the assembly by an assembly
+  reference (`sw_model_find` with `component`, or `sw_selection_get`), by `{component, entity}` with a reference
+  from the part, or by `name@component` (`front@bracket-1`, `Axis1@sub-1/pin-1`), all resolving to the same entity.
+  A suppressed, lightweight or missing component's entity answers `reference_unresolved` with
+  `component_suppressed`, `component_lightweight` or `component_missing`, never a nearby entity.
+- Mates: `sw_mate_add`, `sw_mate_edit`, `sw_mate_delete` and `sw_mate_list` for the standard mates, each checked by
+  measuring what it constrains (0.001 mm, 0.01°). An over-defining mate is taken back with every component where it
+  was. `sw_assembly_dof` reports how far each component is defined.
+- Component patterns: `sw_component_linear_pattern`, `sw_component_circular_pattern` and
+  `sw_component_feature_pattern`, checked instance by instance.
+- `sw_assembly_interference`: each pair of components that overlap, with the volume and box of the overlap.
+- Exploded views: `sw_explode_create` makes a view whole in one call and checks that each step moved its components
+  by exactly the distance asked and nothing else; `sw_explode_show`, `sw_explode_list` and `sw_explode_delete`.
+- `sw_export_assembly`: STEP (one occurrence per component, checked), Parasolid, STL and 3MF, leaving your export
+  preferences as they were.
+- Every change to an assembly records where every component was, and taking a change back puts back every component
+  that moved.
+
+### Sheet metal
+
+- `sw_sheetmetal_edge_flange`, `sw_sheetmetal_miter_flange`, `sw_sheetmetal_hem` (closed and open) and
+  `sw_sheetmetal_sketched_bend`, each checked against the bend arithmetic (volume, box and bend count; a hem's volume within a band).
+- `sw_sheetmetal_convert`: a sheet-metal part from a solid of constant thickness.
+- `sw_sheetmetal_flatten` flattens and folds a part, checked by the flatten volume identity; `sw_sheetmetal_unfold`
+  and `sw_sheetmetal_fold` unfold named bends for a cut across them and fold them back.
+- `sw_export_flat_pattern`: the flat pattern as DXF or DWG, with or without bend lines; a DXF is checked against the
+  flat size from the cut list and its bend-line count. The part must have been saved; on SOLIDWORKS 2026 SP4 the
+  export leaves it marked as changed (`marked_dirty`).
+
+### Changed
+
+- `sw_model_find`, `sw_model_mass`, `sw_model_bounding_box`, `sw_model_measure`, `sw_selection_get`,
+  `sw_document_rebuild`, `sw_model_rebuild_status` and the configuration tools work on assemblies too.
+- `sw_model_find` takes `component`, its entities carry their `component`, and it answers `skipped` with the
+  components it could not search (suppressed, lightweight or missing).
+- `sw_model_measure` takes `a_component` and `b_component` for a reference issued in a component's own part.
+- `sw_model_mass` on an assembly answers each top-level component's share in `components`, and `skipped`.
+- An assembly's rebuild errors include its mates' errors, each named by its mate.
+- `sw_selection_get` reports a selected component as a `component` item, and a face, edge or vertex with its
+  component.
+- `sw_document_open` answers `substituted` with each component file SOLIDWORKS loaded from another folder; a reference
+  issued earlier into that component answers `reference_unresolved` with `component_file_changed`.
+- `sw_component_delete` also deletes component patterns with their instances, refuses a pattern's seed unless the
+  pattern goes too, refuses a single instance, and answers `patterns_deleted` and `instances_deleted`.
+- Sheet-metal results, `sw_sheetmetal_base_flange`'s included, carry `features` when one call made more than one
+  feature (an edge flange makes one per edge).
+
+### Known limits
+
+- No drawings yet.
+- Assemblies: no editing a component in the assembly's context; no advanced or mechanical mates, mirrored components, subassembly forming or dissolving, component
+  replacement or Pack and Go (`sw_api_call` reaches them); `sw_assembly_dof` counts free motion only for fixed, fully
+  defined and unmated components; an exploded view cannot be renamed or deleted through SOLIDWORKS' API, so
+  `sw_explode_delete` leaves it empty, and a step cannot be turned.
+- Sheet metal: no teardrop or rolled hems, corners, jogs, lofted bends, cross breaks, rips, gussets, tabs and slots,
+  vents, forming tools, bend or gauge tables, or more than one sheet-metal body; a cut that reaches past a bend into
+  the side that turns cannot be folded back on SOLIDWORKS 2026 SP4.
+- SOLIDWORKS 2026 SP4 or later, started from the 3DEXPERIENCE dashboard. swmcp never starts SOLIDWORKS.
+- The binaries are not signed.
+- The dialog watcher can match a 3DEXPERIENCE sign-in window that opens while it is looking for another dialog,
+  and close it (#10). Sign in before you start an agent.
+
+### Fixed before release
+
+- `sw_assembly_interference` now says when SOLIDWORKS' interference session marks a saved assembly as having unsaved
+  changes (`marked_dirty: true`), and checks that no component moved and no mate came or went; the assembly is not
+  saved behind you (#29).
+
 ## 0.1.0 (2026-11-11)
 
 The first release: an agent can model parts, sheet-metal parts and assemblies in a running SOLIDWORKS 2026 SP4 on

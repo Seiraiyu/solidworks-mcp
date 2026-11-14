@@ -137,13 +137,18 @@
     "components": {
       "type": "integer",
       "description": "How many components the assembly has, nested ones included: what SOLIDWORKS checked."
+    },
+    "marked_dirty": {
+      "type": "boolean",
+      "description": "True when SOLIDWORKS' interference session marked an assembly that had no unsaved changes as having them (seen on SOLIDWORKS 2026 SP4; the API cannot clear the flag). Nothing in the model changed: the components are where they were, and the assembly was not saved to clear the flag."
     }
   },
   "required": [
     "document",
     "interferences",
     "total_volume_mm3",
-    "components"
+    "components",
+    "marked_dirty"
   ],
   "additionalProperties": false
 }

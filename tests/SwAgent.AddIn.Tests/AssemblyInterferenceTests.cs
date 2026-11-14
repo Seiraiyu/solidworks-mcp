@@ -122,6 +122,55 @@ public class AssemblyInterferenceTests : AssemblyTestBase
     }
 
     [Fact]
+    public void A_saved_assembly_the_session_marks_as_changed_is_reported_and_not_saved()
+    {
+        // #29, the v0.2.0 e2e on SOLIDWORKS 2026 SP4: the interference session marks a saved assembly as having unsaved
+        // changes. The call answers, says so (marked_dirty), and leaves the flag as SOLIDWORKS set it.
+        Doc.Document.Dirty = false;
+        Asm.DuringInterference = () => Doc.Document.Dirty = true;
+        var r = Find();
+        Assert.True(r.MarkedDirty);
+        Assert.True(r.Document.Dirty);
+        Assert.True(Doc.Info().Dirty, "nothing saved the assembly to clear the flag");
+    }
+
+    [Fact]
+    public void A_marked_assembly_whose_component_moved_fails_document_unchanged()
+    {
+        // With the flag no longer guarding it, the assembly the session marked must still be the one it was.
+        Doc.Document.Dirty = false;
+        Asm.DuringInterference = () =>
+        {
+            Doc.Document.Dirty = true;
+            Asm.SetTransform(Asm.Named("block-2").Entity, new Transform { Origin = new Point3(31, 0, 0) });
+        };
+        var e = Fails(() => Find());
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("document_unchanged", e.Error.Details!["check"]);
+        Assert.Contains("block-2 moved", e.Message);
+        Assert.Equal(1, Assert.Single(Asm.Sessions).Dones);
+    }
+
+    [Fact]
+    public void A_saved_assembly_the_session_leaves_clean_is_not_marked()
+    {
+        Doc.Document.Dirty = false;
+        var r = Find();
+        Assert.False(r.MarkedDirty);
+        Assert.False(r.Document.Dirty);
+    }
+
+    [Fact]
+    public void An_assembly_that_already_had_unsaved_changes_is_not_marked()
+    {
+        Doc.Document.Dirty = true;
+        Asm.DuringInterference = () => Doc.Document.Dirty = true;
+        var r = Find();
+        Assert.False(r.MarkedDirty);
+        Assert.True(r.Document.Dirty);
+    }
+
+    [Fact]
     public void A_part_is_the_wrong_document_type()
     {
         Sw.Track(FakeDocument.Part("plate.SLDPRT", PathOf("plate.SLDPRT")));
