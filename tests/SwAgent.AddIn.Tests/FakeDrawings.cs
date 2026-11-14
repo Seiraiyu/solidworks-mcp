@@ -148,10 +148,13 @@ sealed class FakeDrawing : ISwDrawing
         }
     }
 
+    /// <summary>When true, ActivateSheet shows nothing and says so.</summary>
+    public bool ActivateFails { get; set; }
+
     public bool ActivateSheet(string name)
     {
         Calls.Add($"activate {name}");
-        if (!Sheets.Any(s => s.Facts.Name == name)) return false;
+        if (ActivateFails || !Sheets.Any(s => s.Facts.Name == name)) return false;
         Active = name;
         return true;
     }
