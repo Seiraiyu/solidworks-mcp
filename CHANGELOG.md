@@ -3,7 +3,7 @@
 Each release of solidworks-mcp. The version numbers follow semantic versioning; until 1.0.0 a minor version may change
 tools and their parameters.
 
-## 0.4.0
+## 0.4.0 (2026-11-14)
 
 The drawings release: an agent can now make a drawing of a saved part or assembly, from its sheets and views to its
 dimensions, notes, tolerances, bill of materials and balloons, and write it as PDF, DXF or DWG. Every change to a
