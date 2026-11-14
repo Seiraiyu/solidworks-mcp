@@ -410,6 +410,9 @@ sealed class FakeDrawing : ISwDrawing
     /// <summary>When true, DeleteSectionLine and DeleteDetailCircle delete nothing and say so.</summary>
     public bool CutDeleteFails { get; set; }
 
+    /// <summary>When true, DeleteSectionLine and DeleteDetailCircle answer success but leave the line or circle in the parent (5.B live run: the circle stayed).</summary>
+    public bool CutDeleteLeaves { get; set; }
+
     public string? CutSection(string parent, SheetPoint from, SheetPoint to, SheetPoint at, string label, bool reversed)
     {
         Calls.Add($"section {parent} {label}");
@@ -481,6 +484,7 @@ sealed class FakeDrawing : ISwDrawing
     {
         Calls.Add($"delete section line {label}");
         if (CutDeleteFails) return false;
+        if (CutDeleteLeaves) return true;
         AllViews.FirstOrDefault(v => v.Facts.Name == parent)?.Cuts.Remove(label);
         return true;
     }
@@ -523,6 +527,7 @@ sealed class FakeDrawing : ISwDrawing
     {
         Calls.Add($"delete detail circle {label}");
         if (CutDeleteFails) return false;
+        if (CutDeleteLeaves) return true;
         AllViews.FirstOrDefault(v => v.Facts.Name == parent)?.Cuts.Remove(label);
         return true;
     }

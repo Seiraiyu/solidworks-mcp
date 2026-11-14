@@ -137,6 +137,23 @@ public class ViewDetailTests : DrawingTestBase
         Assert.Contains("10 numbers: 1, 0, 0, 1, 2, 3, 4, 5, 7, 0.25", e.Message);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_detail_circle_left_behind_by_a_rollback_is_rollback_failed_naming_it_never_a_clean_rollback(bool deleteSaysSuccess)
+    {
+        // 5.B live run: the detail failed a check, its view was deleted, and its circle stayed on the parent.
+        Drw.DetailEmpty = true;
+        if (deleteSaysSuccess) Drw.CutDeleteLeaves = true;
+        else Drw.CutDeleteFails = true;
+        var e = Fails(() => Detail(Hole));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.Equal(true, e.Error.Details!["rollback_failed"]);
+        Assert.Contains("detail circle A from Drawing View1", e.Message);
+        Assert.DoesNotContain("was rolled back", e.Message);
+        Assert.Equal(new[] { "A" }, Drw.CutLabels(_front.Facts.Name));
+    }
+
     [Fact]
     public void SOLIDWORKS_making_no_detail_is_operation_failed()
     {
