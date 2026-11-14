@@ -177,3 +177,68 @@ public sealed class AnnotationInfo
     [Description("The model entities it is attached to, each as its view shows it (view and the reference issued in the view's model; reference is absent when SOLIDWORKS gives none). Empty when it is attached to none.")]
     public List<ViewEntity> Attached { get; set; } = new List<ViewEntity>();
 }
+
+[Operation("annotation.import", typeof(AnnotationImportResult))]
+[Description("Brings the models' own annotations onto the drawing's views (IDrawingDoc.InsertModelAnnotations3 into every view, the path CADapter measured reliable; into one view SOLIDWORKS picks the view itself): their dimensions when types is absent, and their hole callouts, datums, geometric tolerances and notes when types names them. With views, only those views keep what was brought: what SOLIDWORKS put into any other view is deleted again (removed counts it). Checked by counting what each view gained (never SOLIDWORKS' answer), and each imported dimension must be one of the model's (D1@Sketch2) whose value on the drawing equals its value in the model within 0.001 mm (0.01° for an angle). A model dimension shown in two views is reported under duplicates, not removed. The models are unchanged: changing a model dimension's value is dimension.set on the model, never done from the drawing. Otherwise everything it brought is deleted again (rolled back). Positions are sheet mm; values model mm.")]
+public sealed class AnnotationImportRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("The views to bring them into: each a reference (r1.view.…) or a name (Drawing View1). Every view when absent.")]
+    public List<string>? Views { get; set; }
+
+    [Description("What to bring: dimensions, hole_callouts, datums, gtols, notes. Dimensions when absent.")]
+    public List<AnnotationImportType>? Types { get; set; }
+}
+
+[Description("A model dimension brought onto the drawing, checked against the model.")]
+public sealed class ImportedDimension
+{
+    [Required]
+    [Description("The annotation's name in its view.")]
+    public string Annotation { get; set; } = "";
+
+    [Description("The annotation's reference (r1.annotation.…).")]
+    public string? Reference { get; set; }
+
+    [Required]
+    [Description("The view it was brought into.")]
+    public string View { get; set; } = "";
+
+    [Required]
+    [Description("The model's name for it, as dimension.set takes it (D1@Sketch2).")]
+    public string Dimension { get; set; } = "";
+
+    [Description("Its value on the drawing: model mm, or degrees for an angle.")]
+    public double Value { get; set; }
+
+    [Description("Its value in the model, which the drawing's equals.")]
+    public double ModelValue { get; set; }
+
+    [Description("True for an angle (degrees).")]
+    public bool Angle { get; set; }
+}
+
+[Description("What annotation.import brought.")]
+public sealed class AnnotationImportResult : IDrawingChangeResult
+{
+    [Required]
+    [Description("Each annotation brought, as read back.")]
+    public List<AnnotationInfo> Annotations { get; set; } = new List<AnnotationInfo>();
+
+    [Required]
+    [Description("Each model dimension brought, its value on the drawing checked against the model's.")]
+    public List<ImportedDimension> Dimensions { get; set; } = new List<ImportedDimension>();
+
+    [Required]
+    [Description("Model dimensions shown in more than one view, each as \"D1@Sketch2 in Drawing View1, Drawing View2\": reported, not removed.")]
+    public List<string> Duplicates { get; set; } = new List<string>();
+
+    [Description("How many annotations SOLIDWORKS put into views not asked for, which were deleted again.")]
+    public int Removed { get; set; }
+
+    [Required]
+    [Description("What changed in the drawing: created holds each annotation brought; models each model shown, unchanged.")]
+    public DrawingChange Change { get; set; } = new DrawingChange();
+}

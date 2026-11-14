@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "description": "Brings the models' own annotations onto the drawing's views (IDrawingDoc.InsertModelAnnotations3 into every view, the path CADapter measured reliable; into one view SOLIDWORKS picks the view itself): their dimensions when types is absent, and their hole callouts, datums, geometric tolerances and notes when types names them. With views, only those views keep what was brought: what SOLIDWORKS put into any other view is deleted again (removed counts it). Checked by counting what each view gained (never SOLIDWORKS' answer), and each imported dimension must be one of the model's (D1@Sketch2) whose value on the drawing equals its value in the model within 0.001 mm (0.01° for an angle). A model dimension shown in two views is reported under duplicates, not removed. The models are unchanged: changing a model dimension's value is dimension.set on the model, never done from the drawing. Otherwise everything it brought is deleted again (rolled back). Positions are sheet mm; values model mm.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "views": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The views to bring them into: each a reference (r1.view.…) or a name (Drawing View1). Every view when absent."
+    },
+    "types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "dimensions",
+          "hole_callouts",
+          "datums",
+          "gtols",
+          "notes"
+        ]
+      },
+      "description": "What to bring: dimensions, hole_callouts, datums, gtols, notes. Dimensions when absent."
+    }
+  },
+  "additionalProperties": false
+}
