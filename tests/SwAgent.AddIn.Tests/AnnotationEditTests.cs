@@ -74,42 +74,40 @@ public class AnnotationEditTests : AnnotationTestBase
     }
 
     [Fact]
-    public void A_centre_mark_whose_anchor_is_off_its_centre_moves_to_where_it_is_asked()
+    public void A_centre_mark_is_not_moved_it_sits_on_its_circle()
     {
-        Drw.CentreMarkAnchorOffset = new SheetPoint(-2.774, -4.16);
+        // The 5.C live run (round 8): SP4 left the mark at (120, 180) when SetPosition2 was asked for (125, 185).
         var mark = Drw.AddCentreMark(Front.Facts.Name, Hole)!;
-        var moved = Set(mark, new SheetPoint(150, 100));
-        Assert.Equal(150, moved.Annotation.Position!.X, 9);
-        Assert.Equal(100, moved.Annotation.Position!.Y, 9);
-        var facts = DrawingAnnotations.Read(Drw, "Sheet1", Front.Facts.Name, mark)!;
-        Assert.Equal(147.226, facts.Anchor!.X, 9);
-        Assert.Equal(95.84, facts.Anchor!.Y, 9);
+        var was = DrawingAnnotations.Read(Drw, "Sheet1", Front.Facts.Name, mark)!;
+        Drw.Calls.Clear();
+        var e = Fails(() => Set(mark, new SheetPoint(125, 185)));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal("/at", e.Error.Details!["field"]);
+        Assert.Contains("centre mark", e.Message);
+        Assert.Empty(Drw.Calls);
+        Assert.Equal(was.Position!.X, DrawingAnnotations.Read(Drw, "Sheet1", Front.Facts.Name, mark)!.Position!.X, 9);
     }
 
     [Fact]
-    public void A_centre_mark_moved_then_rolled_back_is_back_where_it_was()
+    public void A_note_moved_then_rolled_back_is_back_where_it_was()
     {
-        Drw.CentreMarkAnchorOffset = new SheetPoint(-2.774, -4.16);
-        var mark = Drw.AddCentreMark(Front.Facts.Name, Hole)!;
-        var was = DrawingAnnotations.Read(Drw, "Sheet1", Front.Facts.Name, mark)!;
+        var note = Drw.AddNote("Sheet1", Front.Facts.Name, "SCALE 1:1", new SheetPoint(100, 120), null)!;
         Drw.MovingDirtiesModel = true;
-        var e = Fails(() => Set(mark, new SheetPoint(150, 100)));
+        var e = Fails(() => Set(note, new SheetPoint(150, 100)));
         Assert.Equal(ErrorCode.VerificationFailed, e.Code);
         Assert.False(e.Error.Details!.ContainsKey("rollback_failed"));
-        var now = DrawingAnnotations.Read(Drw, "Sheet1", Front.Facts.Name, mark)!;
-        Assert.Equal(was.Position!.X, now.Position!.X, 9);
-        Assert.Equal(was.Position!.Y, now.Position!.Y, 9);
-        Assert.Equal(was.Anchor!.X, now.Anchor!.X, 9);
+        var now = DrawingAnnotations.Read(Drw, "Sheet1", Front.Facts.Name, note)!;
+        Assert.Equal((100.0, 120.0), (now.Position!.X, now.Position!.Y));
     }
 
     [Fact]
     public void A_rollback_SOLIDWORKS_does_not_carry_out_is_rollback_failed()
     {
         Drw.MovingDirtiesModel = true;
-        var mark = Drw.AddCentreMark(Front.Facts.Name, Hole)!;
+        var note = Drw.AddNote("Sheet1", Front.Facts.Name, "SCALE 1:1", new SheetPoint(100, 120), null)!;
         // The move lands; the rollback's move is ignored, and the reread after it says so.
         Drw.MovesThatLand = 1;
-        var e = Fails(() => Set(mark, new SheetPoint(150, 100)));
+        var e = Fails(() => Set(note, new SheetPoint(150, 100)));
         Assert.Equal(true, e.Error.Details!["rollback_failed"]);
     }
 

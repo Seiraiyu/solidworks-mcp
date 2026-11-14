@@ -60,9 +60,7 @@ internal sealed partial class SolidWorksDrawing
             Sheet = sheet,
             View = view,
             Kind = KindOf(a.GetType()),
-            Position = a.GetPosition() is double[] p && p.Length >= 2 ? new SheetPoint(p[0] * Mm, p[1] * Mm) : null,
-            Anchor = a.GetPosition() is double[] q && q.Length >= 2 ? new SheetPoint(q[0] * Mm, q[1] * Mm) : null,
-            Attached = a.GetAttachedEntities3() is object[] attached ? attached.Where(o => o != null).ToList() : new List<object>(),
+            Position = a.GetPosition() is double[] p && p.Length >= 2 ? new SheetPoint(p[0] * Mm, p[1] * Mm) : null,            Attached = a.GetAttachedEntities3() is object[] attached ? attached.Where(o => o != null).ToList() : new List<object>(),
         };
         switch (a.GetSpecificAnnotation())
         {

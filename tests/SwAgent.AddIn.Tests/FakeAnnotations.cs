@@ -77,12 +77,6 @@ sealed partial class FakeDrawing
     /// <summary>When true, MoveAnnotation and SetNoteText change nothing (and say nothing).</summary>
     public bool AnnotationSetIgnored { get; set; }
 
-    /// <summary>
-    /// When set, a centre mark's anchor (IAnnotation.GetPosition, the frame SetPosition2 writes) lies this far from its
-    /// centre (where it is read), as SP4's did: (-2.774, -4.16) mm, (117.226, 175.84) for a centre at (120, 180).
-    /// </summary>
-    public SheetPoint? CentreMarkAnchorOffset { get; set; }
-
     /// <summary>When set, only this many more MoveAnnotation calls land; later ones change nothing (and say nothing).</summary>
     public int? MovesThatLand { get; set; }
 
@@ -189,12 +183,7 @@ sealed partial class FakeDrawing
     public string? AddCentreMark(string view, object edge)
     {
         Calls.Add($"centre mark {view}");
-        return Make(view, "", new[] { edge }, v =>
-        {
-            var centre = Drawn(v!, edge).Centre;
-            var anchor = CentreMarkAnchorOffset == null || centre == null ? null : new SheetPoint(centre.X + CentreMarkAnchorOffset.X, centre.Y + CentreMarkAnchorOffset.Y);
-            return new AnnotationFacts { Name = "Center Mark" + ++_annotations, Kind = AnnotationKind.CentreMark, Position = centre, Anchor = anchor };
-        });
+        return Make(view, "", new[] { edge }, v => new AnnotationFacts { Name = "Center Mark" + ++_annotations, Kind = AnnotationKind.CentreMark, Position = Drawn(v!, edge).Centre });
     }
 
     public string? AddCentreLine(string view, IReadOnlyList<object> entities)
@@ -233,11 +222,9 @@ sealed partial class FakeDrawing
         Calls.Add($"move annotation {name}");
         if (AnnotationSetIgnored) return;
         if (MovesThatLand != null && MovesThatLand-- <= 0) return;
-        // SetPosition2 writes the anchor; where the annotation is read keeps its distance from it (a centre mark's centre).
         var a = Find(sheet, view, name);
-        double dx = a.Anchor == null || a.Position == null ? 0 : a.Position.X - a.Anchor.X, dy = a.Anchor == null || a.Position == null ? 0 : a.Position.Y - a.Anchor.Y;
-        if (a.Anchor != null) a.Anchor = new SheetPoint(at.X, at.Y);
-        a.Position = new SheetPoint(at.X + dx, at.Y + dy);
+        // SP4 leaves a centre mark on its circle's centre (5.C live run, round 8).
+        if (a.Kind != AnnotationKind.CentreMark) a.Position = new SheetPoint(at.X, at.Y);
         if (MovingDirtiesModel && view != null && View(view).Model is { } model) model.Document.Dirty = true;
     }
 

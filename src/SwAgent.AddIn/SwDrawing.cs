@@ -203,8 +203,8 @@ public interface ISwDrawing
     string? AddGtol(string view, object entity, GtolFrame frame, SheetPoint? at);
 
     /// <summary>
-    /// Moves an annotation's anchor to <paramref name="at"/> (IAnnotation.SetPosition2), in the frame of
-    /// <see cref="AnnotationFacts.Anchor"/>, not of Position where they differ (a centre mark). Nothing is checked here.
+    /// Moves an annotation's text to <paramref name="at"/> (IAnnotation.SetPosition2). Nothing is checked here. SP4 leaves a
+    /// centre mark on its circle whatever it is given (5.C live run, round 8), so annotation.set never asks for one.
     /// </summary>
     void MoveAnnotation(string sheet, string? view, string name, SheetPoint at);
 
@@ -413,14 +413,6 @@ public sealed class AnnotationFacts
     public SheetPoint? Position { get; set; }
 
     /// <summary>
-    /// Where IAnnotation.GetPosition puts it, sheet mm: the frame MoveAnnotation (IAnnotation.SetPosition2) writes. The
-    /// same point as <see cref="Position"/> but for a centre mark in a view, whose Position is its centre
-    /// (ICenterMark.GetPosition drawn onto the sheet; the 5.C live runs measured SP4's anchor (117.226, 175.84) for a
-    /// centre at (120, 180)). Null when SOLIDWORKS gives none; then Position is the frame written.
-    /// </summary>
-    public SheetPoint? Anchor { get; set; }
-
-    /// <summary>
     /// How <see cref="Position"/> was read, when more than one reading was taken (a centre mark: IAnnotation.GetPosition
     /// and ICenterMark.GetPosition), so a failed position check says what SOLIDWORKS gave each way.
     /// </summary>
@@ -455,7 +447,7 @@ public sealed class AnnotationFacts
 
     public AnnotationFacts Copy() => new AnnotationFacts
     {
-        Name = Name, Sheet = Sheet, View = View, Kind = Kind, Position = Position == null ? null : new SheetPoint(Position.X, Position.Y), Anchor = Anchor == null ? null : new SheetPoint(Anchor.X, Anchor.Y), PositionNote = PositionNote, Text = Text, LinkedText = LinkedText,
+        Name = Name, Sheet = Sheet, View = View, Kind = Kind, Position = Position == null ? null : new SheetPoint(Position.X, Position.Y), PositionNote = PositionNote, Text = Text, LinkedText = LinkedText,
         DimensionKind = DimensionKind, DimensionNote = DimensionNote, Value = Value, DimensionName = DimensionName, Driven = Driven, Label = Label,
         Gtol = Gtol == null ? null : new GtolFrame { Characteristic = Gtol.Characteristic, ToleranceMm = Gtol.ToleranceMm, Diameter = Gtol.Diameter, MaterialCondition = Gtol.MaterialCondition, Datums = new List<string>(Gtol.Datums) },
         Attached = new List<object>(Attached),

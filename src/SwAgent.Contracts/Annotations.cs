@@ -451,7 +451,7 @@ public sealed class AnnotationListResult
 }
 
 [Operation("annotation.set", typeof(AnnotationResult))]
-[Description("Moves an annotation's text to at (sheet mm; IAnnotation.SetPosition2), or gives a note new text (INote.SetText; $PRP:\"…\" links allowed). Each value is recorded before and put back on failure. Checked: the position reads back within 0.01 mm and the text as written; the model is unchanged. text is for notes only: a model dimension's value is changed with dimension.set on the model, never from the drawing." + DrawingChangeText.Waits)]
+[Description("Moves an annotation's text to at (sheet mm; IAnnotation.SetPosition2), or gives a note new text. A centre mark sits on its circle's centre and cannot be moved: at on one is invalid_argument, nothing asked of SOLIDWORKS (INote.SetText; $PRP:\"…\" links allowed). Each value is recorded before and put back on failure. Checked: the position reads back within 0.01 mm and the text as written; the model is unchanged. text is for notes only: a model dimension's value is changed with dimension.set on the model, never from the drawing." + DrawingChangeText.Waits)]
 public sealed class AnnotationSetRequest
 {
     [Description("The drawing: its title or full path. The active document when absent.")]

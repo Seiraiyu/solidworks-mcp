@@ -776,7 +776,7 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
     string Pin => Path.Combine(_run.Guard.ScratchDirectory, "pin.SLDPRT");
 
     [SkippableFact, Step(24)]
-    public Task The_hole_takes_a_centre_mark_and_a_pin_seen_from_the_side_a_centre_line() => _run.CaseAsync(24, "annotation.centre_marks on the front: one, at the hole's centre (120, 180); again: already marked; a Ø10 x 30 pin (saved, closed) viewed from the top on Details: annotation.centre_lines makes one, attached to its cylinder; annotation.set moves the mark to (125, 185), read there, and back to (120, 180)", async () =>
+    public Task The_hole_takes_a_centre_mark_and_a_pin_seen_from_the_side_a_centre_line() => _run.CaseAsync(24, "annotation.centre_marks on the front: one, at the hole's centre (120, 180); again: already marked; a Ø10 x 30 pin (saved, closed) viewed from the top on Details: annotation.centre_lines makes one, attached to its cylinder; annotation.set refuses to move the mark (it sits on its circle), which stays at (120, 180)", async () =>
     {
         await _run.RequireOnlyOwnDocumentsAsync();
         var marks = await Call<AnnotationCentreMarksRequest, AnnotationCentresResult>(new AnnotationCentreMarksRequest { Document = Drawing, View = Views["front"] });
@@ -804,19 +804,15 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
         var line = Assert.Single(lines.Made);
         Assert.NotEmpty(line.Attached);
 
-        // PR #32 review: a centre mark is read at its centre, and SetPosition2 writes its anchor, which SP4 puts elsewhere;
-        // annotation.set moves it to where it is read, and back.
-        var moved = await Call<AnnotationSetRequest, AnnotationResult>(new AnnotationSetRequest { Document = Drawing, Annotation = mark.Reference!, At = new SheetPoint(125, 185) });
+        // Round 8 measured SP4 keeping a centre mark on its circle whatever SetPosition2 is given, so annotation.set
+        // refuses to move one; it is still where it was, at the hole's centre.
+        var stuck = await Refused(() => Call<AnnotationSetRequest, AnnotationResult>(new AnnotationSetRequest { Document = Drawing, Annotation = mark.Reference!, At = new SheetPoint(125, 185) }));
+        Assert.Equal(ErrorCode.InvalidArgument, stuck.Code);
+        Assert.Equal("/at", stuck.Error.Details!["field"]);
         var listed = (await Call<AnnotationListRequest, AnnotationListResult>(new AnnotationListRequest { Document = Drawing, View = Views["front"] })).Annotations.Single(a => a.Name == mark.Name);
-        Near(125, moved.Annotation.Position!.X, "the moved centre mark's x");
-        Near(185, moved.Annotation.Position.Y, "the moved centre mark's y");
-        Near(125, listed.Position!.X, "the moved centre mark's x, listed");
-        Near(185, listed.Position.Y, "the moved centre mark's y, listed");
-        BlockUnchanged(moved.Change);
-        var back = await Call<AnnotationSetRequest, AnnotationResult>(new AnnotationSetRequest { Document = Drawing, Annotation = mark.Reference!, At = new SheetPoint(120, 180) });
-        Near(120, back.Annotation.Position!.X, "the centre mark's x moved back");
-        Near(180, back.Annotation.Position.Y, "the centre mark's y moved back");
-        return $"{mark.Name} at {mark.Position}; again {again.Eligible} circle, {again.Already} already marked; pin top view {view.View.Name} on Details drew {view.View.Extents}; {line.Name} attached to {line.Attached.Count} entities; annotation.set moved {mark.Name} to {moved.Annotation.Position} (listed at {listed.Position}; not at rest: {moved.Change.NotAtRest ?? "no"}), and back to {back.Annotation.Position}";
+        Near(120, listed.Position!.X, "the centre mark's x after the refused move");
+        Near(180, listed.Position.Y, "the centre mark's y after the refused move");
+        return $"{mark.Name} at {mark.Position}; again {again.Eligible} circle, {again.Already} already marked; pin top view {view.View.Name} on Details drew {view.View.Extents}; {line.Name} attached to {line.Attached.Count} entities; annotation.set at (125, 185) on it refused ({stuck.Message}), still at {listed.Position}";
     });
 
     [SkippableFact, Step(25)]
