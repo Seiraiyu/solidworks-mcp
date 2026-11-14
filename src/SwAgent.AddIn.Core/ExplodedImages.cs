@@ -108,24 +108,6 @@ public static class ExplodedImages
         return boxes;
     }
 
-    /// <summary>
-    /// The component each of a view's drawn edges belongs to, as <see cref="PerComponent"/> takes them: the name the edge
-    /// was given (<paramref name="given"/>, IEntity.GetComponent without the view's root) when it is one of the view's
-    /// <paramref name="components"/>, else the first component that <paramref name="shows"/> it (by index), else null.
-    /// SP4 gives an exploded view's GetPolylines7 edges without the component the view names while the drawing is the
-    /// active document (5.E live run: every component measured none), so those are found among each component's shown edges.
-    /// </summary>
-    public static List<string?> Owners(IReadOnlyList<string?> given, IReadOnlyList<string> components, Func<string, int, bool> shows)
-    {
-        var owners = new List<string?>(given.Count);
-        for (int i = 0; i < given.Count; i++)
-        {
-            string? known = given[i] != null && components.Contains(given[i]!, StringComparer.OrdinalIgnoreCase) ? given[i] : null;
-            owners.Add(known ?? components.FirstOrDefault(c => shows(c, i)));
-        }
-        return owners;
-    }
-
     static double Length(SheetPoint p) => Math.Sqrt(p.X * p.X + p.Y * p.Y);
 
     static SheetBox Around(IReadOnlyList<SheetPoint> points) => new SheetBox

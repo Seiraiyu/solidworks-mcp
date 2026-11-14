@@ -56,22 +56,7 @@ internal sealed partial class SolidWorksDrawing
         var edges = v.GetPolylines7(0, out object polylines) as object[] ?? new object[0];
         var numbers = polylines as double[] ?? new double[0];
         string? root = RootOf(v);
-        var given = edges.Select(e => NameIn((e as IEntity)?.GetComponent() as IComponent2, root)).ToList();
-        var components = Components(v).Select(c => (Name: NameIn(c, root), Component: c)).Where(c => c.Name != null).ToList();
-        var names = components.Select(c => c.Name!).ToList();
-        // Each component's shown edges, read once and only when an edge needs them (guarded as every per-component sweep is).
-        var shown = new Dictionary<string, List<object>>(StringComparer.OrdinalIgnoreCase);
-        List<object> ShownEdges(string name) => shown.TryGetValue(name, out var had) ? had : shown[name] = Swept(view, $"reading the edges the view draws of {name}", () =>
-        {
-            var of = components.First(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)).Component as Component2;
-            var list = new List<object>();
-            foreach (var type in new[] { swViewEntityType_e.swViewEntityType_Edge, swViewEntityType_e.swViewEntityType_SilhouetteEdge })
-            {
-                if (v.GetVisibleEntities2(of, (int)type) is object[] found) list.AddRange(found.Where(o => o != null));
-            }
-            return list;
-        });
-        var owners = ExplodedImages.Owners(given, names, (name, i) => edges[i] != null && ShownEdges(name).Any(o => SameEntity(o, edges[i])));
+        var owners = edges.Select(e => NameIn((e as IEntity)?.GetComponent() as IComponent2, root)).ToList();
         try
         {
             return ExplodedImages.PerComponent(owners, numbers, facts.Position, facts.Scale.Numerator / facts.Scale.Denominator);

@@ -113,32 +113,4 @@ public class ExplodedImagesTests
         Assert.Empty(ExplodedImages.PerComponent(new string?[] { null }, numbers, new SheetPoint(0, 0), 1));
         Assert.Throws<FormatException>(() => ExplodedImages.PerComponent(new[] { "a", "b" }, numbers, new SheetPoint(0, 0), 1));
     }
-
-    [Fact]
-    public void An_edge_given_without_one_of_the_views_components_is_matched_to_the_component_that_shows_it()
-    {
-        // 5.E live run: with the drawing the active document, SP4 gave GetPolylines7's edges of an exploded view without
-        // the component the view names (measured none for every component); each is found among a component's shown edges.
-        var given = new string?[] { null, "make-pinblock-2/make-pin-1", "make-block-1", null };
-        var shows = new Dictionary<string, Func<int, bool>>
-        {
-            ["make-block-1"] = i => i == 0 || i == 2,
-            ["make-pin-1"] = i => i == 1,
-        };
-        var asked = new List<int>();
-        var owners = ExplodedImages.Owners(given, new[] { "make-block-1", "make-pin-1" }, (name, i) =>
-        {
-            asked.Add(i);
-            return shows[name](i);
-        });
-        Assert.Equal(new string?[] { "make-block-1", "make-pin-1", "make-block-1", null }, owners);
-        Assert.DoesNotContain(2, asked);
-    }
-
-    [Fact]
-    public void When_every_edge_names_one_of_the_views_components_nothing_is_matched()
-    {
-        var owners = ExplodedImages.Owners(new string?[] { "block-1", "PIN-1" }, new[] { "block-1", "pin-1" }, (_, _) => throw new InvalidOperationException("not asked"));
-        Assert.Equal(new string?[] { "block-1", "PIN-1" }, owners);
-    }
 }
