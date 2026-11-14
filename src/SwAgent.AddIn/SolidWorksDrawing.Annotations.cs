@@ -60,7 +60,8 @@ internal sealed partial class SolidWorksDrawing
             Sheet = sheet,
             View = view,
             Kind = KindOf(a.GetType()),
-            Position = a.GetPosition() is double[] p && p.Length >= 2 ? new SheetPoint(p[0] * Mm, p[1] * Mm) : null,            Attached = a.GetAttachedEntities3() is object[] attached ? attached.Where(o => o != null).ToList() : new List<object>(),
+            Position = a.GetPosition() is double[] p && p.Length >= 2 ? new SheetPoint(p[0] * Mm, p[1] * Mm) : null,
+            Attached = a.GetAttachedEntities3() is object[] attached ? attached.Where(o => o != null).ToList() : new List<object>(),
         };
         switch (a.GetSpecificAnnotation())
         {
@@ -322,7 +323,6 @@ internal sealed partial class SolidWorksDrawing
 
     public IReadOnlyList<object> VisibleFaces(string view) =>
         View(view).GetVisibleEntities2(null, (int)swViewEntityType_e.swViewEntityType_Face) is object[] found ? found.Where(o => o != null).ToList() : new List<object>();
-
 
     static object? Try(Func<object?> call)
     {

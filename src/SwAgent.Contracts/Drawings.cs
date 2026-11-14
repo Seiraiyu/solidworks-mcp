@@ -311,13 +311,13 @@ public sealed class DrawingModelState
     public int RebuildErrorsAfter { get; set; }
 }
 
-/// <summary>A result that carries the evidence block every drawing-changing operation returns.</summary>
 /// <summary>What every drawing change's description says of when it waits (design 611, Drawing changes; the 5.C live run).</summary>
 public static class DrawingChangeText
 {
     public const string Waits = " Waits, changing nothing (busy, user_editing), while the user edits a view's sketch or the sheet format (sheet_format: true) or has a command open. After the user exits a view's sketch, SOLIDWORKS keeps that view activated and changes keep waiting until the user lets go of it: ask them to double-click the sheet outside every view.";
 }
 
+/// <summary>A result that carries the evidence block every drawing-changing operation returns.</summary>
 public interface IDrawingChangeResult
 {
     DrawingChange Change { get; set; }
