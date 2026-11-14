@@ -1,0 +1,110 @@
+{
+  "type": "object",
+  "description": "Makes a circular detail view of part of a model, projected or section view (IDrawingDoc.CreateDetailViewAt4). The add-in draws the detail circle itself in the parent view's sketch, centred on centre (a point in the parent's model, model mm, or an entity whose position is taken: a hole's axis or circular edge, a vertex, a straight edge's midpoint), radius_mm in model mm, and SOLIDWORKS shows what lies inside it at scale. A centre drawn outside what the parent draws is refused. To the right of the parent, 20 mm from its drawn edges, when at (sheet mm) is absent. label is the next free letter (A, B, …, without I, O and Q) when absent. Checked by measuring: a detail view of the parent with that label, centred where asked within 0.01 mm, drawn at scale exactly (its transform), turned as its parent is, and drawing edges, every point of which lies within the circle's image at that scale (radius_mm × scale, sheet mm, about where its transform draws centre); and the model is unchanged. A detail that draws nothing (CADapter saw SOLIDWORKS make empty ones) is refused. Otherwise the view and its circle are deleted again (rolled back).",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "parent": {
+      "type": "string",
+      "description": "The view to detail: a reference (r1.view.…) or its name (Drawing View1). A model, projected or section view."
+    },
+    "centre": {
+      "type": "object",
+      "properties": {
+        "point": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number",
+              "description": "X, mm."
+            },
+            "y": {
+              "type": "number",
+              "description": "Y, mm."
+            },
+            "z": {
+              "type": "number",
+              "description": "Z, mm."
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "z"
+          ],
+          "additionalProperties": false,
+          "description": "A point in the view's model, model mm (the model's own coordinates, not the sheet's). One of point, reference or entity."
+        },
+        "reference": {
+          "type": "string",
+          "description": "A reference issued in the view's model (model.find, view.entities), alone. One of point, reference or entity."
+        },
+        "component": {
+          "type": "string",
+          "description": "With entity in an assembly view: the component, by reference or name; entity is then a reference issued in the component's own part, or a name there."
+        },
+        "entity": {
+          "type": "string",
+          "description": "A name in the view's model (Axis1, Point1, or with component an entity of that component). One of point, reference or entity."
+        }
+      },
+      "additionalProperties": false,
+      "description": "The detail circle's centre: a point in the parent's model (model mm) or an entity whose position is taken."
+    },
+    "radius_mm": {
+      "type": "number",
+      "description": "The detail circle's radius, model mm (drawn on the parent at its scale), more than 0."
+    },
+    "scale": {
+      "type": "object",
+      "properties": {
+        "numerator": {
+          "type": "number",
+          "description": "The first number of the ratio, more than 0."
+        },
+        "denominator": {
+          "type": "number",
+          "description": "The second number of the ratio, more than 0."
+        }
+      },
+      "required": [
+        "numerator",
+        "denominator"
+      ],
+      "additionalProperties": false,
+      "description": "The scale the detail is drawn at (2:1 is twice the model's size)."
+    },
+    "label": {
+      "type": "string",
+      "description": "The detail's label (letters and digits, up to 4). The next free letter when absent; one another section or detail of the drawing has is refused."
+    },
+    "at": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "Mm to the right of the sheet's lower-left corner."
+        },
+        "y": {
+          "type": "number",
+          "description": "Mm above the sheet's lower-left corner."
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false,
+      "description": "Where the detail view's centre goes, sheet mm. To the right of the parent when absent."
+    }
+  },
+  "required": [
+    "parent",
+    "centre",
+    "radius_mm",
+    "scale"
+  ],
+  "additionalProperties": false
+}

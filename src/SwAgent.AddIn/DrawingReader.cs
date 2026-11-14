@@ -77,6 +77,20 @@ public static class DrawingReader
         }
     }
 
+    /// <summary>Every point a view draws, sheet mm (ViewGeometry.DrawnPoints); api_error when SOLIDWORKS' numbers do not read as polylines.</summary>
+    public static System.Collections.Generic.List<SheetPoint> Points(ISwDrawing drawing, ViewFacts facts)
+    {
+        try
+        {
+            return ViewGeometry.DrawnPoints(drawing.Polylines(facts.Name), facts.Position, Ratio(facts.Scale));
+        }
+        catch (FormatException e)
+        {
+            throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS' polylines for {facts.Name} do not read as edges: {e.Message}",
+                new JsonObject { ["view"] = facts.Name });
+        }
+    }
+
     /// <summary>A scale as a number: 1:2 is 0.5.</summary>
     public static double Ratio(ScaleRatio scale) => scale.Numerator / scale.Denominator;
 

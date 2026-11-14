@@ -99,3 +99,65 @@ public sealed class ViewSectionResult : IDrawingChangeResult
     [Description("What changed in the drawing: created holds the section view; models each model shown, unchanged.")]
     public DrawingChange Change { get; set; } = new DrawingChange();
 }
+
+[Operation("view.detail", typeof(ViewDetailResult))]
+[Description("Makes a circular detail view of part of a model, projected or section view (IDrawingDoc.CreateDetailViewAt4). The add-in draws the detail circle itself in the parent view's sketch, centred on centre (a point in the parent's model, model mm, or an entity whose position is taken: a hole's axis or circular edge, a vertex, a straight edge's midpoint), radius_mm in model mm, and SOLIDWORKS shows what lies inside it at scale. A centre drawn outside what the parent draws is refused. To the right of the parent, 20 mm from its drawn edges, when at (sheet mm) is absent. label is the next free letter (A, B, …, without I, O and Q) when absent. Checked by measuring: a detail view of the parent with that label, centred where asked within 0.01 mm, drawn at scale exactly (its transform), turned as its parent is, and drawing edges, every point of which lies within the circle's image at that scale (radius_mm × scale, sheet mm, about where its transform draws centre); and the model is unchanged. A detail that draws nothing (CADapter saw SOLIDWORKS make empty ones) is refused. Otherwise the view and its circle are deleted again (rolled back).")]
+public sealed class ViewDetailRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The view to detail: a reference (r1.view.…) or its name (Drawing View1). A model, projected or section view.")]
+    public string Parent { get; set; } = "";
+
+    [Required]
+    [Description("The detail circle's centre: a point in the parent's model (model mm) or an entity whose position is taken.")]
+    public ModelPlace Centre { get; set; } = new ModelPlace();
+
+    [Description("The detail circle's radius, model mm (drawn on the parent at its scale), more than 0.")]
+    public double RadiusMm { get; set; }
+
+    [Required]
+    [Description("The scale the detail is drawn at (2:1 is twice the model's size).")]
+    public ScaleRatio Scale { get; set; } = new ScaleRatio();
+
+    [Description("The detail's label (letters and digits, up to 4). The next free letter when absent; one another section or detail of the drawing has is refused.")]
+    public string? Label { get; set; }
+
+    [Description("Where the detail view's centre goes, sheet mm. To the right of the parent when absent.")]
+    public SheetPoint? At { get; set; }
+}
+
+[Description("The detail view made.")]
+public sealed class ViewDetailResult : IDrawingChangeResult
+{
+    [Required]
+    [Description("The detail view, as read back.")]
+    public ViewInfo View { get; set; } = new ViewInfo();
+
+    [Required]
+    [Description("Its label, as read back.")]
+    public string Label { get; set; } = "";
+
+    [Required]
+    [Description("The detail circle's centre, model mm.")]
+    public Point3 Centre { get; set; } = new Point3();
+
+    [Required]
+    [Description("What centre named, as resolved: the point, or the entity and its position.")]
+    public string CentreIs { get; set; } = "";
+
+    [Description("The detail circle's radius, model mm.")]
+    public double RadiusMm { get; set; }
+
+    [Description("How many points of its drawn edges were measured inside the circle's image.")]
+    public int PointsInside { get; set; }
+
+    [Description("True when its model has unsaved changes: the detail shows the model as it is in memory.")]
+    public bool ModelUnsaved { get; set; }
+
+    [Required]
+    [Description("What changed in the drawing: created holds the detail view; models each model shown, unchanged.")]
+    public DrawingChange Change { get; set; } = new DrawingChange();
+}

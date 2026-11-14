@@ -10,12 +10,15 @@ namespace SwAgent.AddIn.Operations;
 /// <summary>What the section and detail operations share: the parent they cut from, and the labels.</summary>
 static class ViewCuts
 {
-    /// <summary>The parent named, which must be a model or projected view showing a loaded model; with its facts, model and transform.</summary>
-    public static (ViewFacts Facts, ISwDocument Model, ViewTransform Transform) Parent(ISwDrawing drawing, string parent, string what)
+    /// <summary>
+    /// The parent named, which must be a model or projected view (or, when <paramref name="sections"/>, a section view)
+    /// showing a loaded model; with its facts, model and transform.
+    /// </summary>
+    public static (ViewFacts Facts, ISwDocument Model, ViewTransform Transform) Parent(ISwDrawing drawing, string parent, string what, bool sections = false)
     {
         var facts = drawing.ReadView(parent)!;
-        if (facts.Type != ViewType.Model && facts.Type != ViewType.Projected)
-            throw ViewRequests.Invalid("/parent", $"/parent: {parent} is a {WireNames.ForEnum(facts.Type)} view; {what} a model view or a projected view");
+        if (facts.Type != ViewType.Model && facts.Type != ViewType.Projected && !(sections && facts.Type == ViewType.Section))
+            throw ViewRequests.Invalid("/parent", $"/parent: {parent} is a {WireNames.ForEnum(facts.Type)} view; {what} a model view{(sections ? ", a projected view or a section view" : " or a projected view")}");
         var model = drawing.ModelOf(parent) ?? throw ViewRequests.Invalid("/parent", $"/parent: {parent} shows no model that is loaded");
         var t = drawing.Transform(parent) ?? throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS gives no transform for {parent}");
         return (facts, model, t);
@@ -148,6 +151,91 @@ public sealed class ViewSectionOperation : DrawingChangeOperation<ViewSectionReq
             throw ViewCreateOperation.Failed(name, "extents", $"within {ViewGeometry.Project(t, box)}", drawn.ToString());
         result.HatchedFaces = faces.Count;
         result.HatchedAreaMm2 = faces.Sum(f => f.AreaMm2);
+        result.View = Describe(doc, drawing, name);
+    }
+}
+
+public sealed class ViewDetailOperation : DrawingChangeOperation<ViewDetailRequest, ViewDetailResult>
+{
+    /// <summary>The gap between a parent's drawn edges and a detail placed beside it, sheet mm.</summary>
+    public const double GapMm = 20;
+
+    public ViewDetailOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    string _parent = "";
+    SheetPoint _at = new SheetPoint();
+
+    protected override string? DocumentOf(ViewDetailRequest request) => request.Document;
+
+    protected override ViewDetailResult Change(ISwDocument doc, ISwDrawing drawing, ViewDetailRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        _parent = View(doc, drawing, request.Parent, "/parent");
+        var (parent, model, t) = ViewCuts.Parent(drawing, _parent, "detail", sections: true);
+        var centre = ModelPlaces.Resolve(Services.References, model, request.Centre ?? new ModelPlace(), "/centre");
+        if (!(request.RadiusMm > 0) || double.IsInfinity(request.RadiusMm))
+            throw ViewRequests.Invalid("/radius_mm", FormattableString.Invariant($"/radius_mm: the detail circle's radius must be more than 0 model mm, not {request.RadiusMm}"));
+        if (request.Scale == null) throw ViewRequests.Invalid("/scale", "/scale: give the scale the detail is drawn at (2:1 is twice the model's size)");
+        ViewRequests.Scale(request.Scale, "/scale");
+        var extents = DrawingReader.Extents(drawing, parent) ?? throw ViewRequests.Invalid("/parent", $"/parent: {_parent} draws nothing to detail");
+        var drawnCentre = ViewGeometry.ToSheet(t, centre.Point);
+        if (!ViewGeometry.Within(new SheetBox { Min = drawnCentre, Max = drawnCentre }, extents))
+            throw ViewRequests.Invalid("/centre", $"/centre: {centre.Described} is drawn at {drawnCentre} in {_parent}, outside what it draws ({extents}), so the detail would show nothing of it");
+        string label = ViewCuts.Label(drawing, request.Label);
+        var sheet = drawing.ReadSheet(parent.Sheet)!;
+        double scale = DrawingReader.Ratio(request.Scale);
+        _at = request.At ?? ViewCutGeometry.DetailPlace(extents, request.RadiusMm * scale, GapMm);
+        ViewRequests.OnSheet(_at, sheet, "/at");
+
+        ViewCuts.Show(drawing, parent.Sheet);
+        string name = drawing.DetailView(_parent, drawnCentre, request.RadiusMm * t.Scale, _at, request.Scale, label)
+            ?? throw new SwAgentException(ErrorCode.OperationFailed,
+                $"SOLIDWORKS made no detail of {_parent} around {centre.Described}; nothing was left on the drawing",
+                new JsonObject { ["parent"] = _parent, ["label"] = label });
+        MadeCut(doc, drawing, tx, name, _parent, label, section: false);
+        context.Log.Info(FormattableString.Invariant($"view.detail: {name} ({label}) of {_parent} around {centre.Described}, r {request.RadiusMm} mm, at {request.Scale} on {_at}"));
+        return new ViewDetailResult
+        {
+            View = new ViewInfo { Name = name, Sheet = parent.Sheet },
+            Label = label,
+            Centre = centre.Point,
+            CentreIs = centre.Described,
+            RadiusMm = request.RadiusMm,
+            ModelUnsaved = model.Info().Dirty,
+        };
+    }
+
+    /// <summary>
+    /// Design 611, Sections and details: a detail of the parent with the label asked, where asked, at its scale, turned as
+    /// its parent, drawing edges (not empty) that all lie inside the circle's image at that scale.
+    /// </summary>
+    protected override void Check(ISwDocument doc, ISwDrawing drawing, ViewDetailRequest request, ViewDetailResult result)
+    {
+        string name = result.View.Name;
+        var facts = drawing.ReadView(name) ?? throw ViewCreateOperation.Failed(name, "exists", "the view on its sheet", "no such view");
+        if (facts.Type != ViewType.Detail) throw ViewCreateOperation.Failed(name, "type", "detail", WireNames.ForEnum(facts.Type));
+        if (facts.Parent != _parent) throw ViewCreateOperation.Failed(name, "parent", _parent, facts.Parent ?? "none");
+        var detail = drawing.ReadDetail(name) ?? throw ViewCreateOperation.Failed(name, "detail", $"the detail {result.Label}", "no detail");
+        if (!string.Equals(detail.Label, result.Label, StringComparison.OrdinalIgnoreCase)) throw ViewCreateOperation.Failed(name, "label", result.Label, detail.Label);
+        if (!ViewGeometry.Near(facts.Position, _at)) throw ViewCreateOperation.Failed(name, "position", _at.ToString(), facts.Position.ToString());
+        if (!DrawingReader.SameScale(facts.Scale, request.Scale)) throw ViewCreateOperation.Failed(name, "scale", request.Scale.ToString(), facts.Scale.ToString());
+        double scale = DrawingReader.Ratio(request.Scale);
+        var t = ViewChecks.Scale(drawing, name, scale);
+        if (ViewCutGeometry.DetailTurnMismatch(drawing.Transform(_parent)!, t) is string turned)
+            throw ViewCreateOperation.Failed(name, "turn", $"turned as {_parent}", turned);
+        var points = DrawingReader.Points(drawing, facts);
+        if (points.Count == 0)
+        {
+            throw ViewCreateOperation.Failed(name, "empty", "edges inside the detail circle",
+                "nothing drawn: SOLIDWORKS made an empty detail, as CADapter saw it do; this is a known gap, so the detail was not kept");
+        }
+        var centre = ViewGeometry.ToSheet(t, result.Centre);
+        double radius = result.RadiusMm * scale;
+        if (ViewCutGeometry.OutsideCircle(points, centre, radius) is string outside)
+            throw ViewCreateOperation.Failed(name, "drawn", FormattableString.Invariant($"every drawn point within {radius:0.###} mm of {centre}"), outside);
+        result.PointsInside = points.Count;
         result.View = Describe(doc, drawing, name);
     }
 }
