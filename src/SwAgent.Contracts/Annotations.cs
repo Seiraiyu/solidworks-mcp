@@ -377,3 +377,65 @@ public sealed class AnnotationCentresResult : IDrawingChangeResult
     [Description("What changed in the drawing: created holds each one made; models each model shown, unchanged.")]
     public DrawingChange Change { get; set; } = new DrawingChange();
 }
+
+[Operation("annotation.datum", typeof(AnnotationResult))]
+[Description("Adds a datum tag (IModelDoc2.InsertDatumTag2) to a model entity a view shows, an edge (a face seen edge on) or a face, selected through its view (attach_to, a ViewEntity), never picked by sheet coordinates (SOLIDWORKS 2026 SP4 no longer finds a drawing edge by sheet coordinates for a datum tag). label is 1 to 3 letters A to Z without I, O and Q, and must not already label a datum tag of the drawing; at (sheet mm) moves the tag. Checked: the tag reads back its label, is attached to that entity, and is at at within 0.01 mm when given; the model is unchanged. An entity the view does not show is refused naming the view and the entity. Otherwise the tag is deleted again (rolled back).")]
+public sealed class AnnotationDatumRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The datum's label: 1 to 3 letters A to Z without I, O and Q (A, B, AA).")]
+    public string Label { get; set; } = "";
+
+    [Required]
+    [Description("The edge or face the tag is attached to, as a view shows it.")]
+    public ViewEntity AttachTo { get; set; } = new ViewEntity();
+
+    [Description("Where the tag goes, sheet mm. Where SOLIDWORKS puts it when absent.")]
+    public SheetPoint? At { get; set; }
+}
+
+[Operation("annotation.gtol", typeof(AnnotationResult))]
+[Description("Adds a single geometric tolerance frame (IModelDoc2.InsertGtol) to a model entity a view shows, an edge or a face, selected through its view (attach_to, a ViewEntity), never picked by sheet coordinates: characteristic one of the fourteen (straightness … total_runout), tolerance_mm (mm, more than 0) with the diameter symbol when diameter is true and material_condition none, mmc or lmc, and up to three datums, primary first, each the label of a datum tag already on the drawing (annotation.datum makes them; a form tolerance, straightness, flatness, circularity or cylindricity, takes none). The frame is set with IGtol.SetFrameSymbols (SOLIDWORKS' numbers; CADapter measured the string variant wanting font codes) and SetFrameValues2; at (sheet mm) moves it. Checked: the frame reads back its characteristic, tolerance, diameter symbol, material condition and datums, is attached to that entity, and is at at within 0.01 mm when given; the model is unchanged. Otherwise the frame is deleted again (rolled back). Composite and multi-frame tolerances are out of scope.")]
+public sealed class AnnotationGtolRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("straightness, flatness, circularity, cylindricity, profile_of_a_line, profile_of_a_surface, angularity, perpendicularity, parallelism, position, concentricity, symmetry, circular_runout or total_runout.")]
+    public GtolCharacteristic Characteristic { get; set; }
+
+    [Description("The tolerance, mm, more than 0.")]
+    public double ToleranceMm { get; set; }
+
+    [Required]
+    [Description("The edge or face the frame is attached to, as a view shows it.")]
+    public ViewEntity AttachTo { get; set; } = new ViewEntity();
+
+    [Description("Up to three datum labels, primary first, each a datum tag's already on the drawing. None when absent.")]
+    public List<string>? Datums { get; set; }
+
+    [Description("True to give the tolerance the diameter symbol (Ø), a cylindrical tolerance zone.")]
+    public bool? Diameter { get; set; }
+
+    [Description("none, mmc or lmc; none when absent.")]
+    public MaterialCondition? MaterialCondition { get; set; }
+
+    [Description("Where the frame goes, sheet mm. Where SOLIDWORKS puts it when absent.")]
+    public SheetPoint? At { get; set; }
+}
+
+[Description("The annotation made or changed.")]
+public sealed class AnnotationResult : IDrawingChangeResult
+{
+    [Required]
+    [Description("The annotation, as read back.")]
+    public AnnotationInfo Annotation { get; set; } = new AnnotationInfo();
+
+    [Required]
+    [Description("What changed in the drawing: created holds an annotation made, changed each value set; models each model shown, unchanged.")]
+    public DrawingChange Change { get; set; } = new DrawingChange();
+}
