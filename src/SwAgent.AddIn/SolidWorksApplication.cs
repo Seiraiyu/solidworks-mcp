@@ -49,6 +49,9 @@ public interface ISolidWorksApplication
     /// <summary>The user's default assembly template (Tools > Options > Default Templates), or null when none is set.</summary>
     string? DefaultAssemblyTemplate();
 
+    /// <summary>The user's default drawing template (Tools > Options > Default Templates), or null when none is set.</summary>
+    string? DefaultDrawingTemplate();
+
     /// <summary>A new document from <paramref name="template"/>, made active; api_error when SOLIDWORKS makes none.</summary>
     ISwDocument NewDocument(string template);
 
@@ -129,6 +132,12 @@ internal sealed class SolidWorksApplication : ISolidWorksApplication
     public string? DefaultAssemblyTemplate()
     {
         string template = _sw.GetUserPreferenceStringValue((int)swUserPreferenceStringValue_e.swDefaultTemplateAssembly);
+        return string.IsNullOrEmpty(template) ? null : template;
+    }
+
+    public string? DefaultDrawingTemplate()
+    {
+        string template = _sw.GetUserPreferenceStringValue((int)swUserPreferenceStringValue_e.swDefaultTemplateDrawing);
         return string.IsNullOrEmpty(template) ? null : template;
     }
 

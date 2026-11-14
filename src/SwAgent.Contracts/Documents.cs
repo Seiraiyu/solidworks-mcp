@@ -4,17 +4,20 @@ using System.ComponentModel;
 namespace SwAgent.Contracts;
 
 [Operation("document.new", typeof(DocumentNewResult))]
-[Description("Creates a part or an assembly from the user's default template for it (or a named template) and makes it the active document. With path, saves it there at once. The document is the agent's own, so document.close may close it.")]
+[Description("Creates a part, an assembly or a drawing from the user's default template for it (or a named template) and makes it the active document. With path, saves it there at once. The document is the agent's own, so document.close may close it. A drawing comes with the template's sheet and sheet format and no view; sheet sets that first sheet's size, scale and projection (sheet mm). On a drawing it makes, the agent hides origins, planes, axes, sketches and points in its views and turns off inserting annotations when a view is made. Checked: the document is active and of the type asked; a drawing has one sheet reading back as asked, no view, and no command left open.")]
 public sealed class DocumentNewRequest
 {
-    [Description("What to create: part or assembly (drawings come in a later release). Default part.")]
+    [Description("What to create: part, assembly or drawing. Default part.")]
     public DocumentType? Type { get; set; }
 
-    [Description("Full path of a template: .PRTDOT for a part, .ASMDOT for an assembly; the user's default template for the type when absent.")]
+    [Description("Full path of a template: .PRTDOT for a part, .ASMDOT for an assembly, .DRWDOT for a drawing; the user's default template for the type when absent.")]
     public string? Template { get; set; }
 
-    [Description("Full path of a file that does not exist yet, in an existing folder, with the type's extension (.SLDPRT, .SLDASM): the new document is saved there at once.")]
+    [Description("Full path of a file that does not exist yet, in an existing folder, with the type's extension (.SLDPRT, .SLDASM, .SLDDRW): the new document is saved there at once.")]
     public string? Path { get; set; }
+
+    [Description("Only for a drawing: the first sheet's size (a standard size or width_mm and height_mm), scale, projection and sheet format; the template's when absent.")]
+    public SheetSetup? Sheet { get; set; }
 }
 
 [Description("The document created.")]
@@ -27,6 +30,9 @@ public sealed class DocumentNewResult
     [Required]
     [Description("The template it was made from.")]
     public string Template { get; set; } = "";
+
+    [Description("For a drawing: its sheet, as read back after it was made.")]
+    public SheetInfo? Sheet { get; set; }
 }
 
 [Operation("document.open", typeof(DocumentOpenResult))]

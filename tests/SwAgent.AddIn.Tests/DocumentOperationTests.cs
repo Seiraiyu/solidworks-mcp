@@ -80,15 +80,6 @@ public class DocumentNewTests : DocumentTestBase
         Assert.Equal(other, New(new DocumentNewRequest { Template = other }).Template);
     }
 
-    [Fact]
-    public void Drawings_are_not_made_in_this_version()
-    {
-        var e = Fails(() => New(new DocumentNewRequest { Type = DocumentType.Drawing }));
-        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
-        Assert.Equal("type", e.Error.Details!["field"]);
-        Assert.Empty(Sw.NewFrom);
-    }
-
     string AssemblyTemplate()
     {
         string template = PathOf("Assembly.ASMDOT");
@@ -916,6 +907,7 @@ abstract class DelegatingSolidWorks : ISolidWorksApplication
     public string? OpenCommand() => Inner.OpenCommand();
     public string? DefaultPartTemplate() => Inner.DefaultPartTemplate();
     public string? DefaultAssemblyTemplate() => Inner.DefaultAssemblyTemplate();
+    public string? DefaultDrawingTemplate() => Inner.DefaultDrawingTemplate();
     public virtual ISwDocument NewDocument(string template) => Inner.NewDocument(template);
     public OpenOutcome OpenDocument(string path, DocumentType type, bool readOnly) => Inner.OpenDocument(path, type, readOnly);
     public virtual void Close(ISwDocument document) => Inner.Close(document);

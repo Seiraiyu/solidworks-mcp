@@ -84,16 +84,27 @@ sealed class FakeSolidWorks : ISolidWorksApplication
 
     public string? DefaultAssemblyTemplate() => DefaultAsmTemplate;
 
+    /// <summary>What DefaultDrawingTemplate returns.</summary>
+    public string? DefaultDrwTemplate { get; set; }
+
+    public string? DefaultDrawingTemplate() => DefaultDrwTemplate;
+
+    /// <summary>Called with each document NewDocument makes, before it is returned (a test's way to make SOLIDWORKS misbehave).</summary>
+    public Action<FakeDocument>? NewDocumentMade { get; set; }
+
     public ISwDocument NewDocument(string template)
     {
         NewFrom.Add(template);
         bool assembly = template.EndsWith(".ASMDOT", System.StringComparison.OrdinalIgnoreCase);
-        string title = (assembly ? "Assem" : "Part") + (NewFrom.Count + 1);
-        var doc = NewHasPlanes ? FakeDocument.Part(title) : new FakeDocument(title);
+        bool drawing = template.EndsWith(".DRWDOT", System.StringComparison.OrdinalIgnoreCase);
+        string title = (assembly ? "Assem" : drawing ? "Draw" : "Part") + (NewFrom.Count + 1);
+        var doc = drawing ? FakeDocument.NewDrawing(title) : NewHasPlanes ? FakeDocument.Part(title) : new FakeDocument(title);
         if (assembly) doc.Document.Type = DocumentType.Assembly;
+        if (drawing) doc.Drw!.Sw = this;
         Track(doc);
         doc.Document.Dirty = false;
         CurrentDoc = doc;
+        NewDocumentMade?.Invoke(doc);
         return doc;
     }
 

@@ -19,13 +19,17 @@ public sealed class DocumentNewOperation : Operation<DocumentNewRequest, Documen
     protected override DocumentNewResult Run(DocumentNewRequest request, IOperationContext context)
     {
         var type = request.Type ?? DocumentType.Part;
-        if (type == DocumentType.Drawing)
-        {
-            throw new SwAgentException(ErrorCode.InvalidArgument,
-                "document.new makes parts and assemblies in this version; drawings come in a later release",
-                new JsonObject { ["field"] = "type" });
-        }
         var kind = Kind.Of(type);
+        if (request.Sheet != null)
+        {
+            if (type != DocumentType.Drawing)
+            {
+                throw new SwAgentException(ErrorCode.InvalidArgument,
+                    $"sheet sets a drawing's first sheet, and this makes {kind.Article}; leave it out or pass type: drawing",
+                    new JsonObject { ["field"] = "sheet" });
+            }
+            SheetSetups.Validate(request.Sheet, "sheet");
+        }
         string? path = request.Path == null ? null : PathRules.Writable(request.Path, "path", overwrite: false, kind.Extension);
         string template;
         if (request.Template != null)
@@ -34,7 +38,12 @@ public sealed class DocumentNewOperation : Operation<DocumentNewRequest, Documen
         }
         else
         {
-            template = (type == DocumentType.Assembly ? _services.SolidWorks.DefaultAssemblyTemplate() : _services.SolidWorks.DefaultPartTemplate())
+            template = type switch
+                {
+                    DocumentType.Assembly => _services.SolidWorks.DefaultAssemblyTemplate(),
+                    DocumentType.Drawing => _services.SolidWorks.DefaultDrawingTemplate(),
+                    _ => _services.SolidWorks.DefaultPartTemplate(),
+                }
                 ?? throw new SwAgentException(ErrorCode.OperationFailed,
                     $"SOLIDWORKS has no default {kind.Noun} template; set one in Tools > Options > Default Templates, or pass template");
             if (!File.Exists(template))
@@ -46,6 +55,8 @@ public sealed class DocumentNewOperation : Operation<DocumentNewRequest, Documen
         }
 
         var doc = _services.SolidWorks.NewDocument(template);
+        _wanted = null;
+        if (type == DocumentType.Drawing) SetUpDrawing(doc, request.Sheet, context);
         if (path != null)
         {
             var saved = doc.SaveAs(path);
@@ -64,14 +75,53 @@ public sealed class DocumentNewOperation : Operation<DocumentNewRequest, Documen
             }
         }
         var info = doc.Info();
+        // Read after any save, so the sheet's reference names the drawing by its path.
+        var sheet = type == DocumentType.Drawing && doc.Drawing() is ISwDrawing made && made.SheetNames().FirstOrDefault() is string first && made.ReadSheet(first) is SheetFacts facts
+            ? DrawingReader.Sheet(_services.References, doc, made, facts, withViews: false)
+            : null;
         _services.Runtime.DocumentOpened(DocumentKeys.Of(info), owned: true);
-        context.Log.Info($"document.new: {DocumentKeys.Of(info)} from {template}");
-        return new DocumentNewResult { Document = info, Template = template };
+        context.Log.Info($"document.new: {DocumentKeys.Of(info)} from {template}{(sheet == null ? "" : $", sheet {sheet.Name} {SheetSetups.Describe(_wanted!)}")}");
+        return new DocumentNewResult { Document = info, Template = template, Sheet = sheet };
+    }
+
+    /// <summary>The first sheet's values document.new asked for, for Verify.</summary>
+    SheetFacts? _wanted;
+
+    /// <summary>
+    /// A new drawing (design 611, Drawing documents): it is the agent's own, so its views hide the model's scaffolding and
+    /// insert nothing when made (DrawingSettings), and its first sheet takes what was asked. A drawing that cannot be set
+    /// up is closed again, unsaved: it is new, so nothing of the user's is lost.
+    /// </summary>
+    void SetUpDrawing(ISwDocument doc, SheetSetup? setup, IOperationContext context)
+    {
+        try
+        {
+            var drawing = doc.Drawing() ?? throw new SwAgentException(ErrorCode.ApiError, $"{doc.Info().Title} says it is a drawing, but SOLIDWORKS gives no drawing for it");
+            foreach (var name in DrawingSettings.All) drawing.SetSetting(name, DrawingSettings.Value);
+            string first = drawing.SheetNames().FirstOrDefault()
+                ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"the template made a drawing with no sheet");
+            var facts = drawing.ReadSheet(first)!;
+            _wanted = setup == null ? facts : SheetSetups.Apply(facts, setup, null);
+            if (setup != null) drawing.SetSheet(first, _wanted);
+        }
+        catch (Exception e)
+        {
+            string title = doc.Info().Title;
+            _services.SolidWorks.Close(doc);
+            context.Log.Warn($"document.new: the new drawing {title} could not be set up, so it was closed: {e.Message}");
+            var known = e as SwAgentException;
+            var details = known?.Error.Details ?? new JsonObject { ["exception"] = e.GetType().FullName };
+            details["rolled_back"] = new System.Collections.Generic.List<object?> { title };
+            throw new SwAgentException(known?.Code ?? ErrorCode.OperationFailed,
+                $"{(known != null ? known.Error.Message : "SOLIDWORKS failed setting up the new drawing: " + e.Message)}; the new drawing {title} was closed", details);
+        }
     }
 
     /// <summary>
-    /// The document exists, is active, is of the type asked, has the template's three planes and origin, and is on disk
-    /// when a path was given; a new assembly has no command left open (Begin Assembly: design 455, Session preferences).
+    /// The document exists, is active, is of the type asked, and is on disk when a path was given. A part or assembly has
+    /// the template's three planes and origin; a new assembly or drawing has no command left open (Begin Assembly, Model
+    /// View: designs 455 and 611, Session preferences); a drawing has one sheet that reads back as asked, no view, and
+    /// the agent's settings (DrawingSettings) as set.
     /// </summary>
     protected override void Verify(DocumentNewRequest request, DocumentNewResult result, IOperationContext context)
     {
@@ -83,23 +133,56 @@ public sealed class DocumentNewOperation : Operation<DocumentNewRequest, Documen
             throw new SwAgentException(ErrorCode.VerificationFailed, $"the new {kind.Noun} {result.Document.Title} is not the active document");
         if (info.Type != type)
             throw new SwAgentException(ErrorCode.VerificationFailed, $"the template {result.Template} made {info.Type}, not {kind.Article}");
-        if (active!.StandardPlane(2) == null || active.Origin() == null)
+        if (type != DocumentType.Drawing && (active!.StandardPlane(2) == null || active.Origin() == null))
             throw new SwAgentException(ErrorCode.VerificationFailed, $"the new {kind.Noun} has no three default planes and origin; is {result.Template} {kind.Article} template?");
         if (request.Path != null && !File.Exists(request.Path))
             throw new SwAgentException(ErrorCode.VerificationFailed, $"SOLIDWORKS reported the {kind.Noun} saved to {request.Path}, but the file is not there");
-        if (type == DocumentType.Assembly && _services.SolidWorks.OpenCommand() is string command)
+        if (type != DocumentType.Part && _services.SolidWorks.OpenCommand() is string command)
+        {
+            string preference = type == DocumentType.Assembly ? "insert_component_for_new_assembly" : "insert_view_for_new_drawing";
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"SOLIDWORKS left '{command}' open on the new {kind.Noun} {info.Title}: the automation preference {preference} did not take (addin.state lists it under preferences_not_applied). Cancel it in SOLIDWORKS before the next change",
+                new JsonObject { ["command"] = command, ["document"] = DocumentLocator.Label(info) });
+        }
+        if (type == DocumentType.Drawing) VerifyDrawing(active!, info);
+    }
+
+    void VerifyDrawing(ISwDocument doc, DocumentInfo info)
+    {
+        var drawing = doc.Drawing() ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"{info.Title} gives no drawing");
+        var sheets = drawing.SheetNames();
+        if (sheets.Count != 1)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed, $"the new drawing has {sheets.Count} sheets, not one ({string.Join(", ", sheets)})",
+                new JsonObject { ["check"] = "sheets", ["expected"] = 1, ["measured"] = sheets.Count });
+        }
+        int views = drawing.ViewNames(sheets[0]).Count;
+        if (views != 0)
         {
             throw new SwAgentException(ErrorCode.VerificationFailed,
-                $"SOLIDWORKS left '{command}' open on the new assembly {info.Title}: the automation preference insert_component_for_new_assembly did not take (addin.state lists it under preferences_not_applied). Cancel it in SOLIDWORKS before the next change",
-                new JsonObject { ["command"] = command, ["document"] = DocumentLocator.Label(info) });
+                $"the new drawing has {views} views, not none: the template or the automation preference insert_view_for_new_drawing put them there",
+                new JsonObject { ["check"] = "views", ["expected"] = 0, ["measured"] = views });
+        }
+        var actual = drawing.ReadSheet(sheets[0]) ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"the sheet {sheets[0]} cannot be read back");
+        var wanted = _wanted!.Copy();
+        wanted.Name = actual.Name;
+        if (SheetSetups.Mismatch(wanted, actual) is { } mismatch) throw SheetSetups.NotAsAsked(actual.Name, mismatch);
+        var settings = drawing.Settings();
+        var off = DrawingSettings.All.Where(n => !settings.TryGetValue(n, out var v) || v != DrawingSettings.Value).ToList();
+        if (off.Count > 0)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"the new drawing did not take its settings: {string.Join(", ", off)} still on",
+                new JsonObject { ["check"] = "settings", ["settings"] = off.Select(o => (object?)o).ToList() });
         }
     }
 
-    /// <summary>The words and extensions that differ between a new part and a new assembly.</summary>
+    /// <summary>The words and extensions that differ between a new part, assembly and drawing.</summary>
     sealed class Kind
     {
         static readonly Kind Part = new Kind("part", "a part", ".SLDPRT", ".PRTDOT");
         static readonly Kind Assembly = new Kind("assembly", "an assembly", ".SLDASM", ".ASMDOT");
+        static readonly Kind Drawing = new Kind("drawing", "a drawing", ".SLDDRW", ".DRWDOT");
 
         Kind(string noun, string article, string extension, string templateExtension)
         {
@@ -114,7 +197,12 @@ public sealed class DocumentNewOperation : Operation<DocumentNewRequest, Documen
         public string Extension { get; }
         public string TemplateExtension { get; }
 
-        public static Kind Of(DocumentType type) => type == DocumentType.Assembly ? Assembly : Part;
+        public static Kind Of(DocumentType type) => type switch
+        {
+            DocumentType.Assembly => Assembly,
+            DocumentType.Drawing => Drawing,
+            _ => Part,
+        };
     }
 }
 
