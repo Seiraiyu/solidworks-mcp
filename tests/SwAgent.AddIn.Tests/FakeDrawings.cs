@@ -228,6 +228,7 @@ sealed partial class FakeDrawing : ISwDrawing
     {
         var facts = AllViews.FirstOrDefault(v => v.Facts.Name == name)?.Facts.Copy();
         if (facts != null) facts.Annotations = Annotated.Count(a => a.View == name);
+        if (facts != null) facts.Tables = Tabled.Count(t => t.View == name);
         return facts;
     }
 
