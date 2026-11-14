@@ -6,6 +6,62 @@ using SwAgent.Contracts.Serialization;
 
 namespace SwAgent.AddIn.Operations;
 
+public sealed class SheetAddOperation : DrawingChangeOperation<SheetAddRequest, SheetResult>
+{
+    public SheetAddOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    protected override string? DocumentOf(SheetAddRequest request) => request.Document;
+
+    protected override SheetResult Change(ISwDocument doc, ISwDrawing drawing, SheetAddRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        var setup = request.Setup();
+        SheetSetups.Validate(setup, "");
+        var names = drawing.SheetNames();
+        if (request.Name != null && (request.Name.Trim().Length == 0 || names.Contains(request.Name, System.StringComparer.OrdinalIgnoreCase)))
+        {
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                request.Name.Trim().Length == 0 ? "/name: a sheet's name cannot be empty" : $"/name: {doc.Info().Title} already has a sheet named {request.Name}",
+                new JsonObject { ["field"] = "/name", ["sheets"] = names.Select(n => (object?)n).ToList() });
+        }
+        string name = request.Name ?? NextName(names);
+        var first = drawing.ReadSheet(names[0]) ?? throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS gives nothing for the sheet {names[0]}");
+        _wanted = SheetSetups.Apply(first, setup, name);
+        if (!drawing.AddSheet(_wanted))
+        {
+            throw new SwAgentException(ErrorCode.OperationFailed,
+                $"SOLIDWORKS made no sheet ({SheetSetups.Describe(_wanted)}); a sheet format that does not fit the size is the likely reason",
+                new JsonObject { ["sheet"] = name });
+        }
+        string made = drawing.SheetNames().Except(names).FirstOrDefault()
+            ?? throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS reported the sheet {name} made, but the drawing has no new sheet");
+        MadeSheet(doc, drawing, tx, made);
+        context.Log.Info($"sheet.add: {made}, {SheetSetups.Describe(_wanted)}");
+        return new SheetResult { Sheet = new SheetInfo { Name = made } };
+    }
+
+    SheetFacts? _wanted;
+
+    /// <summary>One more sheet, reading back as asked.</summary>
+    protected override void Check(ISwDocument doc, ISwDrawing drawing, SheetAddRequest request, SheetResult result)
+    {
+        string name = result.Sheet.Name;
+        var actual = drawing.ReadSheet(name) ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"the sheet {name} is not in the drawing", new JsonObject { ["check"] = "exists" });
+        if (SheetSetups.Mismatch(_wanted!, actual) is { } mismatch) throw SheetSetups.NotAsAsked(name, mismatch);
+        result.Sheet = DescribeSheet(doc, drawing, name);
+    }
+
+    /// <summary>SOLIDWORKS' own way of naming sheets: Sheet and the first number no sheet has.</summary>
+    static string NextName(System.Collections.Generic.IReadOnlyList<string> names)
+    {
+        int n = names.Count + 1;
+        while (names.Contains("Sheet" + n, System.StringComparer.OrdinalIgnoreCase)) n++;
+        return "Sheet" + n;
+    }
+}
+
 public sealed class DrawingReadOperation : Operation<DrawingReadRequest, DrawingReadResult>
 {
     readonly AddInServices _services;
