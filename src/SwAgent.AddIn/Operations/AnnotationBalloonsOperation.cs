@@ -38,7 +38,7 @@ public sealed class AnnotationBalloonsOperation : DrawingChangeOperation<Annotat
             if (asm.ComponentByName(name) is object c && asm.Read(c) is ComponentInfo info && info.Path != null) _items[name] = BomRows.Key(info.Path, info.Configuration);
         }
         // The view's bill of materials, when it has one: each item's number is its row's.
-        var bom = drawing.Tables(facts.Sheet).FirstOrDefault(t => t.Bom && string.Equals(t.View, view, StringComparison.Ordinal));
+        var bom = ViewsBill(drawing, facts, view, new HashSet<string>(_items.Values, StringComparer.OrdinalIgnoreCase));
         _bom = bom == null ? null : bom.Rows.Where(r => r.Path != null && r.ItemNumber != null)
             .GroupBy(r => BomRows.Key(r.Path!, r.Configuration), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().ItemNumber!, StringComparer.OrdinalIgnoreCase);
@@ -58,6 +58,34 @@ public sealed class AnnotationBalloonsOperation : DrawingChangeOperation<Annotat
         }
         context.Log.Info($"annotation.balloons: {view}: {_made.Count} made ({string.Join(", ", _made.Select(m => $"{m.Name} {m.ItemNumber} on {string.Join("/", m.Components)}"))}), {already} of {items} items already ballooned{(bom == null ? "" : ", numbered to " + bom.Name)}");
         return new AnnotationBalloonsResult { Items = items, Already = already, Bom = bom?.Name };
+    }
+
+    /// <summary>
+    /// The bill of materials of <paramref name="view"/>: the one anchored to it, else the one on its sheet that lists its
+    /// model in its configuration (SP4 anchors table.bom's bill to the sheet, 5.D live run); null when there is none.
+    /// Two that could be the view's are refused: which numbers the balloons is never guessed.
+    /// </summary>
+    static TableFacts? ViewsBill(ISwDrawing drawing, ViewFacts facts, string view, ICollection<string> items)
+    {
+        var bills = drawing.Tables(facts.Sheet).Where(t => t.Bom).ToList();
+        var own = bills.Where(t => string.Equals(t.View, view, StringComparison.Ordinal)).ToList();
+        var candidates = own.Count > 0 ? own : bills.Where(t => t.View == null
+            && (t.Model != null ? SameModel(t.Model, facts.Model) : ListsExactly(t, items))
+            && (string.IsNullOrEmpty(t.Configuration) || string.IsNullOrEmpty(facts.Configuration) || string.Equals(t.Configuration, facts.Configuration, StringComparison.OrdinalIgnoreCase))).ToList();
+        if (candidates.Count > 1)
+            throw ViewRequests.Invalid("/view", $"/view: {string.Join(" and ", candidates.Select(t => t.Name))} on {facts.Sheet} could each be {view}'s bill of materials; delete all but one (table.delete), then balloon it");
+        return candidates.SingleOrDefault();
+    }
+
+    /// <summary>The same model: the same full path, or (where SOLIDWORKS names it by file) the same file name.</summary>
+    static bool SameModel(string bill, string? view) => view != null && (string.Equals(bill, view, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(System.IO.Path.GetFileName(bill), System.IO.Path.GetFileName(view), StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>A bill whose rows are exactly the view's items (file and configuration), for one that names no model.</summary>
+    static bool ListsExactly(TableFacts bill, ICollection<string> items)
+    {
+        var rows = new HashSet<string>(bill.Rows.Where(r => r.Path != null).Select(r => BomRows.Key(r.Path!, r.Configuration)), StringComparer.OrdinalIgnoreCase);
+        return rows.Count > 0 && rows.SetEquals(items);
     }
 
     /// <summary>Walks the view's annotations: one balloon per item the view shows, each on a component it shows, numbered as the bill numbers its row.</summary>

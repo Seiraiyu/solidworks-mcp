@@ -142,6 +142,7 @@ internal sealed partial class SolidWorksDrawing
             facts.Bom = true;
             facts.Configuration = feature == null ? null : BomRows.ConfigurationOf(feature.Configuration, ShownConfigurations(feature, out object? visible), visible);
             facts.Feature = feature?.Name;
+            facts.Model = feature == null ? null : Try(() => feature.GetReferencedModelName()) as string is string model && model.Length > 0 ? model : null;
             facts.BomKind = feature == null ? (BomKind?)null : BomKindOf(feature.TableType);
             for (int c = 0; c < columns; c++)
             {

@@ -84,6 +84,9 @@ sealed partial class FakeDrawing
     /// <summary>When true, making a bill of materials marks its assembly as changed.</summary>
     public bool BomDirtiesModel { get; set; }
 
+    /// <summary>When true, a bill is anchored to its sheet, not the view it was made for (as SP4 anchors one, 5.D live run).</summary>
+    public bool BomOnSheet { get; set; }
+
     public string? InsertBom(string view, BomKind kind, string configuration, SheetPoint? at, TableAnchor anchor)
     {
         Calls.Add($"bom {view} {WireNames.ForEnum(kind)} {configuration}");
@@ -92,7 +95,7 @@ sealed partial class FakeDrawing
         var asm = v.Model.Asm;
         var table = new TableFacts
         {
-            Name = "Bill of Materials" + ++_tables, Sheet = v.Facts.Sheet, View = view, Bom = true, BomKind = kind, Configuration = configuration, Feature = "Bill of Materials" + _tables,
+            Name = "Bill of Materials" + ++_tables, Sheet = v.Facts.Sheet, View = BomOnSheet ? null : view, Model = v.Facts.Model, Bom = true, BomKind = kind, Configuration = configuration, Feature = "Bill of Materials" + _tables,
             Position = at == null ? new SheetPoint(400, 280) : new SheetPoint(at.X, at.Y), Columns = { "ITEM NO.", "PART NUMBER", "DESCRIPTION", "QTY." },
         };
         if (!BomHeaderOnly && configuration.Length > 0)

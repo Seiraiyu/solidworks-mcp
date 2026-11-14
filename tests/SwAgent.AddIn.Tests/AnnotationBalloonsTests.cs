@@ -24,6 +24,31 @@ public class AnnotationBalloonsTests : AssemblyDrawingTestBase
     }
 
     [Fact]
+    public void A_bill_SOLIDWORKS_anchors_to_the_sheet_numbers_the_balloons_of_the_view_it_lists()
+    {
+        // SP4 (5.D live run, round 5): table.bom's bill reads back anchored to the sheet, not the view.
+        Drw.BomOnSheet = true;
+        var bom = Bom();
+        Assert.Null(bom.View);
+        var result = Balloons();
+        Assert.Equal(bom.Name, result.Bom);
+        Assert.Equal(new[] { ("block-1", "1"), ("pin-1", "2") }, result.Made.Select(b => (b.Component!, b.ItemNumber!)));
+    }
+
+    [Fact]
+    public void Two_bills_on_the_sheet_that_could_be_the_views_are_refused_naming_both()
+    {
+        Drw.BomOnSheet = true;
+        var first = Bom();
+        var second = Bom();
+        var e = Fails(() => Balloons());
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Contains(first.Name, e.Message);
+        Assert.Contains(second.Name, e.Message);
+        Assert.DoesNotContain(Drw.Calls, c => c.StartsWith("balloons"));
+    }
+
+    [Fact]
     public void Without_a_bill_each_item_has_its_own_number()
     {
         var result = Balloons();

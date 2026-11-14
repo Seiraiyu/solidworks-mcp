@@ -523,6 +523,9 @@ public sealed class TableFacts
     /// <summary>True for a bill of materials (swTableAnnotation_BillOfMaterials).</summary>
     public bool Bom { get; set; }
 
+    /// <summary>A bill of materials' model (IBomFeature.GetReferencedModelName), full path; null when SOLIDWORKS gives none.</summary>
+    public string? Model { get; set; }
+
     public BomKind? BomKind { get; set; }
 
     /// <summary>The configuration a bill of materials lists (IBomFeature.Configuration).</summary>
@@ -540,7 +543,7 @@ public sealed class TableFacts
 
     public TableFacts Copy() => new TableFacts
     {
-        Name = Name, Sheet = Sheet, View = View, Bom = Bom, BomKind = BomKind, Configuration = Configuration, Feature = Feature,
+        Name = Name, Sheet = Sheet, View = View, Model = Model, Bom = Bom, BomKind = BomKind, Configuration = Configuration, Feature = Feature,
         Position = Position == null ? null : new SheetPoint(Position.X, Position.Y), Columns = new List<string>(Columns),
         Rows = Rows.Select(r => new TableRow { Cells = new List<string>(r.Cells), ItemNumber = r.ItemNumber, Quantity = r.Quantity, Path = r.Path, Configuration = r.Configuration, Components = new List<string>(r.Components) }).ToList(),
     };
