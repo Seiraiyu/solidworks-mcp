@@ -270,18 +270,21 @@ public sealed class ModelStates
 }
 
 /// <summary>
-/// The precondition of every drawing change (design 611, Drawing changes): phase 3's (no sketch being edited, here a
-/// view's sketch; no command open), and the user is not editing the sheet format. Otherwise busy with user_editing,
-/// before anything is changed; nothing of the user's is closed.
+/// The precondition of every drawing change (design 611, Drawing changes): the user is not editing the sheet format, and
+/// phase 3's (no sketch being edited, here a view's sketch; no command open). Otherwise busy with user_editing, before
+/// anything is changed; nothing of the user's is closed. The sheet format is asked first: while it is edited SOLIDWORKS
+/// has the format's own sketch active, which phase 3's check would report as a sketch rather than as the sheet format.
 /// </summary>
 public static class DrawingChangeGuard
 {
     public static void Require(ISolidWorksApplication sw, ISwDocument doc, ISwDrawing drawing, string operation)
     {
+        if (drawing.EditingSheetFormat())
+        {
+            throw new SwAgentException(ErrorCode.Busy,
+                $"{operation} was not started: the user is editing the sheet format of {doc.Info().Title}. That is the user's to finish (Edit Sheet); wait for it (or ask them), then try again. Nothing was changed",
+                new JsonObject { ["reason"] = "user_editing", ["detected"] = "before", ["started"] = false, ["sheet_format"] = true });
+        }
         ModelChangeGuard.Require(sw, doc, operation);
-        if (!drawing.EditingSheetFormat()) return;
-        throw new SwAgentException(ErrorCode.Busy,
-            $"{operation} was not started: the user is editing the sheet format of {doc.Info().Title}. That is the user's to finish (Edit Sheet); wait for it (or ask them), then try again. Nothing was changed",
-            new JsonObject { ["reason"] = "user_editing", ["detected"] = "before", ["started"] = false, ["sheet_format"] = true });
     }
 }

@@ -101,21 +101,24 @@ public sealed class DiagScratchBlockRequest
 }
 
 [Operation("diag.editing", typeof(DiagEditingResult), Internal = true, ReadOnly = true)]
-[Description("Fault testing only: what the user has open that makes model changes wait, read exactly as their precondition reads it (the sketch being edited in the part, the command whose PropertyManager is open). Changes nothing. Refused unless diagnostics are on.")]
+[Description("Fault testing only: what the user has open that makes model and drawing changes wait, read exactly as their preconditions read it (the sketch being edited in the part, or in the drawing a sketch other than its sheet's or activated view's own; the command whose PropertyManager is open; a drawing's sheet format being edited). Changes nothing. Refused unless diagnostics are on.")]
 public sealed class DiagEditingRequest
 {
-    [Description("The part: its title or full path. The active document when absent.")]
+    [Description("The part or drawing: its title or full path. The active document when absent.")]
     public string? Document { get; set; }
 }
 
 [Description("What the user has open.")]
 public sealed class DiagEditingResult
 {
-    [Description("The sketch the user is editing in the part; absent when none.")]
+    [Description("The sketch the user is editing in the part or drawing; absent when none.")]
     public string? Sketch { get; set; }
 
     [Description("The title of the command (PropertyManager) the user has open; absent when none.")]
     public string? Command { get; set; }
+
+    [Description("True while the user edits a drawing's sheet format (Edit Sheet Format).")]
+    public bool SheetFormat { get; set; }
 }
 [Operation("diag.edit_component", typeof(DiagEditComponentResult), Internal = true)]
 [Description("Fault testing only: starts editing a component in the assembly's context as the user would (Edit Part) and leaves it so (editing true), or returns to editing the assembly (editing false), so the fault suite can show an assembly change waiting for the user without anyone at SOLIDWORKS. Refused unless diagnostics are on.")]

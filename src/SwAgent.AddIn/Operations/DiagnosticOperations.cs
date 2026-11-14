@@ -129,8 +129,12 @@ public sealed class DiagEditingOperation : Operation<DiagEditingRequest, DiagEdi
             throw new SwAgentException(ErrorCode.InvalidArgument,
                 @"diagnostic operations are off; set HKCU\Software\solidworks-mcp\Diagnostics (DWORD) to 1 and reload the add-in to use them");
         }
-        var doc = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "diag.editing");
-        return new DiagEditingResult { Sketch = doc.EditingSketch(), Command = _services.SolidWorks.OpenCommand() };
+        // A drawing as its change guard reads it (DrawingChangeGuard); anything else must be a part, as before.
+        var doc = DocumentLocator.Find(_services.SolidWorks, request.Document);
+        if (doc.Drawing() is ISwDrawing drawing)
+            return new DiagEditingResult { Sketch = doc.EditingSketch(), Command = _services.SolidWorks.OpenCommand(), SheetFormat = drawing.EditingSheetFormat() };
+        var part = DocumentLocator.FindPart(_services.SolidWorks, request.Document, "diag.editing");
+        return new DiagEditingResult { Sketch = part.EditingSketch(), Command = _services.SolidWorks.OpenCommand() };
     }
 
     /// <summary>Nothing to check: it only reads.</summary>
