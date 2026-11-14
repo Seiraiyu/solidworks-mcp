@@ -114,8 +114,12 @@ public sealed class ViewSetOperation : DrawingChangeOperation<ViewSetRequest, Vi
 
     ViewFacts _old = new ViewFacts();
     SheetPoint _at = new SheetPoint();
+    SheetBox? _drawn;
 
     protected override string? DocumentOf(ViewSetRequest request) => request.Document;
+
+    /// <summary>A view aligned with the one it was made from: projected and section views (SOLIDWORKS aligns both and draws them at its scale).</summary>
+    static bool Aligned(ViewFacts view) => (view.Type == ViewType.Projected || view.Type == ViewType.Section) && view.Parent != null;
 
     protected override ViewResult Change(ISwDocument doc, ISwDrawing drawing, ViewSetRequest request, ModelTransaction tx, IOperationContext context)
     {
@@ -127,9 +131,10 @@ public sealed class ViewSetOperation : DrawingChangeOperation<ViewSetRequest, Vi
         if (request.Scale != null && request.SheetScale != null) throw ViewRequests.Invalid("/sheet_scale", "/sheet_scale: give scale or sheet_scale, not both");
         if (request.SheetScale == false) throw ViewRequests.Invalid("/sheet_scale", "/sheet_scale: false is not a scale; give scale for the view's own");
         ViewRequests.Scale(request.Scale, "/scale");
-        bool projected = old.Type == ViewType.Projected && old.Parent != null;
+        bool projected = Aligned(old);
         if (projected && (request.Scale != null || request.SheetScale != null))
-            throw ViewRequests.Invalid(request.Scale != null ? "/scale" : "/sheet_scale", $"{name} is projected from {old.Parent} and drawn at its scale; rescale {old.Parent}");
+            throw ViewRequests.Invalid(request.Scale != null ? "/scale" : "/sheet_scale", $"{name} is {(old.Type == ViewType.Section ? "cut" : "projected")} from {old.Parent} and drawn at its scale; rescale {old.Parent}");
+        _drawn = old.Type == ViewType.Model || old.Type == ViewType.Projected ? null : DrawingReader.Extents(drawing, old);
         if (old.Type != ViewType.Model && request.Configuration != null)
             throw ViewRequests.Invalid("/configuration", $"/configuration: {name} is a {WireNames.ForEnum(old.Type)} view and shows its parent's configuration; change {old.Parent ?? "its parent"}'s");
         if (request.Configuration != null && request.Configuration.Trim().Length == 0) throw ViewRequests.Invalid("/configuration", "/configuration: give a configuration's name");
@@ -202,9 +207,29 @@ public sealed class ViewSetOperation : DrawingChangeOperation<ViewSetRequest, Vi
         var scale = request.Scale ?? (request.SheetScale == true ? drawing.ReadSheet(facts.Sheet)!.Scale : _old.Scale);
         if (!DrawingReader.SameScale(facts.Scale, scale) || (request.Scale != null && facts.SheetScale) || (request.SheetScale == true && !facts.SheetScale))
             throw ViewCreateOperation.Failed(name, "scale", request.SheetScale == true ? $"the sheet's, {scale}" : scale.ToString(), $"{facts.Scale}{(facts.SheetScale ? " (the sheet's)" : "")}");
-        string? orientation = facts.Orientation != null && ViewGeometry.Standard.Contains(facts.Orientation) && facts.Type == ViewType.Model ? facts.Orientation : null;
-        ViewChecks.Drawn(drawing, name, DrawingReader.Ratio(scale), orientation);
-        foreach (var child in drawing.SheetNames().SelectMany(drawing.ViewNames).Select(drawing.ReadView).Where(v => v != null && v.Parent == name && v.Type == ViewType.Projected))
+        if (facts.Type == ViewType.Model || facts.Type == ViewType.Projected)
+        {
+            string? orientation = facts.Orientation != null && ViewGeometry.Standard.Contains(facts.Orientation) && facts.Type == ViewType.Model ? facts.Orientation : null;
+            ViewChecks.Drawn(drawing, name, DrawingReader.Ratio(scale), orientation);
+        }
+        else
+        {
+            // A section, detail or flat pattern draws what it drew, moved and rescaled about its centre.
+            ViewChecks.Scale(drawing, name, DrawingReader.Ratio(scale));
+            var now = DrawingReader.Extents(drawing, facts);
+            if (_drawn != null)
+            {
+                double k = DrawingReader.Ratio(scale) / DrawingReader.Ratio(_old.Scale);
+                var expected = new SheetBox
+                {
+                    Min = new SheetPoint(_at.X + (_drawn.Min.X - _old.Position.X) * k, _at.Y + (_drawn.Min.Y - _old.Position.Y) * k),
+                    Max = new SheetPoint(_at.X + (_drawn.Max.X - _old.Position.X) * k, _at.Y + (_drawn.Max.Y - _old.Position.Y) * k),
+                };
+                if (now == null || !ViewGeometry.SameBox(expected, now))
+                    throw ViewCreateOperation.Failed(name, "extents", $"{expected} (what it drew, moved and rescaled)", now?.ToString() ?? "nothing drawn");
+            }
+        }
+        foreach (var child in drawing.SheetNames().SelectMany(drawing.ViewNames).Select(drawing.ReadView).Where(v => v != null && v.Parent == name && (v.Type == ViewType.Projected || v.Type == ViewType.Section)))
         {
             if (Alignment(drawing, name, child!.Name) == null)
                 throw ViewCreateOperation.Failed(child.Name, "alignment", $"on {name}'s centre lines", "off both: SOLIDWORKS did not keep it aligned");
@@ -258,17 +283,30 @@ public sealed class ViewDeleteOperation : DrawingChangeOperation<ViewDeleteReque
                 new JsonObject { ["field"] = $"/views/{i}", ["view"] = views[i], ["dependents"] = dependents.Select(d => (object?)d).ToList() });
         }
         _kept = all.Select(v => v.Name).Except(views).ToList();
+        // A section or detail view's line or circle stays in a parent that is kept: it goes with the view (by selection).
+        _cuts = all.Where(v => views.Contains(v.Name) && v.Parent != null && _kept.Contains(v.Parent))
+            .Select(v => (Parent: v.Parent!, Label: drawing.ReadSection(v.Name)?.Label ?? drawing.ReadDetail(v.Name)?.Label, Section: v.Type == ViewType.Section))
+            .Where(c => c.Label != null).Select(c => (c.Parent, c.Label!, c.Section)).ToList();
         if (!drawing.DeleteViews(views))
             throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not delete {string.Join(", ", views)}", new JsonObject { ["views"] = views.Select(v => (object?)v).ToList() });
-        context.Log.Info($"view.delete: {string.Join(", ", views)}");
+        foreach (var (parent, label, section) in _cuts.Where(c => drawing.CutLabels(c.Parent).Contains(c.Label, StringComparer.OrdinalIgnoreCase)))
+        {
+            if (section) drawing.DeleteSectionLine(parent, label);
+            else drawing.DeleteDetailCircle(parent, label);
+        }
+        context.Log.Info($"view.delete: {string.Join(", ", views)}{(_cuts.Count > 0 ? "; with " + string.Join(", ", _cuts.Select(c => $"{(c.Section ? "section line" : "detail circle")} {c.Label} of {c.Parent}")) : "")}");
         return new ViewDeleteResult { Deleted = views };
     }
 
-    /// <summary>Each deleted view is gone, and each other view is still there.</summary>
+    System.Collections.Generic.List<(string Parent, string Label, bool Section)> _cuts = new System.Collections.Generic.List<(string, string, bool)>();
+
+    /// <summary>Each deleted view is gone, with any section line or detail circle it had in a parent kept, and each other view is still there.</summary>
     protected override void Check(ISwDocument doc, ISwDrawing drawing, ViewDeleteRequest request, ViewDeleteResult result)
     {
         var now = drawing.SheetNames().SelectMany(drawing.ViewNames).ToList();
         var left = result.Deleted.Where(now.Contains).ToList();
+        left.AddRange(_cuts.Where(c => drawing.CutLabels(c.Parent).Contains(c.Label, StringComparer.OrdinalIgnoreCase))
+            .Select(c => $"{(c.Section ? "section line" : "detail circle")} {c.Label} of {c.Parent}"));
         var lost = _kept.Where(k => !now.Contains(k)).ToList();
         if (left.Count == 0 && lost.Count == 0) return;
         throw new SwAgentException(ErrorCode.VerificationFailed,

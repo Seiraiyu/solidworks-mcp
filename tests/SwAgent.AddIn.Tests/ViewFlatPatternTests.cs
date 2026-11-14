@@ -162,6 +162,17 @@ public class ViewFlatPatternTests : DrawingTestBase
     }
 
     [Fact]
+    public void A_flat_pattern_view_moves_and_rescales_drawing_what_it_drew()
+    {
+        var tab = Tab();
+        string name = Flat(tab.Document.Path!).View.Name;
+        var v = Run(new ViewSetOperation(Services), new ViewSetRequest { View = name, At = new SheetPoint(250, 120), Scale = new ScaleRatio(1, 2) }).View;
+        Assert.Equal(50, v.Extents!.Max.X - v.Extents.Min.X, 4);
+        Assert.Equal(225, v.Extents.Min.X, 4);
+        Assert.Equal(120, Drw.ReadView(name)!.Position.Y, 9);
+    }
+
+    [Fact]
     public void A_cut_list_with_no_flat_size_is_operation_failed_before_anything_is_drawn()
     {
         var tab = Tab();

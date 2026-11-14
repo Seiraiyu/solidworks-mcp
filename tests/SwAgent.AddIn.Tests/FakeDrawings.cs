@@ -319,16 +319,16 @@ sealed class FakeDrawing : ISwDrawing
         var v = View(view);
         double dx = at.X - v.Facts.Position.X, dy = at.Y - v.Facts.Position.Y;
         // SOLIDWORKS keeps an aligned view on its parent's centre line (CADapter measured).
-        if (v.Facts.Type == ViewType.Projected && v.Facts.Parent != null)
+        if ((v.Facts.Type == ViewType.Projected || v.Facts.Type == ViewType.Section) && v.Facts.Parent != null)
         {
             var parent = View(v.Facts.Parent);
             var origin = new Point3(0, 0, 0);
             if (Math.Abs(ViewGeometry.ToSheet(v.Transform!, origin).Y - ViewGeometry.ToSheet(parent.Transform!, origin).Y) < 1e-9) dy = 0;
             else dx = 0;
         }
-        // Views projected from it move with it the whole way, as SOLIDWORKS drags them (5.A live run: the front moved
+        // Views projected or cut from it move with it the whole way, as SOLIDWORKS drags them (5.A live run: the front moved
         // 10 mm along x and its right view moved 10 mm along x too), so they stay aligned.
-        foreach (var child in AllViews.Where(c => c.Facts.Parent == view && c.Facts.Type == ViewType.Projected && c.Transform != null && v.Transform != null).ToList())
+        foreach (var child in AllViews.Where(c => c.Facts.Parent == view && (c.Facts.Type == ViewType.Projected || c.Facts.Type == ViewType.Section) && c.Transform != null && v.Transform != null).ToList())
             Shift(child, dx, dy);
         Shift(v, dx, dy);
         AfterMove?.Invoke(view);
@@ -346,8 +346,8 @@ sealed class FakeDrawing : ISwDrawing
         var sheet = Sheets.Single(s => s.Views.Contains(v));
         var to = scale ?? new ScaleRatio(sheet.Facts.Scale.Numerator, sheet.Facts.Scale.Denominator);
         Rescale(v, to);
-        // Views projected from it are drawn at its scale, and stay on its centre lines.
-        foreach (var child in AllViews.Where(c => c.Facts.Parent == view && c.Facts.Type == ViewType.Projected && c.Transform != null).ToList())
+        // Views projected or cut from it are drawn at its scale, and stay on its centre lines.
+        foreach (var child in AllViews.Where(c => c.Facts.Parent == view && (c.Facts.Type == ViewType.Projected || c.Facts.Type == ViewType.Section) && c.Transform != null).ToList())
         {
             var origin = new Point3(0, 0, 0);
             var before = (Parent: ViewGeometry.ToSheet(v.Transform!, origin), Child: ViewGeometry.ToSheet(child.Transform!, origin));
