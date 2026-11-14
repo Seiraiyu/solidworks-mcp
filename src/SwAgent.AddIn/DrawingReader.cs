@@ -50,7 +50,7 @@ public static class DrawingReader
         Configuration = facts.Configuration,
         Orientation = facts.Orientation,
         Parent = facts.Parent,
-        Position = new SheetPoint(facts.Position.X, facts.Position.Y),
+        Position = Placed(drawing, facts),
         Scale = new ScaleRatio(facts.Scale.Numerator, facts.Scale.Denominator),
         SheetScale = facts.SheetScale,
         Display = facts.Display,
@@ -59,6 +59,19 @@ public static class DrawingReader
         Annotations = facts.Annotations,
         Tables = facts.Tables,
     };
+
+    /// <summary>
+    /// Where a view is, as the add-in reports it and view.set and view.detail take it, sheet mm: its Position; for a detail,
+    /// where it draws its circle's centre (ViewCutGeometry.DetailPoint), since SOLIDWORKS gives a detail's Position as its
+    /// own origin (5.B live run). A detail whose circle, parent or transforms SOLIDWORKS does not give reads its Position.
+    /// </summary>
+    public static SheetPoint Placed(ISwDrawing drawing, ViewFacts facts)
+    {
+        if (facts.Type == ViewType.Detail && facts.Parent != null && drawing.ReadDetail(facts.Name)?.Centre is SheetPoint centre
+            && drawing.Transform(facts.Parent) is ViewTransform parent && drawing.Transform(facts.Name) is ViewTransform detail)
+            return ViewCutGeometry.DetailPoint(parent, detail, centre);
+        return new SheetPoint(facts.Position.X, facts.Position.Y);
+    }
 
     /// <summary>
     /// The box around what a view draws, sheet mm: its polylines placed at its position and scale (ViewGeometry.DrawnExtents);

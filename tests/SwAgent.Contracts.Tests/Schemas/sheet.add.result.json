@@ -143,7 +143,7 @@
                   "y"
                 ],
                 "additionalProperties": false,
-                "description": "Its centre on the sheet."
+                "description": "Its centre on the sheet; for a detail, the centre of what its circle shows (where the detail draws the circle's centre), as view.detail and view.set take it."
               },
               "scale": {
                 "type": "object",

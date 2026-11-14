@@ -113,6 +113,7 @@ public sealed class ViewSetOperation : DrawingChangeOperation<ViewSetRequest, Vi
     }
 
     ViewFacts _old = new ViewFacts();
+    SheetPoint _from = new SheetPoint();
     SheetPoint _at = new SheetPoint();
     SheetBox? _drawn;
 
@@ -138,7 +139,9 @@ public sealed class ViewSetOperation : DrawingChangeOperation<ViewSetRequest, Vi
         if (old.Type != ViewType.Model && request.Configuration != null)
             throw ViewRequests.Invalid("/configuration", $"/configuration: {name} is a {WireNames.ForEnum(old.Type)} view and shows its parent's configuration; change {old.Parent ?? "its parent"}'s");
         if (request.Configuration != null && request.Configuration.Trim().Length == 0) throw ViewRequests.Invalid("/configuration", "/configuration: give a configuration's name");
-        _at = request.At ?? old.Position;
+        // Where it is and goes: its position; for a detail, where it draws its circle's centre (DrawingReader.Placed).
+        _from = DrawingReader.Placed(drawing, old);
+        _at = request.At ?? _from;
         if (request.At != null)
         {
             ViewRequests.OnSheet(request.At, drawing.ReadSheet(old.Sheet)!, "/at");
@@ -182,8 +185,9 @@ public sealed class ViewSetOperation : DrawingChangeOperation<ViewSetRequest, Vi
         }
         if (request.At != null || request.Scale != null || request.SheetScale == true)
         {
-            drawing.SetPosition(name, _at);
-            tx.Edited(new ChangedItem { Name = name, Property = "position", Before = old.Position.ToString(), After = _at.ToString() }, () =>
+            if (old.Type == ViewType.Detail) MoveDetail(drawing, name, _at);
+            else drawing.SetPosition(name, _at);
+            tx.Edited(new ChangedItem { Name = name, Property = "position", Before = _from.ToString(), After = _at.ToString() }, () =>
             {
                 drawing.SetPosition(name, old.Position);
                 if (!(drawing.ReadView(name) is ViewFacts back) || !ViewGeometry.Near(back.Position, old.Position))
@@ -203,7 +207,10 @@ public sealed class ViewSetOperation : DrawingChangeOperation<ViewSetRequest, Vi
             throw ViewCreateOperation.Failed(name, "configuration", request.Configuration, facts.Configuration ?? "none");
         if (request.Display != null && facts.Display != request.Display)
             throw ViewCreateOperation.Failed(name, "display", WireNames.ForEnum(request.Display.Value), facts.Display == null ? "a mode the add-in does not name" : WireNames.ForEnum(facts.Display.Value));
-        if (!ViewGeometry.Near(facts.Position, _at)) throw ViewCreateOperation.Failed(name, "position", _at.ToString(), facts.Position.ToString());
+        var placed = DrawingReader.Placed(drawing, facts);
+        if (!ViewGeometry.Near(placed, _at))
+            throw ViewCreateOperation.Failed(name, "position", facts.Type == ViewType.Detail ? $"the circle's centre drawn at {_at}" : _at.ToString(),
+                facts.Type == ViewType.Detail ? $"{placed} (its position {facts.Position})" : facts.Position.ToString());
         var scale = request.Scale ?? (request.SheetScale == true ? drawing.ReadSheet(facts.Sheet)!.Scale : _old.Scale);
         if (!DrawingReader.SameScale(facts.Scale, scale) || (request.Scale != null && facts.SheetScale) || (request.SheetScale == true && !facts.SheetScale))
             throw ViewCreateOperation.Failed(name, "scale", request.SheetScale == true ? $"the sheet's, {scale}" : scale.ToString(), $"{facts.Scale}{(facts.SheetScale ? " (the sheet's)" : "")}");
@@ -214,7 +221,7 @@ public sealed class ViewSetOperation : DrawingChangeOperation<ViewSetRequest, Vi
         }
         else
         {
-            // A section, detail or flat pattern draws what it drew, moved and rescaled about its centre.
+            // A section, detail or flat pattern draws what it drew, moved and rescaled about where it is.
             ViewChecks.Scale(drawing, name, DrawingReader.Ratio(scale));
             var now = DrawingReader.Extents(drawing, facts);
             if (_drawn != null)
@@ -222,8 +229,8 @@ public sealed class ViewSetOperation : DrawingChangeOperation<ViewSetRequest, Vi
                 double k = DrawingReader.Ratio(scale) / DrawingReader.Ratio(_old.Scale);
                 var expected = new SheetBox
                 {
-                    Min = new SheetPoint(_at.X + (_drawn.Min.X - _old.Position.X) * k, _at.Y + (_drawn.Min.Y - _old.Position.Y) * k),
-                    Max = new SheetPoint(_at.X + (_drawn.Max.X - _old.Position.X) * k, _at.Y + (_drawn.Max.Y - _old.Position.Y) * k),
+                    Min = new SheetPoint(_at.X + (_drawn.Min.X - _from.X) * k, _at.Y + (_drawn.Min.Y - _from.Y) * k),
+                    Max = new SheetPoint(_at.X + (_drawn.Max.X - _from.X) * k, _at.Y + (_drawn.Max.Y - _from.Y) * k),
                 };
                 if (now == null || !ViewGeometry.SameBox(expected, now))
                     throw ViewCreateOperation.Failed(name, "extents", $"{expected} (what it drew, moved and rescaled)", now?.ToString() ?? "nothing drawn");
@@ -235,6 +242,22 @@ public sealed class ViewSetOperation : DrawingChangeOperation<ViewSetRequest, Vi
                 throw ViewCreateOperation.Failed(child.Name, "alignment", $"on {name}'s centre lines", "off both: SOLIDWORKS did not keep it aligned");
         }
         result.View = Describe(doc, drawing, name);
+    }
+
+    /// <summary>
+    /// Moves a detail so it draws its circle's centre at <paramref name="at"/>: its Position by how far that centre is from
+    /// <paramref name="at"/>, then once more if SOLIDWORKS drew it off (as view.detail does; 5.B live run).
+    /// </summary>
+    static void MoveDetail(ISwDrawing drawing, string name, SheetPoint at)
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            var facts = drawing.ReadView(name);
+            if (facts == null) return;
+            var now = DrawingReader.Placed(drawing, facts);
+            if (i > 0 && ViewGeometry.Near(now, at)) return;
+            drawing.SetPosition(name, new SheetPoint(facts.Position.X + at.X - now.X, facts.Position.Y + at.Y - now.Y));
+        }
     }
 
     /// <summary>How a projected view is aligned with its parent: true on its horizontal centre line, false on its vertical one, null on neither (the model's origin drawn at the same y, or x, in both).</summary>
@@ -285,20 +308,51 @@ public sealed class ViewDeleteOperation : DrawingChangeOperation<ViewDeleteReque
         _kept = all.Select(v => v.Name).Except(views).ToList();
         // A section or detail view's line or circle stays in a parent that is kept: it goes with the view (by selection).
         _cuts = all.Where(v => views.Contains(v.Name) && v.Parent != null && _kept.Contains(v.Parent))
-            .Select(v => (Parent: v.Parent!, Label: drawing.ReadSection(v.Name)?.Label ?? drawing.ReadDetail(v.Name)?.Label, Section: v.Type == ViewType.Section))
-            .Where(c => c.Label != null).Select(c => (c.Parent, c.Label!, c.Section)).ToList();
-        if (!drawing.DeleteViews(views))
-            throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not delete {string.Join(", ", views)}", new JsonObject { ["views"] = views.Select(v => (object?)v).ToList() });
-        foreach (var (parent, label, section) in _cuts.Where(c => drawing.CutLabels(c.Parent).Contains(c.Label, StringComparer.OrdinalIgnoreCase)))
-        {
-            if (section) drawing.DeleteSectionLine(parent, label);
-            else drawing.DeleteDetailCircle(parent, label);
-        }
+            .Select(v => (View: v.Name, Parent: v.Parent!, Label: drawing.ReadSection(v.Name)?.Label ?? drawing.ReadDetail(v.Name)?.Label, Section: v.Type == ViewType.Section))
+            .Where(c => c.Label != null).Select(c => (c.View, c.Parent, c.Label!, c.Section)).ToList();
+        if (!drawing.DeleteViews(views)) throw Partly(drawing, views);
+        DeleteCuts(drawing, _cuts);
         context.Log.Info($"view.delete: {string.Join(", ", views)}{(_cuts.Count > 0 ? "; with " + string.Join(", ", _cuts.Select(c => $"{(c.Section ? "section line" : "detail circle")} {c.Label} of {c.Parent}")) : "")}");
         return new ViewDeleteResult { Deleted = views };
     }
 
-    System.Collections.Generic.List<(string Parent, string Label, bool Section)> _cuts = new System.Collections.Generic.List<(string, string, bool)>();
+    System.Collections.Generic.List<(string View, string Parent, string Label, bool Section)> _cuts = new System.Collections.Generic.List<(string, string, string, bool)>();
+
+    /// <summary>Deletes each section line or detail circle still in its parent.</summary>
+    static void DeleteCuts(ISwDrawing drawing, System.Collections.Generic.IEnumerable<(string View, string Parent, string Label, bool Section)> cuts)
+    {
+        foreach (var (_, parent, label, section) in cuts.Where(c => drawing.CutLabels(c.Parent).Contains(c.Label, StringComparer.OrdinalIgnoreCase)).ToList())
+        {
+            if (section) drawing.DeleteSectionLine(parent, label);
+            else drawing.DeleteDetailCircle(parent, label);
+        }
+    }
+
+    /// <summary>
+    /// What to answer when SOLIDWORKS refused a delete: it deletes a sheet at a time, so the views on sheets done before
+    /// may be gone. Read again: none gone is a plain operation_failed; some gone cannot be put back, so it is
+    /// operation_failed saying which views were deleted and which remain (rollback_failed, as a rollback that could not
+    /// finish), with the lines and circles of those deleted taken from their parents.
+    /// </summary>
+    SwAgentException Partly(ISwDrawing drawing, System.Collections.Generic.List<string> views)
+    {
+        var now = drawing.SheetNames().SelectMany(drawing.ViewNames).ToList();
+        var deleted = views.Where(v => !now.Contains(v)).ToList();
+        var remaining = views.Where(now.Contains).ToList();
+        if (deleted.Count == 0)
+            return new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not delete {string.Join(", ", views)}; none was deleted", new JsonObject { ["views"] = views.Select(v => (object?)v).ToList() });
+        DeleteCuts(drawing, _cuts.Where(c => deleted.Contains(c.View)));
+        return new SwAgentException(ErrorCode.OperationFailed,
+            $"SOLIDWORKS deleted {string.Join(", ", deleted)} but not {string.Join(", ", remaining)} (it deletes a sheet's views at a time); a deleted view cannot be put back, so the drawing is left with unsaved changes for you to inspect (drawing.read); it was not closed or reverted",
+            new JsonObject
+            {
+                ["views"] = views.Select(v => (object?)v).ToList(),
+                ["deleted"] = deleted.Select(v => (object?)v).ToList(),
+                ["remaining"] = remaining.Select(v => (object?)v).ToList(),
+                ["rollback_failed"] = true,
+                ["cause"] = WireNames.ForEnum(ErrorCode.OperationFailed),
+            });
+    }
 
     /// <summary>Each deleted view is gone, with any section line or detail circle it had in a parent kept, and each other view is still there.</summary>
     protected override void Check(ISwDocument doc, ISwDrawing drawing, ViewDeleteRequest request, ViewDeleteResult result)

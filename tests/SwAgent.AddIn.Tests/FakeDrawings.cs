@@ -72,6 +72,9 @@ sealed class FakeView
     /// <summary>A detail view's detail, or null.</summary>
     public DetailFacts? Detail { get; set; }
 
+    /// <summary>A detail view's circle in its parent's own sketch (model mm about the parent's position), as SOLIDWORKS keeps it: it moves with the parent.</summary>
+    public Point2? Circle { get; set; }
+
     /// <summary>The section lines and detail circles it holds, by label: the views cut or detailed from it.</summary>
     public List<string> Cuts { get; } = new List<string>();
 
@@ -376,10 +379,25 @@ sealed class FakeDrawing : ISwDrawing
         if (Configurations.TryGetValue(v.Facts.Model, out var names) && names.Contains(configuration)) v.Facts.Configuration = configuration;
     }
 
+    /// <summary>When true, DeleteViews deletes the first sheet's views and then refuses the second sheet's, as SOLIDWORKS may part-way.</summary>
+    public bool SecondSheetDeleteFails { get; set; }
+
     public bool DeleteViews(IReadOnlyList<string> views)
     {
         Calls.Add($"delete {string.Join(", ", views)}");
         if (DeleteFails) return false;
+        // A sheet's views at a time, as SolidWorksDrawing deletes them.
+        var groups = views.GroupBy(n => AllViews.FirstOrDefault(v => v.Facts.Name == n)?.Facts.Sheet).ToList();
+        for (int g = 0; g < groups.Count; g++)
+        {
+            if (g == 1 && SecondSheetDeleteFails) return false;
+            DeleteGroup(groups[g]);
+        }
+        return true;
+    }
+
+    void DeleteGroup(IEnumerable<string> views)
+    {
         foreach (var name in views)
         {
             var gone = AllViews.FirstOrDefault(v => v.Facts.Name == name);
@@ -387,7 +405,6 @@ sealed class FakeDrawing : ISwDrawing
             if (DeleteTakesCuts && label != null && gone!.Facts.Parent != null) AllViews.FirstOrDefault(v => v.Facts.Name == gone.Facts.Parent)?.Cuts.Remove(label);
             foreach (var s in Sheets) s.Views.RemoveAll(v => v.Facts.Name == name);
         }
-        return true;
     }
 
     public ISwDocument? ModelOf(string view) => AllViews.FirstOrDefault(v => v.Facts.Name == view)?.Model;
@@ -501,27 +518,43 @@ sealed class FakeDrawing : ISwDrawing
         var sheet = Sheets.Single(s => s.Views.Contains(p));
         if (p.Transform == null) return null;
         double k = Ratio(scale) / p.Transform.Scale;
+        // The circle's centre lands at at (and LandsOffByMm along x); its Position is its own origin, as SOLIDWORKS 2026
+        // SP4 gives it (5.B live run): where it draws what the parent draws at the parent's position, off the centre.
+        var drawnAt = new SheetPoint(at.X + LandsOffByMm, at.Y);
         var facts = new ViewFacts
         {
             Name = "Detail View " + label + " (" + scale + ")", Sheet = sheet.Facts.Name, Type = ViewType.Detail, Model = p.Facts.Model, Configuration = p.Facts.Configuration,
-            Parent = parent, Scale = new ScaleRatio(scale.Numerator, scale.Denominator), Display = p.Facts.Display, Position = new SheetPoint(at.X + LandsOffByMm, at.Y),
+            Parent = parent, Scale = new ScaleRatio(scale.Numerator, scale.Denominator), Display = p.Facts.Display,
+            Position = new SheetPoint(drawnAt.X + (p.Facts.Position.X - centre.X) * k, drawnAt.Y + (p.Facts.Position.Y - centre.Y) * k),
         };
         var t = p.Transform;
-        var view = new FakeView(facts, p.Model, new ViewTransform(t.Rotation, at.X + LandsOffByMm + (t.TxMm - centre.X) * k, at.Y + (t.TyMm - centre.Y) * k, t.TzMm, Ratio(scale)))
+        var view = new FakeView(facts, p.Model, new ViewTransform(t.Rotation, drawnAt.X + (t.TxMm - centre.X) * k, drawnAt.Y + (t.TyMm - centre.Y) * k, t.TzMm, Ratio(scale)))
         {
             Detail = new DetailFacts { Label = label, Circle = "Detail Circle" + (_views + 1) },
+            Circle = ViewCutGeometry.ToViewSketch(p.Facts.Position, p.Transform.Scale, centre),
         };
         _views++;
-        // What it draws: a square inside its circle, in metres about its position at its scale, or nothing.
+        // What it draws: a square inside its circle about the circle's centre, in metres about its position at its scale, or nothing.
         double half = radiusMm / p.Transform.Scale * 0.7 / 1000;
-        view.Drawn = DetailEmpty ? new List<double>() : new List<double> { 1, 0, 0, 1, 2, 3, 4, 5, 5, -half, -half, 0, half, -half, 0, half, half, 0, -half, half, 0, -half, -half, 0 };
+        double cx = (drawnAt.X - facts.Position.X) / Ratio(scale) / 1000, cy = (drawnAt.Y - facts.Position.Y) / Ratio(scale) / 1000;
+        view.Drawn = DetailEmpty ? new List<double>() : new List<double> { 1, 0, 0, 1, 2, 3, 4, 5, 5, cx - half, cy - half, 0, cx + half, cy - half, 0, cx + half, cy + half, 0, cx - half, cy + half, 0, cx - half, cy - half, 0 };
         p.Cuts.Add(label);
         sheet.Views.Add(view);
         AfterCreate?.Invoke(view);
         return facts.Name;
     }
 
-    public DetailFacts? ReadDetail(string view) => AllViews.FirstOrDefault(v => v.Facts.Name == view)?.Detail;
+    public DetailFacts? ReadDetail(string view)
+    {
+        var v = AllViews.FirstOrDefault(x => x.Facts.Name == view);
+        if (v?.Detail == null) return null;
+        var parent = v.Facts.Parent == null ? null : AllViews.FirstOrDefault(x => x.Facts.Name == v.Facts.Parent);
+        return new DetailFacts
+        {
+            Label = v.Detail.Label, Circle = v.Detail.Circle,
+            Centre = v.Circle == null || parent?.Transform == null ? null : ViewCutGeometry.FromViewSketch(parent.Facts.Position, parent.Transform.Scale, v.Circle),
+        };
+    }
 
     public bool DeleteDetailCircle(string parent, string label)
     {

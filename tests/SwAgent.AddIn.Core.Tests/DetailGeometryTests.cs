@@ -38,6 +38,25 @@ public class DetailGeometryTests
         Assert.Contains("turned right", ViewCutGeometry.DetailTurnMismatch(Views.Front(), Views.Top()));
     }
 
+    [Theory]
+    [InlineData("front")]
+    [InlineData("top")]
+    [InlineData("right")]
+    public void A_detail_draws_what_its_parent_draws_at_a_point_where_its_transform_says(string turned)
+    {
+        // The parent at 1:1 with its origin at (90, 160); the detail at 2:1 with its origin at (250, 60).
+        var (parent, detail) = turned switch
+        {
+            "top" => (Views.Top(1, 90, 160), Views.Top(2, 250, 60)),
+            "right" => (Views.Right(1, 90, 160), Views.Right(2, 250, 60)),
+            _ => (Views.Front(1, 90, 160), Views.Front(2, 250, 60)),
+        };
+        // A model point the parent draws at (110, 180): the detail draws it at its origin + 2 x (20, 20), whatever its depth.
+        var at = ViewCutGeometry.DetailPoint(parent, detail, new SheetPoint(110, 180));
+        Assert.Equal(290, at.X, 9);
+        Assert.Equal(100, at.Y, 9);
+    }
+
     [Fact]
     public void Points_inside_the_circle_pass_and_the_farthest_outside_is_named()
     {

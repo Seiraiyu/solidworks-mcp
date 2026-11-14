@@ -65,10 +65,101 @@ public class ViewCutSetDeleteTests : DrawingTestBase
     [Fact]
     public void A_detail_that_does_not_redraw_at_its_new_scale_is_put_back()
     {
+        var before = Drw.ReadView(_detail)!.Position;
         Drw.AfterMove = name => { if (name == _detail) Drw.View(_detail).Drawn![9] *= 2; };
         var e = Fails(() => Set(new ViewSetRequest { View = _detail, At = new SheetPoint(320, 100) }));
         Assert.Equal("extents", e.Error.Details!["check"]);
-        Assert.Equal(300, Drw.ReadView(_detail)!.Position.X, 9);
+        Assert.Equal(before.X, Drw.ReadView(_detail)!.Position.X, 9);
+        Assert.Equal(300, DrawingReader.Placed(Drw, Drw.ReadView(_detail)!).X, 9);
+    }
+
+    [Fact]
+    public void A_detail_moves_by_its_circles_centre_not_SOLIDWORKS_position()
+    {
+        // The fake gives a detail's Position as SP4 does: its own origin, away from the circle's centre (5.B live run).
+        var raw = Drw.ReadView(_detail)!.Position;
+        Assert.True(System.Math.Abs(raw.X - 300) > 10);
+        var v = Set(new ViewSetRequest { View = _detail, At = new SheetPoint(300, 60) }).View;
+        Assert.Equal(300, v.Position.X, 9);
+        Assert.Equal(60, v.Position.Y, 9);
+        // The hole the circle is centred on is drawn there, and SOLIDWORKS' Position moved by the same 40 mm.
+        var hole = SwAgent.AddIn.Core.ViewGeometry.ToSheet(Drw.Transform(_detail)!, new Point3(20, 20, 10));
+        Assert.Equal(300, hole.X, 9);
+        Assert.Equal(60, hole.Y, 9);
+        var now = Drw.ReadView(_detail)!.Position;
+        Assert.Equal(raw.X, now.X, 9);
+        Assert.Equal(raw.Y - 40, now.Y, 9);
+    }
+
+    [Fact]
+    public void A_detail_SOLIDWORKS_moves_off_where_asked_is_moved_again()
+    {
+        int moves = 0;
+        Drw.AfterMove = name =>
+        {
+            if (name != _detail || moves++ > 0) return;
+            // SOLIDWORKS drew it 0.3 mm right of where it was put (as view.detail saw on creation).
+            var v = Drw.View(_detail);
+            var t = v.Transform!;
+            v.Transform = new SwAgent.AddIn.Core.ViewTransform(t.Rotation, t.TxMm + 0.3, t.TyMm, t.TzMm, t.Scale);
+            v.Facts.Position = new SheetPoint(v.Facts.Position.X + 0.3, v.Facts.Position.Y);
+        };
+        var v = Set(new ViewSetRequest { View = _detail, At = new SheetPoint(300, 60) }).View;
+        Assert.Equal(300, v.Position.X, 9);
+        Assert.Equal(2, moves);
+    }
+
+    [Fact]
+    public void A_detail_whose_view_SOLIDWORKS_does_not_move_is_put_back()
+    {
+        var raw = Drw.ReadView(_detail)!.Position;
+        Drw.ViewSetIgnored = true;
+        var e = Fails(() => Set(new ViewSetRequest { View = _detail, At = new SheetPoint(300, 60) }));
+        Assert.Equal("position", e.Error.Details!["check"]);
+        Assert.Contains("circle's centre", e.Message);
+        Assert.Equal(raw.Y, Drw.ReadView(_detail)!.Position.Y, 9);
+    }
+
+    [Fact]
+    public void Drawing_read_gives_a_detail_where_it_draws_its_circles_centre()
+    {
+        var read = Run(new DrawingReadOperation(Services), new DrawingReadRequest());
+        var detail = read.Sheets.SelectMany(s => s.Views).Single(v => v.Name == _detail);
+        Assert.Equal(300, detail.Position.X, 9);
+        Assert.Equal(100, detail.Position.Y, 9);
+        Assert.NotEqual(Drw.ReadView(_detail)!.Position.X, detail.Position.X, 3);
+        // The front's own position is its Position.
+        Assert.Equal(100, read.Sheets.SelectMany(s => s.Views).Single(v => v.Name == _front.Facts.Name).Position.X, 9);
+    }
+
+    [Fact]
+    public void A_delete_SOLIDWORKS_refuses_on_the_second_sheet_says_which_views_went_and_which_remain()
+    {
+        Drw.AddSheet(new SheetFacts { Name = "Sheet2", WidthMm = 420, HeightMm = 297 });
+        var top = Drw.AddView("Sheet2", Block, "top", new SheetPoint(100, 150)).Facts.Name;
+        Drw.SecondSheetDeleteFails = true;
+        var e = Fails(() => Delete(_detail, top));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.Equal(true, e.Error.Details!["rollback_failed"]);
+        Assert.Equal(new object?[] { _detail }, (System.Collections.Generic.List<object?>)e.Error.Details["deleted"]!);
+        Assert.Equal(new object?[] { top }, (System.Collections.Generic.List<object?>)e.Error.Details["remaining"]!);
+        Assert.DoesNotContain("nothing had been made", e.Message);
+        Assert.Contains($"deleted {_detail} but not {top}", e.Message);
+        // The deleted detail's circle went from the front with it; the section's stayed with its view.
+        Assert.Equal(new[] { "A" }, Drw.CutLabels(_front.Facts.Name));
+        Assert.Null(Drw.ReadView(_detail));
+        Assert.NotNull(Drw.ReadView(top));
+    }
+
+    [Fact]
+    public void A_delete_SOLIDWORKS_refuses_before_deleting_anything_says_none_was_deleted()
+    {
+        Drw.DeleteFails = true;
+        var e = Fails(() => Delete(_section, _detail));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.Contains("none was deleted", e.Message);
+        Assert.False(e.Error.Details!.ContainsKey("rollback_failed"));
+        Assert.NotNull(Drw.ReadView(_detail));
     }
 
     [Fact]

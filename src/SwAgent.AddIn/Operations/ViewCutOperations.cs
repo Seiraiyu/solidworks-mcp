@@ -240,6 +240,10 @@ public sealed class ViewDetailOperation : DrawingChangeOperation<ViewDetailReque
         var drawnCentre = ViewGeometry.ToSheet(t, result.Centre);
         if (!ViewGeometry.Near(drawnCentre, _at))
             throw ViewCreateOperation.Failed(name, "position", $"the circle's centre drawn at {_at}", $"{drawnCentre} (its position {facts.Position})");
+        // ...and where the add-in reports it and view.set moves it from: the circle read back from the parent, through the detail.
+        var placed = DrawingReader.Placed(drawing, facts);
+        if (!ViewGeometry.Near(placed, _at))
+            throw ViewCreateOperation.Failed(name, "position", $"the detail circle's centre, read from {_parent}, drawn at {_at}", $"{placed} (its position {facts.Position})");
         var points = DrawingReader.Points(drawing, facts);
         if (points.Count == 0)
         {

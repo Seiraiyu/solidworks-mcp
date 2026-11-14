@@ -126,7 +126,7 @@ public sealed class ViewDetailRequest
     [Description("The detail's label (letters and digits, up to 4). The next free letter when absent; one another section or detail of the drawing has is refused.")]
     public string? Label { get; set; }
 
-    [Description("Where the detail view's centre goes, sheet mm. To the right of the parent when absent.")]
+    [Description("Where the detail view goes, sheet mm: the centre of what its circle shows (where the detail draws the circle's centre), as view.set takes and drawing.read reports it. To the right of the parent when absent.")]
     public SheetPoint? At { get; set; }
 }
 

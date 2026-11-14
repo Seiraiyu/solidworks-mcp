@@ -97,7 +97,7 @@
         "y"
       ],
       "additionalProperties": false,
-      "description": "Where the detail view's centre goes, sheet mm. To the right of the parent when absent."
+      "description": "Where the detail view goes, sheet mm: the centre of what its circle shows (where the detail draws the circle's centre), as view.set takes and drawing.read reports it. To the right of the parent when absent."
     }
   },
   "required": [

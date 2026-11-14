@@ -81,7 +81,10 @@ public interface ISwDrawing
     /// <summary>Makes a view show another configuration of its model (IView.ReferencedConfiguration).</summary>
     void SetConfiguration(string view, string configuration);
 
-    /// <summary>Deletes views by selecting each (SelectByID2 "DRAWINGVIEW", appended) and DeleteSelection2; false when SOLIDWORKS refused.</summary>
+    /// <summary>
+    /// Deletes views by selecting each (SelectByID2 "DRAWINGVIEW", appended) and DeleteSelection2, a sheet at a time with
+    /// that sheet shown; false when SOLIDWORKS refused, in which case the views on sheets done before are already gone.
+    /// </summary>
     bool DeleteViews(IReadOnlyList<string> views);
 
     /// <summary>The document of the model a view shows (IView.ReferencedDocument); null when it shows none or it is not loaded.</summary>
@@ -128,7 +131,7 @@ public interface ISwDrawing
     /// </summary>
     string? DetailView(string parent, SheetPoint centre, double radiusMm, SheetPoint at, ScaleRatio scale, string label);
 
-    /// <summary>The detail a detail view shows (IView.GetDetail): its label and its circle's name; null for any other view.</summary>
+    /// <summary>The detail a detail view shows (IView.GetDetail): its label, its circle's name and where the parent draws the circle's centre; null for any other view.</summary>
     DetailFacts? ReadDetail(string view);
 
     /// <summary>
@@ -260,6 +263,12 @@ public sealed class DetailFacts
 
     /// <summary>Its detail circle's name in its parent (IDetailCircle.GetName).</summary>
     public string Circle { get; set; } = "";
+
+    /// <summary>
+    /// Where its parent draws its circle's centre, sheet mm (the circle's profile arc in the parent's own sketch, placed
+    /// with ViewCutGeometry.FromViewSketch), or null when SOLIDWORKS gives no arc.
+    /// </summary>
+    public SheetPoint? Centre { get; set; }
 }
 
 /// <summary>A model entity a view shows: the view's model's own object, and whether it is a silhouette edge or a vertex.</summary>

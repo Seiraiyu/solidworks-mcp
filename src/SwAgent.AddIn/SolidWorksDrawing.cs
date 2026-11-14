@@ -372,7 +372,22 @@ internal sealed class SolidWorksDrawing : ISwDrawing
     }
 
     public DetailFacts? ReadDetail(string view) =>
-        Find(view)?.GetDetail() is IDetailCircle circle ? new DetailFacts { Label = circle.GetLabel() ?? "", Circle = circle.GetName() ?? "" } : null;
+        Find(view)?.GetDetail() is IDetailCircle circle ? new DetailFacts { Label = circle.GetLabel() ?? "", Circle = circle.GetName() ?? "", Centre = CircleCentre(circle) } : null;
+
+    /// <summary>
+    /// Where the parent draws a detail circle's centre, sheet mm: the centre of the arc its profile is (the circle the
+    /// add-in drew in the parent's own sketch), from the parent's sketch frame (ViewCutGeometry.FromViewSketch, as it was
+    /// drawn). Null when SOLIDWORKS gives no arc or no parent.
+    /// </summary>
+    static SheetPoint? CircleCentre(IDetailCircle circle)
+    {
+        var arc = circle.GetProfileItems() is object[] items ? items.OfType<ISketchArc>().FirstOrDefault() : null;
+        var parent = circle.GetView();
+        if (arc == null || parent == null || !(arc.GetCenterPoint2() is ISketchPoint c) || !(parent.Position is double[] position) || position.Length < 2) return null;
+        var ratio = parent.ScaleRatio as double[];
+        double scale = ratio != null && ratio.Length >= 2 && ratio[1] != 0 ? ratio[0] / ratio[1] : parent.ScaleDecimal;
+        return ViewCutGeometry.FromViewSketch(new SheetPoint(position[0] * Mm, position[1] * Mm), scale, new Point2(c.X * Mm, c.Y * Mm));
+    }
 
     public bool DeleteDetailCircle(string parent, string label)
     {

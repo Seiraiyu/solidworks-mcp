@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "Moves, rescales, restyles or reconfigures a drawing view in place: at (its centre, sheet mm), scale (its own) or sheet_scale (follow the sheet's), display, configuration (a model view's). Values not given stay; moved without at, a view keeps its centre. A projected or section view is drawn at its parent's scale and moves only along its parent's centre line (SOLIDWORKS silently keeps the aligned coordinate): moving it off that line is refused naming the parent. Each value is recorded before and put back on failure. Checked by measuring: every value reads back (the centre within 0.01 mm, the scale exactly), what it draws equals the model's box projected at its scale within 0.01 mm (orthographic model and projected views; inside it for others; a section, detail or flat pattern draws what it drew, moved and rescaled about its centre), the views projected or cut from it are still on its centre lines, and the model is unchanged.",
+  "description": "Moves, rescales, restyles or reconfigures a drawing view in place: at (its centre, sheet mm; for a detail, the centre of what its circle shows), scale (its own) or sheet_scale (follow the sheet's), display, configuration (a model view's). Values not given stay; moved without at, a view keeps its centre. A projected or section view is drawn at its parent's scale and moves only along its parent's centre line (SOLIDWORKS silently keeps the aligned coordinate): moving it off that line is refused naming the parent. Each value is recorded before and put back on failure. Checked by measuring: every value reads back (the centre within 0.01 mm, the scale exactly), what it draws equals the model's box projected at its scale within 0.01 mm (orthographic model and projected views; inside it for others; a section, detail or flat pattern draws what it drew, moved and rescaled about its centre; a detail's centre is where it draws its circle's centre), the views projected or cut from it are still on its centre lines, and the model is unchanged.",
   "properties": {
     "document": {
       "type": "string",
@@ -27,7 +27,7 @@
         "y"
       ],
       "additionalProperties": false,
-      "description": "Where its centre goes, sheet mm from the sheet's lower-left corner."
+      "description": "Where its centre goes, sheet mm from the sheet's lower-left corner; for a detail, the centre of what its circle shows (where the detail draws the circle's centre)."
     },
     "scale": {
       "type": "object",

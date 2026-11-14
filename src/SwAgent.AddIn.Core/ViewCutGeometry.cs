@@ -144,6 +144,22 @@ public static class ViewCutGeometry
         new SheetPoint(parentExtents.Max.X + gapMm + drawnRadiusMm, ViewGeometry.Centre(parentExtents).Y);
 
     /// <summary>
+    /// Where a detail view with transform <paramref name="detail"/> draws what its parent (transform
+    /// <paramref name="parent"/>) draws at <paramref name="drawnInParent"/>, sheet mm: the model point under that point,
+    /// at any depth (a detail is turned as its parent, so depth draws nowhere), through the detail. For the circle's
+    /// centre this is where a detail is: SOLIDWORKS 2026 SP4 gives a detail's Position as its own origin, about 20 mm from
+    /// that point at 2:1 (5.B live run).
+    /// </summary>
+    public static SheetPoint DetailPoint(ViewTransform parent, ViewTransform detail, SheetPoint drawnInParent)
+    {
+        double x = (drawnInParent.X - parent.TxMm) / parent.Scale, y = (drawnInParent.Y - parent.TyMm) / parent.Scale;
+        var right = ViewGeometry.Right(parent);
+        var up = ViewGeometry.Up(parent);
+        var model = new Point3(x * right.X + y * up.X, x * right.Y + y * up.Y, x * right.Z + y * up.Z);
+        return ViewGeometry.ToSheet(detail, model);
+    }
+
+    /// <summary>
     /// Null when a detail view with transform <paramref name="detail"/> shows its parent's model the way the parent does:
     /// the same three model directions to the sheet's right, up and toward the reader. Otherwise what was measured.
     /// </summary>

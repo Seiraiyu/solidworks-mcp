@@ -111,21 +111,31 @@ public class ViewDetailTests : DrawingTestBase
     [Fact]
     public void A_detail_SOLIDWORKS_puts_off_where_asked_is_moved_so_its_circles_centre_is_drawn_there()
     {
-        // 5.B live run: SOLIDWORKS 2026 SP4 gives a detail's Position as its own origin, 20 mm (10 mm at 2:1) right of the
-        // circle's centre, and drew that centre about 0.34 mm off where it was asked.
+        // 5.B live run: SOLIDWORKS 2026 SP4 gives a detail's Position as its own origin, about 20 mm from the circle's
+        // centre at 2:1 (the fake does too), and drew that centre about 0.34 mm off where it was asked.
         Drw.AfterCreate = v =>
         {
-            v.Facts.Position = new SheetPoint(v.Facts.Position.X + 20 - 0.344, v.Facts.Position.Y + 0.326);
-            for (int i = 9; i <= 21; i += 3) v.Drawn![i] -= 0.01;
+            v.Facts.Position = new SheetPoint(v.Facts.Position.X - 0.344, v.Facts.Position.Y + 0.326);
             var t = v.Transform!;
             v.Transform = new SwAgent.AddIn.Core.ViewTransform(t.Rotation, t.TxMm - 0.344, t.TyMm + 0.326, t.TzMm, t.Scale);
         };
         var r = Detail(Hole, at: new SheetPoint(300, 100));
-        Assert.Equal(320, r.View.Position.X, 9);
+        // Reported where it draws the circle's centre, as at was given, not at SOLIDWORKS' Position.
+        Assert.Equal(300, r.View.Position.X, 9);
         Assert.Equal(100, r.View.Position.Y, 9);
+        Assert.True(System.Math.Abs(Drw.ReadView(r.View.Name)!.Position.X - 300) > 10);
         var centre = SwAgent.AddIn.Core.ViewGeometry.ToSheet(Drw.Transform(r.View.Name)!, new Point3(20, 20, 10));
         Assert.Equal(300, centre.X, 9);
         Assert.Equal(100, centre.Y, 9);
+    }
+
+    [Fact]
+    public void A_detail_whose_circle_reads_elsewhere_than_where_it_was_drawn_is_rolled_back()
+    {
+        Drw.AfterCreate = v => v.Circle = new Point2(v.Circle!.X + 5, v.Circle.Y);
+        var e = Fails(() => Detail(Hole, at: new SheetPoint(300, 100)));
+        Assert.Equal("position", e.Error.Details!["check"]);
+        Assert.Contains("read from", e.Message);
     }
 
     [Fact]
