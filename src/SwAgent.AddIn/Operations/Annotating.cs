@@ -29,6 +29,31 @@ static class Annotating
             new JsonObject { ["made"] = made.Select(m => (object?)m.Name).ToList() });
     }
 
+    /// <summary>A view that shows a loaded model, with that model and its transform; invalid_argument naming /view otherwise.</summary>
+    public static (ViewFacts Facts, ISwDocument Model, Core.ViewTransform Transform) Showing(ISwDrawing drawing, string view)
+    {
+        var facts = drawing.ReadView(view)!;
+        var model = drawing.ModelOf(view) ?? throw ViewRequests.Invalid("/view", $"/view: {view} shows no model that is loaded");
+        var t = drawing.Transform(view) ?? throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS gives no transform for {view}");
+        return (facts, model, t);
+    }
+
+    /// <summary>
+    /// Each entity named, resolved in <paramref name="view"/>'s model and shown by it (ViewEntities.ResolveShown), as
+    /// /entities/i; one named in another view is invalid_argument at /entities/i/view.
+    /// </summary>
+    public static List<ResolvedViewEntity> InView(ReferenceService references, ISwDocument doc, ISwDrawing drawing, string view, IReadOnlyList<ViewEntity> given, params ReferenceKind[] accepted)
+    {
+        var list = new List<ResolvedViewEntity>();
+        for (int i = 0; i < given.Count; i++)
+        {
+            var e = ViewEntities.ResolveShown(references, doc, drawing, given[i], $"/entities/{i}", accepted);
+            if (e.View != view) throw ViewRequests.Invalid($"/entities/{i}/view", $"/entities/{i}/view: every entity is one of {view}'s, not {e.View}'s");
+            list.Add(e);
+        }
+        return list;
+    }
+
     /// <summary>The annotation <paramref name="made"/> names, read again now; verification_failed when it is gone.</summary>
     public static AnnotationFacts Reread(ISwDrawing drawing, AnnotationFacts made) =>
         DrawingAnnotations.Read(drawing, made.Sheet, made.View, made.Name) ?? throw Failed(made.Name, "exists", $"on the drawing in {DrawingAnnotations.Where(made)}", "no such annotation");

@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "description": "Adds centre lines to a view (IDrawingDoc.InsertCenterLine2, what each runs along selected through the view, never picked by sheet coordinates): along each cylindrical face named that the view sees from the side, or between exactly two straight edges named that it draws parallel; or, when entities is absent, along every cylinder a view of a part shows from the side, one per axis (SOLIDWORKS splits a hole's cylinder in two faces on one axis). An axis that already has a centre line is skipped (already). Checked by walking the view's annotations: the view gained one centre line per target, each attached to the face, or the two edges, it was made on; the model is unchanged. Otherwise the centre lines are deleted again (rolled back).",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "view": {
+      "type": "string",
+      "description": "The view: a reference (r1.view.…) or its name (Drawing View1)."
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "An entity of a model as one drawing view shows it: the view, and the entity in exactly one of the forms the model tools take (a reference issued in the view's model, a {component, entity} pair, or a name such as Boss-Extrude1 or Axis1@pin-1). It is resolved in the view's model and selected through that view.",
+        "properties": {
+          "view": {
+            "type": "string",
+            "description": "The view: a reference (r1.view.…) or its name (Drawing View1)."
+          },
+          "reference": {
+            "type": "string",
+            "description": "A reference issued in the view's model (model.find, view.entities), alone. One of reference or entity."
+          },
+          "component": {
+            "type": "string",
+            "description": "With entity in an assembly view: the component, by reference or name; entity is then a reference issued in the component's own part, or a name there."
+          },
+          "entity": {
+            "type": "string",
+            "description": "A name in the view's model (Boss-Extrude1, front, Axis1@pin-1), or with component an entity of that component. One of reference or entity."
+          }
+        },
+        "required": [
+          "view"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Cylindrical faces this view sees from the side (one centre line each), or exactly two straight edges it draws parallel (one centre line between them). Every cylinder the view shows from the side when absent."
+    }
+  },
+  "required": [
+    "view"
+  ],
+  "additionalProperties": false
+}

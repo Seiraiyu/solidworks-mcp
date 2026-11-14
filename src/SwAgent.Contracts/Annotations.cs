@@ -329,3 +329,51 @@ public sealed class AnnotationNoteResult : IDrawingChangeResult
     [Description("What changed in the drawing: created holds the note; models each model shown, unchanged.")]
     public DrawingChange Change { get; set; } = new DrawingChange();
 }
+
+[Operation("annotation.centre_marks", typeof(AnnotationCentresResult))]
+[Description("Adds centre marks to a view's circles (IDrawingDoc.InsertCenterMark3, a single mark on each circular edge, selected through the view, never picked by sheet coordinates): the circular edges named, or, when entities is absent, every circle a view of a part shows, one mark per centre (a hole's front and back edges share one). A circle that already has a centre mark at its centre is skipped (already). Checked by walking the view's annotations, not by SOLIDWORKS' count (CADapter measured it answering 0 with marks in place): the view gained one centre mark per circle, each at its circle's centre within 0.01 mm (sheet mm); the model is unchanged. Otherwise the marks are deleted again (rolled back).")]
+public sealed class AnnotationCentreMarksRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The view: a reference (r1.view.…) or its name (Drawing View1).")]
+    public string View { get; set; } = "";
+
+    [Description("The circular edges to mark, each as this view shows it (the view draws it as a circle or arc). Every circle the view shows when absent.")]
+    public List<ViewEntity>? Entities { get; set; }
+}
+
+[Operation("annotation.centre_lines", typeof(AnnotationCentresResult))]
+[Description("Adds centre lines to a view (IDrawingDoc.InsertCenterLine2, what each runs along selected through the view, never picked by sheet coordinates): along each cylindrical face named that the view sees from the side, or between exactly two straight edges named that it draws parallel; or, when entities is absent, along every cylinder a view of a part shows from the side, one per axis (SOLIDWORKS splits a hole's cylinder in two faces on one axis). An axis that already has a centre line is skipped (already). Checked by walking the view's annotations: the view gained one centre line per target, each attached to the face, or the two edges, it was made on; the model is unchanged. Otherwise the centre lines are deleted again (rolled back).")]
+public sealed class AnnotationCentreLinesRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The view: a reference (r1.view.…) or its name (Drawing View1).")]
+    public string View { get; set; } = "";
+
+    [Description("Cylindrical faces this view sees from the side (one centre line each), or exactly two straight edges it draws parallel (one centre line between them). Every cylinder the view shows from the side when absent.")]
+    public List<ViewEntity>? Entities { get; set; }
+}
+
+[Description("The centre marks or centre lines made.")]
+public sealed class AnnotationCentresResult : IDrawingChangeResult
+{
+    [Required]
+    [Description("Each one made, as read back.")]
+    public List<AnnotationInfo> Made { get; set; } = new List<AnnotationInfo>();
+
+    [Description("How many targets there were: circles (one per centre) or axes, named or found in the view.")]
+    public int Eligible { get; set; }
+
+    [Description("How many of those already had one, and were skipped.")]
+    public int Already { get; set; }
+
+    [Required]
+    [Description("What changed in the drawing: created holds each one made; models each model shown, unchanged.")]
+    public DrawingChange Change { get; set; } = new DrawingChange();
+}

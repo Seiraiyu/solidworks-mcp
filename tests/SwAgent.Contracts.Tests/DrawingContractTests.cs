@@ -109,6 +109,8 @@ public class DrawingContractTests
     [InlineData("annotation.import", "annotation", false)]
     [InlineData("annotation.dimension", "annotation", false)]
     [InlineData("annotation.note", "annotation", false)]
+    [InlineData("annotation.centre_marks", "annotation", false)]
+    [InlineData("annotation.centre_lines", "annotation", false)]
     public void The_operations_are_catalogued_in_their_families(string method, string family, bool readOnly)
     {
         var op = OperationCatalog.Find(method);
