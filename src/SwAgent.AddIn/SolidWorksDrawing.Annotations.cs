@@ -52,7 +52,7 @@ internal sealed partial class SolidWorksDrawing
         return owner == null ? NoAnnotations : AnnotationsOf(owner).Select(a => Read(a, sheet, view, view == null ? null : owner)).ToList();
     }
 
-    static AnnotationFacts Read(IAnnotation a, string sheet, string? view, IView? inView)
+    AnnotationFacts Read(IAnnotation a, string sheet, string? view, IView? inView)
     {
         var facts = new AnnotationFacts
         {
@@ -64,7 +64,10 @@ internal sealed partial class SolidWorksDrawing
             Attached = a.GetAttachedEntities3() is object[] attached ? attached.Where(o => o != null).ToList() : new List<object>(),
         };
         string? root = inView == null ? null : RootOf(inView);
-        facts.Components = facts.Attached.Select(o => ComponentName(o, root)).Where(n => n != null).Select(n => n!).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        facts.Components = facts.Attached.Select(o => ComponentName(o, root) ?? (inView == null ? null : ShownComponentOf(inView, o, root)))
+            .Where(n => n != null).Select(n => n!).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (facts.Components.Count == 0 && facts.Attached.Count > 0)
+            facts.AttachedNote = string.Join(", ", facts.Attached.Select(Interfaces)) + " (no component by IEntity.GetComponent, IDrawingComponent, or the one component the view shows it of)";
         switch (a.GetSpecificAnnotation())
         {
             case IDisplayDimension d:
@@ -120,9 +123,56 @@ internal sealed partial class SolidWorksDrawing
     static string? ComponentName(object attached, string? root) => attached switch
     {
         IComponent2 c => NameIn(c, root),
+        IDrawingComponent d => NameIn(Try(() => d.Component) as IComponent2, root),
         IEntity e => NameIn(Try(() => e.GetComponent()) as IComponent2, root),
         _ => null,
     };
+
+    /// <summary>
+    /// The one component of <paramref name="view"/> whose shown entities (IView.GetVisibleEntities2 with that component,
+    /// read only) include <paramref name="entity"/>, by ISldWorks.IsSame; null when none does, or more than one does: a
+    /// match must be unique, never a guess. SP4 gave balloons and notes in an assembly view entities IEntity.GetComponent
+    /// does not name (5.D live run, cases 32 and 34).
+    /// </summary>
+    string? ShownComponentOf(IView view, object entity, string? root)
+    {
+        string? found = null;
+        foreach (var c in Components(view))
+        {
+            if (!(Try(() => ShowsOf(view, c, entity)) is true)) continue;
+            string? name = NameIn(c, root);
+            if (name == null) continue;
+            if (found != null && !string.Equals(found, name, StringComparison.OrdinalIgnoreCase)) return null;
+            found = name;
+        }
+        return found;
+    }
+
+    bool ShowsOf(IView view, IComponent2 component, object entity)
+    {
+        foreach (var type in new[] { swViewEntityType_e.swViewEntityType_Edge, swViewEntityType_e.swViewEntityType_SilhouetteEdge, swViewEntityType_e.swViewEntityType_Vertex, swViewEntityType_e.swViewEntityType_Face })
+        {
+            if (view.GetVisibleEntities2(component as Component2, (int)type) is object[] found && found.Any(o => o != null && SameEntity(o, entity))) return true;
+        }
+        return false;
+    }
+
+    /// <summary>The SOLIDWORKS interfaces an attached object answers to, for a refusal to say what it was.</summary>
+    static string Interfaces(object o)
+    {
+        var names = new List<string>();
+        if (o is IEdge) names.Add("IEdge");
+        if (o is IFace2) names.Add("IFace2");
+        if (o is IVertex) names.Add("IVertex");
+        if (o is IEntity) names.Add("IEntity");
+        if (o is IComponent2) names.Add("IComponent2");
+        if (o is IDrawingComponent) names.Add("IDrawingComponent");
+        if (o is ISketchSegment) names.Add("ISketchSegment");
+        if (o is ISketchPoint) names.Add("ISketchPoint");
+        if (o is IAnnotation) names.Add("IAnnotation");
+        if (o is IView) names.Add("IView");
+        return names.Count == 0 ? "an object of no known interface" : string.Join("/", names);
+    }
 
     /// <summary>A centre mark's own position, sheet mm (ICenterMark.GetPosition, index 0, else 1), with the index that gave it.</summary>
     static (int Index, SheetPoint? Position) MarkPosition(ICenterMark mark)

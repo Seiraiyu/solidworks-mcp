@@ -105,6 +105,7 @@ sealed partial class FakeDocument : ISwDocument
 
     /// <summary>As SOLIDWORKS' IEntity.GetComponent: a face's, edge's or vertex's component; never a feature's (plan 4.B does not rely on it).</summary>
     public object? ComponentOf(object entity) =>
+        entity is FakeProxy p ? p.Reported?.Entity :
         entity is FakeEntity e && (e.Kind == ReferenceKind.Face || e.Kind == ReferenceKind.Edge || e.Kind == ReferenceKind.Vertex) ? e.Component?.Entity : null;
 
     public EntityInfo Describe(object entity)

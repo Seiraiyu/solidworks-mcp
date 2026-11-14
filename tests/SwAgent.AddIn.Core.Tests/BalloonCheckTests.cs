@@ -73,4 +73,13 @@ public class BalloonCheckTests
     {
         Assert.Equal("balloon_item", BalloonCheck.Mismatch(Visible, Item, new[] { B("b1", " ", "block-1") }, new BalloonFacts[0], Bom)!.Value.Check);
     }
+
+    [Fact]
+    public void A_balloon_attached_to_no_component_says_what_it_is_attached_to()
+    {
+        var unattached = new BalloonFacts("b2", "2", new string[0]) { AttachedNote = "IEdge (no component)" };
+        var m = BalloonCheck.Mismatch(Visible, Item, new[] { B("b1", "1", "block-1"), unattached }, new BalloonFacts[0], null);
+        Assert.Equal("balloon_component", m!.Value.Check);
+        Assert.Equal("attached to none (IEdge (no component))", m.Value.Measured);
+    }
 }

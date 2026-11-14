@@ -92,6 +92,21 @@ public class AssemblyViewEntitiesTests : AssemblyDrawingTestBase
     }
 
     [Fact]
+    public void A_note_attached_to_a_proxy_that_names_no_component_lists_its_reference_back()
+    {
+        // SP4 (5.D live run, case 32): the entity a note reads back attached to is the view's proxy, whose component
+        // IEntity.GetComponent does not give as the assembly names it. It is matched to the one component the view shows it of.
+        Drw.AttachedAsProxies = true;
+        Drw.ProxiesReport = BlockEdge.Component;
+        string pin = RefOf(PinCircle);
+        var note = Run(new AnnotationNoteOperation(Services), new AnnotationNoteRequest
+        {
+            Text = "PIN", At = new SheetPoint(300, 200), AttachTo = new ViewEntity { View = AsmFront.Facts.Name, Reference = pin },
+        }).Annotation;
+        Assert.Equal(pin, Assert.Single(note.Attached).Reference);
+    }
+
+    [Fact]
     public void The_component_entity_pair_names_the_pins_circle_through_its_own_part()
     {
         var pinPart = FakeDocument.Part("pin.SLDPRT", PathOf("pin.SLDPRT"));

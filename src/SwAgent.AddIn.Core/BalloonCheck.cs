@@ -19,6 +19,9 @@ public sealed class BalloonFacts
     public string? ItemNumber { get; }
 
     public IReadOnlyList<string> Components { get; }
+
+    /// <summary>What it is attached to when no component reads from it (the interfaces SOLIDWORKS gave), for the refusal to say; null otherwise.</summary>
+    public string? AttachedNote { get; set; }
 }
 
 /// <summary>
@@ -45,7 +48,7 @@ public static class BalloonCheck
         foreach (var b in made)
         {
             if (b.Components.Count != 1 || !shown.Contains(b.Components[0]))
-                return ("balloon_component", b.Name, "attached to one component the view shows", b.Components.Count == 0 ? "attached to none" : string.Join(", ", b.Components));
+                return ("balloon_component", b.Name, "attached to one component the view shows", b.Components.Count == 0 ? (b.AttachedNote == null ? "attached to none" : $"attached to none ({b.AttachedNote})") : string.Join(", ", b.Components));
             if (string.IsNullOrWhiteSpace(b.ItemNumber))
                 return ("balloon_item", b.Name, "an item number", "none");
         }

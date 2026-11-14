@@ -66,7 +66,7 @@ public sealed class AnnotationBalloonsOperation : DrawingChangeOperation<Annotat
         var made = _made.Select(m => Annotating.Reread(drawing, m)).ToList();
         var other = made.FirstOrDefault(m => m.Kind != AnnotationKind.Balloon);
         if (other != null) throw Annotating.Failed(other.Name, "kind", "balloon", WireNames.ForEnum(other.Kind));
-        static BalloonFacts Facts(AnnotationFacts a) => new BalloonFacts(a.Name, a.ItemNumber, a.Components);
+        static BalloonFacts Facts(AnnotationFacts a) => new BalloonFacts(a.Name, a.ItemNumber, a.Components) { AttachedNote = a.AttachedNote };
         if (BalloonCheck.Mismatch(_visible, ItemOf, made.Select(Facts).ToList(), _already.Select(Facts).ToList(), _bom) is var (check, balloon, expected, measured))
             throw Annotating.Failed(balloon.Length > 0 ? balloon : "in " + _view, check, expected, measured);
         var shown = new ShownEntities(Services.References, drawing);

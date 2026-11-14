@@ -142,7 +142,7 @@ sealed partial class FakeDrawing
         var facts = make(v);
         facts.Sheet = v?.Facts.Sheet ?? sheet;
         facts.View ??= view;
-        facts.Attached = AttachIgnored ? new List<object>() : entities.ToList();
+        facts.Attached = AttachIgnored ? new List<object>() : entities.Select(e => AttachedAsProxies && e is FakeEntity fe ? new FakeProxy(fe) { Reported = ProxiesReport } : e).ToList();
         if (facts.Position != null) facts.Position = new SheetPoint(facts.Position.X + AnnotationLandsOffByMm, facts.Position.Y);
         facts.PositionNote ??= PositionNote;
         Annotated.Add(facts);
@@ -251,7 +251,17 @@ sealed partial class FakeDrawing
 
     public IReadOnlyList<object> VisibleFaces(string view, string? component = null) => View(view).Faces.Where(f => Of(f, component)).ToList();
 
-    public bool SameEntity(object a, object b) => ReferenceEquals(a, b);
+    public bool SameEntity(object a, object b) =>
+        ReferenceEquals(a, b) || (a is FakeProxy pa && ReferenceEquals(pa.Of, b)) || (b is FakeProxy pb && ReferenceEquals(pb.Of, a));
+
+    /// <summary>
+    /// When true, an annotation reads back attached to the view's proxy of each entity, which names no component and
+    /// only SameEntity ties to the model's own (as SP4 gave in the 5.D live run, case 32).
+    /// </summary>
+    public bool AttachedAsProxies { get; set; }
+
+    /// <summary>The component those proxies report (IEntity.GetComponent): none by default, or one the view does not show them under.</summary>
+    public FakeComponent? ProxiesReport { get; set; }
 
     static readonly byte[] TwinId = { 7, 7, 7, 7 };
 
@@ -297,4 +307,15 @@ sealed partial class FakeDrawing
         Annotated.Add(facts);
         return facts;
     }
+}
+
+/// <summary>A drawing view's proxy of a model entity: no component, no id; SameEntity ties it to <see cref="Of"/>.</summary>
+sealed class FakeProxy
+{
+    public FakeProxy(FakeEntity of) => Of = of;
+
+    public FakeEntity Of { get; }
+
+    /// <summary>The component IEntity.GetComponent gives for it; null for none.</summary>
+    public FakeComponent? Reported { get; set; }
 }

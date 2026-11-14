@@ -56,12 +56,37 @@ public sealed class ShownEntities
     public string? Reference(ISwDocument model, string view, object shown)
     {
         string? component = ComponentName(model, shown);
+        if (model.Assembly() != null)
+        {
+            // SP4 (5.D live run, case 32): what a note reads back attached to is the view's proxy, whose component does not
+            // read as the assembly names it. The view decides: the one component it shows the entity under (unique, by
+            // SameEntity); the model's answer only when the view lists it under none, and only when the view shows that
+            // component; never a guess.
+            var visible = _drawing.VisibleComponents(view);
+            component = ShownOf(view, visible, shown)
+                ?? (component != null && visible.Contains(component, StringComparer.OrdinalIgnoreCase) ? component : null);
+        }
         var (all, refs) = Of(model, view, component);
         int at = all.FindIndex(s => ReferenceEquals(s, shown) || _drawing.SameEntity(s, shown));
         if (at >= 0) return refs[at];
         // Not among what the view lists: judged with them, as one more of the view's entities.
         var with = new List<object>(all) { shown };
         return References(_references, model, _drawing, view, with, PartOf(model, component))[with.Count - 1];
+    }
+
+    /// <summary>The one component of <paramref name="visible"/> the view shows <paramref name="entity"/> of (SameEntity); null for none, or for more than one.</summary>
+    string? ShownOf(string view, IReadOnlyList<string> visible, object entity)
+    {
+        string? found = null;
+        foreach (var c in visible)
+        {
+            bool shows = _drawing.VisibleEntities(view, edges: true, vertices: true, c).Any(v => ReferenceEquals(v.Entity, entity) || _drawing.SameEntity(v.Entity, entity))
+                || _drawing.VisibleFaces(view, c).Any(f => ReferenceEquals(f, entity) || _drawing.SameEntity(f, entity));
+            if (!shows) continue;
+            if (found != null) return null;
+            found = c;
+        }
+        return found;
     }
 
     /// <summary>The name of the component an entity of an assembly belongs to; null in a part, or for the assembly's own.</summary>

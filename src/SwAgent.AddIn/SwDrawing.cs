@@ -497,6 +497,9 @@ public sealed class AnnotationFacts
     /// <summary>The names of the components the entities it is attached to belong to (IEntity.GetComponent), each once; empty in a view of a part.</summary>
     public IReadOnlyList<string> Components { get; set; } = new List<string>();
 
+    /// <summary>When it is attached to something but no component reads from it: what SOLIDWORKS gave (its interfaces), for a refusal to say.</summary>
+    public string? AttachedNote { get; set; }
+
     public AnnotationFacts Copy() => new AnnotationFacts
     {
         Name = Name, Sheet = Sheet, View = View, Kind = Kind, Position = Position == null ? null : new SheetPoint(Position.X, Position.Y), PositionNote = PositionNote, Text = Text, LinkedText = LinkedText,
