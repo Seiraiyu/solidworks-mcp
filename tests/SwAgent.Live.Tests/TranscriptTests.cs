@@ -148,4 +148,97 @@ public class TranscriptTests
         Assert.Contains(sides, e => ((string)e["entity"]!).StartsWith("${", StringComparison.Ordinal) && !e.ContainsKey("component"));
         Assert.Contains(transcript.Steps, s => (string)s["tool"]! == "sw_explode_create");
     }
+
+    [Fact]
+    public void The_drawing_transcript_calls_only_tools_the_server_offers_and_ends_with_a_PDF()
+    {
+        var transcript = Transcript.Load(System.IO.Path.Combine(AppContext.BaseDirectory, "Scenarios", "drawing.transcript.json"));
+        var offered = Mcp.Server.ToolCatalog.All.Select(t => t.Name).ToHashSet();
+        Assert.Equal("drawing", transcript.Name);
+        Assert.All(transcript.Steps, s => Assert.Contains((string)s["tool"]!, offered));
+        var last = transcript.Steps[transcript.Steps.Count - 1];
+        Assert.Equal("sw_export_drawing", (string)last["tool"]!);
+        Assert.Equal("pdf", ((JsonObject)last["arguments"]!)["format"]);
+        // The design's make-a-drawing scenario: three views and a section, imported and reference dimensions, a datum and a
+        // tolerance, an assembly sheet exploded with a bill of materials and balloons.
+        var tools = transcript.Steps.Select(s => (string)s["tool"]!).ToList();
+        foreach (var tool in new[] { "sw_view_create", "sw_view_project", "sw_view_section", "sw_annotation_import", "sw_annotation_dimension", "sw_annotation_datum", "sw_annotation_gtol", "sw_sheet_add", "sw_table_bom", "sw_annotation_balloons", "sw_drawing_properties" })
+            Assert.Contains(tool, tools);
+        Assert.Equal(2, tools.Count(t => t == "sw_view_project"));
+        Assert.Contains(transcript.Steps, s => (string)s["tool"]! == "sw_view_create" && ((JsonObject)s["arguments"]!).TryGetValue("exploded", out var e) && Equals(e, true));
+    }
+
+    [Theory]
+    [InlineData("bracket")]
+    [InlineData("enclosure")]
+    [InlineData("stand")]
+    [InlineData("drawing")]
+    public void Every_argument_is_one_its_tool_takes(string name)
+    {
+        var transcript = Transcript.Load(System.IO.Path.Combine(AppContext.BaseDirectory, "Scenarios", name + ".transcript.json"));
+        var problems = new List<string>();
+        for (int i = 0; i < transcript.Steps.Count; i++)
+        {
+            var step = transcript.Steps[i];
+            string tool = (string)step["tool"]!;
+            var op = Contracts.OperationCatalog.All.SingleOrDefault(o => o.ToolName == tool);
+            if (op == null) continue;
+            var arguments = step.TryGetValue("arguments", out var a) ? (JsonObject)a! : new JsonObject();
+            SchemaProblems(arguments, Contracts.Serialization.JsonSchema.For(op.RequestType), $"step {i + 1} ({tool})", problems);
+        }
+        Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+    }
+
+    /// <summary>What in <paramref name="value"/> its schema does not take: an unknown property, a missing required one, a value of another type or outside its enum. A whole ${variable} stands for any value.</summary>
+    static void SchemaProblems(object? value, JsonObject schema, string at, List<string> problems)
+    {
+        if (value is string s && s.StartsWith("${", StringComparison.Ordinal) && s.EndsWith("}", StringComparison.Ordinal)) return;
+        if (schema.TryGetValue("enum", out var e) && e is List<object?> allowed && !allowed.Contains(value))
+        {
+            problems.Add($"{at}: {value} is not one of {string.Join(", ", allowed)}");
+            return;
+        }
+        string? type = schema.TryGetValue("type", out var t) ? t as string : null;
+        switch (type)
+        {
+            case "object":
+                if (value is not JsonObject o)
+                {
+                    problems.Add($"{at}: not an object");
+                    return;
+                }
+                var properties = schema.TryGetValue("properties", out var p) ? (JsonObject)p! : new JsonObject();
+                foreach (var kv in o)
+                {
+                    if (properties.TryGetValue(kv.Key, out var property)) SchemaProblems(kv.Value, (JsonObject)property!, $"{at}/{kv.Key}", problems);
+                    else problems.Add($"{at}: {kv.Key} is not a property it takes ({string.Join(", ", properties.Select(x => x.Key))})");
+                }
+                if (schema.TryGetValue("required", out var r) && r is List<object?> required)
+                {
+                    foreach (string need in required.Cast<string>().Where(n => !o.ContainsKey(n))) problems.Add($"{at}: {need} is required");
+                }
+                break;
+            case "array":
+                if (value is not List<object?> list)
+                {
+                    problems.Add($"{at}: not an array");
+                    return;
+                }
+                if (schema.TryGetValue("items", out var items) && items is JsonObject itemSchema)
+                {
+                    for (int i = 0; i < list.Count; i++) SchemaProblems(list[i], itemSchema, $"{at}/{i}", problems);
+                }
+                break;
+            case "string":
+                if (value is not string && !(value is string v && v.Contains("${"))) problems.Add($"{at}: not a string");
+                break;
+            case "number":
+            case "integer":
+                if (!(value is double || value is long || value is int)) problems.Add($"{at}: not a number");
+                break;
+            case "boolean":
+                if (value is not bool) problems.Add($"{at}: not true or false");
+                break;
+        }
+    }
 }
