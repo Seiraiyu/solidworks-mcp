@@ -8,81 +8,133 @@ namespace SwAgent.AddIn;
 /// <summary>
 /// References for what a drawing view shows (view.entities, an annotation's attachments), and the way back. SP4 hands
 /// back proxies for a view's entities whose persistent ids are twins (5.C live run, round 2: the front view's top and
-/// bottom edges had one reference, its left and right edges another, and the part resolved none of them), and round 3
-/// found SP4's correspondence (IView.GetCorresponding, ISldWorks.IsSame against the proxies) verifying none. So the
-/// part's own entity for a proxy is the one entity of the part (ISwDocument.Topology, what model.find names, or what
-/// SOLIDWORKS' correspondence offers) whose description, in the part's coordinates, is the proxy's: same kind, shape,
-/// feature, position, direction and size. Its reference is kept only when it resolves back to that shape and no other
-/// entity of the view would be given it. Anything else is not issued: null, never a twin or a guess.
+/// bottom edges had one reference, its left and right edges another, and the part resolved none of them), and its
+/// correspondence (IView.GetCorresponding, ISldWorks.IsSame against the proxies) verified none (round 3). So the part's
+/// own entity for a proxy is the one entity of the part (ISwDocument.Topology, what model.find names) with the proxy's
+/// form (kind, shape, feature, length, radius, direction) at the proxy's position. Round 4 measured that position not
+/// always in the part's frame: with the view activated, the front view's line and vertex proxies read shifted by the
+/// view's position ((130, 180) mm; the corner (60, 40, 20) at (190, 220, 20)) while its circle did not. So a position
+/// matches as given or shifted by the one offset the view's proxies share with the part (found by vote over the whole
+/// view). Its reference is kept only when it resolves back to that entity and no other entity of the view would be given
+/// it. Anything else is not issued: null, never a twin or a guess.
 /// </summary>
 public static class ShownEntities
 {
-    /// <summary>How close two descriptions' lengths and positions must be to be one entity, mm (the part's own numbers, read twice).</summary>
+    /// <summary>How close two lengths or positions must be to be one entity, mm (the part's own numbers, read twice).</summary>
     const double Tol = 1e-4;
 
     /// <summary>The verified reference for <paramref name="shown"/>, or null.</summary>
-    public static string? Reference(ReferenceService references, ISwDocument model, ISwDrawing drawing, string view, object shown) =>
-        References(references, model, drawing, view, new[] { shown })[0];
+    public static string? Reference(ReferenceService references, ISwDocument model, ISwDrawing drawing, string view, object shown)
+    {
+        var all = Shown(drawing, view);
+        int at = all.FindIndex(s => ReferenceEquals(s, shown) || drawing.SameEntity(s, shown));
+        if (at < 0)
+        {
+            all.Add(shown);
+            at = all.Count - 1;
+        }
+        return References(references, model, drawing, view, all)[at];
+    }
 
     /// <summary>The verified references for each of <paramref name="shown"/>, in order; any two would share are dropped from both.</summary>
     public static IReadOnlyList<string?> References(ReferenceService references, ISwDocument model, ISwDrawing drawing, string view, IReadOnlyList<object> shown)
     {
-        var own = new Dictionary<ReferenceKind, List<(object Entity, EntityInfo Info)>>();
-        List<(object, EntityInfo)> Own(ReferenceKind kind)
-        {
-            if (own.TryGetValue(kind, out var list)) return list;
-            var topology = kind == ReferenceKind.Edge ? TopologyKind.Edge : kind == ReferenceKind.Vertex ? TopologyKind.Vertex : TopologyKind.Face;
-            list = model.Topology(topology).Select(e => (e, Describe(model, e))).Where(x => x.Item2 != null).Select(x => (x.e, x.Item2!)).ToList();
-            own[kind] = list;
-            return list;
-        }
-
+        var part = new Part(model);
+        var seen = shown.Select(s => Describe(model, s)).ToList();
+        var forms = seen.Select(p => p == null ? new List<(object, EntityInfo)>() : part.OfKind(p.Kind).Where(c => SameForm(c.Info, p)).ToList()).ToList();
+        var offset = Offset(seen, forms);
         var refs = new List<string?>();
-        foreach (var s in shown)
+        for (int i = 0; i < shown.Count; i++)
         {
-            var seen = Describe(model, s);
-            if (seen == null || !(seen.Kind == ReferenceKind.Edge || seen.Kind == ReferenceKind.Vertex || seen.Kind == ReferenceKind.Face))
+            var p = seen[i];
+            if (p == null)
             {
                 refs.Add(null);
                 continue;
             }
-            var candidates = drawing.ModelEntities(view, s).Select(e => (e, Describe(model, e))).Where(x => x.Item2 != null).Select(x => (x.e, x.Item2!))
-                .Concat(Own(seen.Kind)).Where(c => SameShape(c.Item2, seen)).ToList();
-            var issued = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var (entity, _) in candidates)
-            {
-                if (Verified(references, model, entity, seen) is string r) issued.Add(r);
-            }
-            refs.Add(issued.Count == 1 ? issued.First() : null);
+            var at = forms[i].Where(c => At(c.Item2, p, offset)).ToList();
+            refs.Add(at.Count == 1 ? Verified(references, model, at[0].Item1, at[0].Item2) : null);
         }
         var twins = new HashSet<string>(refs.Where(r => r != null).GroupBy(r => r!, StringComparer.Ordinal).Where(g => g.Count() > 1).Select(g => g.Key), StringComparer.Ordinal);
         return refs.Select(r => r != null && twins.Contains(r) ? null : r).ToList();
     }
 
     /// <summary>
-    /// The entity <paramref name="view"/> shows for the part's own <paramref name="entity"/>: SOLIDWORKS' correspondence
-    /// (ISwDrawing.InView) when it has the same shape, otherwise the one entity the view shows with that shape; null when
-    /// the view shows none, or more than one.
+    /// The entity <paramref name="view"/> shows for the part's own <paramref name="entity"/>: the one shown entity whose
+    /// verified reference is the part entity's own; null when the view shows none.
     /// </summary>
-    public static object? InView(ISwDocument model, ISwDrawing drawing, string view, object entity)
+    public static object? InView(ReferenceService references, ISwDocument model, ISwDrawing drawing, string view, object entity)
     {
-        var want = Describe(model, entity);
-        if (want == null) return null;
-        if (drawing.InView(view, entity) is object drawn && Describe(model, drawn) is EntityInfo d && SameShape(d, want)) return drawn;
-        var shown = drawing.VisibleEntities(view, edges: true, vertices: true).Select(v => v.Entity).Concat(drawing.VisibleFaces(view));
-        var same = shown.Where(s => Describe(model, s) is EntityInfo i && SameShape(i, want)).ToList();
-        return same.Count == 1 ? same[0] : null;
+        string? own;
+        try
+        {
+            own = references.Describe(model, entity).Reference;
+        }
+        catch (Exception e) when (e is SwAgentException || e is System.Runtime.InteropServices.COMException)
+        {
+            return null;
+        }
+        if (own == null) return null;
+        var shown = Shown(drawing, view);
+        var refs = References(references, model, drawing, view, shown);
+        for (int i = 0; i < shown.Count; i++)
+        {
+            if (refs[i] != null && string.Equals(refs[i], own, StringComparison.Ordinal)) return shown[i];
+        }
+        return null;
     }
 
-    /// <summary>The reference issued for <paramref name="entity"/> when it resolves back to an entity of <paramref name="seen"/>'s shape; null otherwise.</summary>
-    static string? Verified(ReferenceService references, ISwDocument model, object entity, EntityInfo seen)
+    static List<object> Shown(ISwDrawing drawing, string view) =>
+        drawing.VisibleEntities(view, edges: true, vertices: true).Select(v => v.Entity).Concat(drawing.VisibleFaces(view)).ToList();
+
+    /// <summary>
+    /// The offset the view's proxies share with the part, beyond none: the most common difference between a proxy's
+    /// position and that of a part entity of its form, when more proxies agree on it than on any other; null otherwise.
+    /// </summary>
+    static Point3? Offset(IReadOnlyList<EntityInfo?> seen, IReadOnlyList<List<(object, EntityInfo Info)>> forms)
+    {
+        var votes = new List<(Point3 D, int Count)>();
+        for (int i = 0; i < seen.Count; i++)
+        {
+            var p = seen[i]?.Origin;
+            if (p == null) continue;
+            var mine = new List<Point3>();
+            foreach (var (_, c) in forms[i])
+            {
+                if (c.Origin == null) continue;
+                var d = new Point3(p.X - c.Origin.X, p.Y - c.Origin.Y, p.Z - c.Origin.Z);
+                if (Zero(d) || mine.Any(m => Same(m, d))) continue;
+                mine.Add(d);
+            }
+            foreach (var d in mine)
+            {
+                int k = votes.FindIndex(v => Same(v.D, d));
+                if (k < 0) votes.Add((d, 1));
+                else votes[k] = (votes[k].D, votes[k].Count + 1);
+            }
+        }
+        if (votes.Count == 0) return null;
+        var best = votes.OrderByDescending(v => v.Count).ToList();
+        return best[0].Count >= 2 && (best.Count == 1 || best[1].Count < best[0].Count) ? best[0].D : null;
+    }
+
+    /// <summary>True when the proxy <paramref name="p"/> is where the part entity <paramref name="c"/> is: as given, or shifted by the view's offset.</summary>
+    static bool At(EntityInfo c, EntityInfo p, Point3? offset)
+    {
+        if (c.Origin == null || p.Origin == null) return true;
+        var d = new Point3(p.Origin.X - c.Origin.X, p.Origin.Y - c.Origin.Y, p.Origin.Z - c.Origin.Z);
+        return Zero(d) || (offset != null && Same(d, offset));
+    }
+
+    /// <summary>The reference issued for the part's own <paramref name="entity"/> when it resolves back to an entity of its form at its position; null otherwise.</summary>
+    static string? Verified(ReferenceService references, ISwDocument model, object entity, EntityInfo info)
     {
         try
         {
             string? reference = references.Describe(model, entity).Reference;
             if (reference == null) return null;
             var back = references.Resolve(model, reference, "").Entity;
-            return Describe(model, back) is EntityInfo b && SameShape(b, seen) ? reference : null;
+            return Describe(model, back) is EntityInfo b && SameForm(b, info) && At(info, b, null) ? reference : null;
         }
         catch (Exception e) when (e is SwAgentException || e is System.Runtime.InteropServices.COMException)
         {
@@ -94,7 +146,7 @@ public static class ShownEntities
     {
         try
         {
-            if (model.KindOf(entity) is not ReferenceKind kind) return null;
+            if (model.KindOf(entity) is not ReferenceKind kind || !(kind == ReferenceKind.Edge || kind == ReferenceKind.Vertex || kind == ReferenceKind.Face)) return null;
             var info = model.Describe(entity);
             info.Kind = kind;
             return info;
@@ -105,19 +157,44 @@ public static class ShownEntities
         }
     }
 
-    /// <summary>True when two descriptions are of one entity: kind, shape and feature, and every position, direction and size both give.</summary>
-    public static bool SameShape(EntityInfo a, EntityInfo b)
+    /// <summary>The part's own faces, edges and vertices with their descriptions, read once per kind.</summary>
+    sealed class Part
+    {
+        readonly ISwDocument _model;
+        readonly Dictionary<ReferenceKind, List<(object, EntityInfo Info)>> _own = new Dictionary<ReferenceKind, List<(object, EntityInfo Info)>>();
+
+        public Part(ISwDocument model)
+        {
+            _model = model;
+        }
+
+        public List<(object, EntityInfo Info)> OfKind(ReferenceKind kind)
+        {
+            if (_own.TryGetValue(kind, out var list)) return list;
+            var topology = kind == ReferenceKind.Edge ? TopologyKind.Edge : kind == ReferenceKind.Vertex ? TopologyKind.Vertex : TopologyKind.Face;
+            list = new List<(object, EntityInfo Info)>();
+            foreach (var e in _model.Topology(topology))
+            {
+                if (Describe(_model, e) is EntityInfo info) list.Add((e, info));
+            }
+            _own[kind] = list;
+            return list;
+        }
+    }
+
+    /// <summary>True when two descriptions have one form, wherever they are: kind, shape, feature, length, radius, area and direction.</summary>
+    public static bool SameForm(EntityInfo a, EntityInfo b)
     {
         if (a.Kind != b.Kind || a.Geometry != b.Geometry) return false;
         if (a.Feature != null && b.Feature != null && !string.Equals(a.Feature, b.Feature, StringComparison.Ordinal)) return false;
-        return Near(a.LengthMm, b.LengthMm) && Near(a.RadiusMm, b.RadiusMm) && Near(a.AreaMm2, b.AreaMm2)
-            && Near(a.Origin, b.Origin) && Parallel(a.Axis, b.Axis) && Parallel(a.Normal, b.Normal)
-            && Near(a.Box?.Min, b.Box?.Min) && Near(a.Box?.Max, b.Box?.Max);
+        return Near(a.LengthMm, b.LengthMm) && Near(a.RadiusMm, b.RadiusMm) && Near(a.AreaMm2, b.AreaMm2) && Parallel(a.Axis, b.Axis) && Parallel(a.Normal, b.Normal);
     }
 
     static bool Near(double? a, double? b) => a == null || b == null || Math.Abs(a.Value - b.Value) <= Tol;
 
-    static bool Near(Point3? a, Point3? b) => a == null || b == null || (Math.Abs(a.X - b.X) <= Tol && Math.Abs(a.Y - b.Y) <= Tol && Math.Abs(a.Z - b.Z) <= Tol);
+    static bool Zero(Point3 d) => Math.Abs(d.X) <= Tol && Math.Abs(d.Y) <= Tol && Math.Abs(d.Z) <= Tol;
+
+    static bool Same(Point3 a, Point3 b) => Math.Abs(a.X - b.X) <= 1e-3 && Math.Abs(a.Y - b.Y) <= 1e-3 && Math.Abs(a.Z - b.Z) <= 1e-3;
 
     static bool Parallel(Vector3? a, Vector3? b)
     {

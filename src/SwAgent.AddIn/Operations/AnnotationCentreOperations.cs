@@ -31,7 +31,7 @@ public sealed class AnnotationCentreMarksOperation : DrawingChangeOperation<Anno
             var named = Annotating.InView(Services.References, doc, drawing, _view, request.Entities, ReferenceKind.Edge);
             for (int i = 0; i < named.Count; i++)
             {
-                var drawn = ViewGeometry.Draw(t, Services.References.Describe(model, named[i].Entity), false);
+                var drawn = ViewGeometry.Draw(t, Services.References.Describe(model, named[i].Own), false);
                 if (drawn.Shape != DrawnShape.Circle && drawn.Shape != DrawnShape.Arc)
                     throw ViewRequests.Invalid($"/entities/{i}", $"/entities/{i}: {_view} draws that edge as {WireNames.ForEnum(drawn.Shape)}, not as a circle or arc, so it takes no centre mark");
                 circles.Add((named[i].Entity, drawn));
@@ -102,7 +102,7 @@ public sealed class AnnotationCentreLinesOperation : DrawingChangeOperation<Anno
             var named = Annotating.InView(Services.References, doc, drawing, _view, request.Entities, ReferenceKind.Face, ReferenceKind.Edge);
             if (named.Any(e => e.Kind == ReferenceKind.Edge))
             {
-                var drawn = named.Select(e => ViewGeometry.Draw(t, Services.References.Describe(model, e.Entity), false)).ToList();
+                var drawn = named.Select(e => ViewGeometry.Draw(t, Services.References.Describe(model, e.Own), false)).ToList();
                 if (named.Count != 2 || named.Any(e => e.Kind != ReferenceKind.Edge) || !AnnotationGeometry.Parallel(drawn[0], drawn[1]))
                     throw ViewRequests.Invalid("/entities", "/entities: a centre line between edges takes exactly two straight edges the view draws parallel, apart (or name cylindrical faces alone)");
                 targets.Add((named.Select(e => e.Entity).ToList(), null));
@@ -111,7 +111,7 @@ public sealed class AnnotationCentreLinesOperation : DrawingChangeOperation<Anno
             {
                 for (int i = 0; i < named.Count; i++)
                 {
-                    var face = Services.References.Describe(model, named[i].Entity);
+                    var face = Services.References.Describe(model, named[i].Own);
                     if (face.Geometry != GeometryType.Cylinder || face.Origin == null || face.Axis == null || !AnnotationGeometry.SeenFromSide(t, face.Axis))
                         throw ViewRequests.Invalid($"/entities/{i}", $"/entities/{i}: a centre line runs along a cylindrical face the view sees from the side; {_view} sees this {WireNames.ForEnum(face.Geometry)} face otherwise");
                     targets.Add((new[] { named[i].Entity }, (face.Origin, face.Axis)));

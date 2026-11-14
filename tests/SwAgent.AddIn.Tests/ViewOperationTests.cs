@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using SwAgent.AddIn.Core;
 using SwAgent.AddIn.Operations;
 using SwAgent.Contracts;
 using Xunit;
@@ -335,6 +336,31 @@ public class ViewEntitiesTests : DrawingTestBase
         string reference = Assert.Single(result.Entities).Reference!;
         Assert.Same(left, Services.References.Resolve(Block, reference, "edge").Entity);
         Assert.Same(shown, ViewEntities.ResolveShown(Services.References, Doc, Drw, new ViewEntity { View = side.Facts.Name, Reference = reference }, "/attach_to").Entity);
+    }
+
+    [Fact]
+    public void View_proxies_whose_positions_SOLIDWORKS_gives_shifted_by_the_views_position_are_still_named_and_drawn_right()
+    {
+        // The 5.C live run (round 4): with the view activated, the front view's line and vertex proxies read shifted by
+        // the view's position ((130, 180) mm) while its circle did not.
+        var side = Drw.AddView("Sheet1", Block, "front", new SheetPoint(300, 150));
+        var shift = new Point3(130, 180, 0);
+        var left = Block.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, Origin = new Point3(0, 20, 20), Axis = new Vector3(0, 1, 0), LengthMm = 40 });
+        var right = Block.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, Origin = new Point3(60, 20, 20), Axis = new Vector3(0, 1, 0), LengthMm = 40 });
+        var bottom = Block.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, Origin = new Point3(30, 0, 20), Axis = new Vector3(1, 0, 0), LengthMm = 60 });
+        var shownRight = Drw.ShowAsProxy(side, right, corresponds: false, shiftedBy: shift);
+        foreach (var e in new[] { left, bottom }) Drw.ShowAsProxy(side, e, corresponds: false, shiftedBy: shift);
+        Drw.ShowAsProxy(side, _hole, corresponds: false);
+        var result = Entities(new ViewEntitiesRequest { View = side.Facts.Name, Kinds = new List<ViewEntityKind> { ViewEntityKind.Edge } });
+        Assert.All(result.Entities, e => Assert.NotNull(e.Reference));
+        Assert.Equal(4, result.Entities.Select(e => e.Reference).Distinct().Count());
+        var onRight = Assert.Single(result.Entities, e => ReferenceEquals(right, Services.References.Resolve(Block, e.Reference!, "edge").Entity));
+        var drawnRight = ViewGeometry.Draw(Drw.Transform(side.Facts.Name)!, Block.Describe(right), false);
+        Assert.Equal(drawnRight.Start!.X, onRight.Start!.X, 9);
+        Assert.Equal(drawnRight.Start.Y, onRight.Start.Y, 9);
+        var resolved = ViewEntities.ResolveShown(Services.References, Doc, Drw, new ViewEntity { View = side.Facts.Name, Reference = onRight.Reference }, "/entities/0");
+        Assert.Same(shownRight, resolved.Entity);
+        Assert.Same(right, resolved.Own);
     }
 
     [Fact]

@@ -7,13 +7,20 @@ namespace SwAgent.AddIn;
 /// <summary>A <see cref="ViewEntity"/> resolved: the view's name, its model's document, and the entity in that model.</summary>
 public sealed class ResolvedViewEntity
 {
-    public ResolvedViewEntity(string view, ISwDocument model, object entity, ReferenceKind kind)
+    public ResolvedViewEntity(string view, ISwDocument model, object entity, ReferenceKind kind, object? own = null)
     {
         View = view;
         Model = model;
         Entity = entity;
         Kind = kind;
+        Own = own ?? entity;
     }
+
+    /// <summary>
+    /// The entity as the part has it, which is what is described and measured: SP4 can give a view's proxy (Entity)
+    /// its position in another frame (5.C live run, round 4).
+    /// </summary>
+    public object Own { get; }
 
     public string View { get; }
 
@@ -50,7 +57,7 @@ public static class ViewEntities
         // The entity as the view shows it (ShownEntities.InView: SOLIDWORKS' correspondence, or the one shown entity of its shape), which is what is selected through the view and
         // what SOLIDWORKS attaches an annotation to; the model's own when the view gives none (ResolveShown then refuses
         // what the view does not show).
-        return new ResolvedViewEntity(view, model, ShownEntities.InView(model, drawing, view, entity) ?? entity, kind);
+        return new ResolvedViewEntity(view, model, ShownEntities.InView(references, model, drawing, view, entity) ?? entity, kind, entity);
     }
 
     /// <summary>

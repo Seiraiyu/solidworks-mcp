@@ -37,7 +37,7 @@ public sealed class AnnotationDimensionOperation : DrawingChangeOperation<Annota
         var view = drawing.ReadView(_view)!;
         ViewRequests.OnSheet(request.At, drawing.ReadSheet(view.Sheet)!, "/at");
         var t = drawing.Transform(_view) ?? throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS gives no transform for {_view}");
-        var drawn = entities.Select(e => ViewGeometry.Draw(t, Services.References.Describe(e.Model, e.Entity), e.Kind == ReferenceKind.Vertex)).ToList();
+        var drawn = entities.Select(e => ViewGeometry.Draw(t, Services.References.Describe(e.Model, e.Own), e.Kind == ReferenceKind.Vertex)).ToList();
         _expected = AnnotationGeometry.Expect(request.Kind, drawn, t.Scale, out string why)
             ?? throw ViewRequests.Invalid("/entities", $"/entities: {why}");
 

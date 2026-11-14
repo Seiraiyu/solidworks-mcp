@@ -241,10 +241,11 @@ sealed partial class FakeDrawing
     /// persistent id it shares with every other proxy and which the model does not find; the proxy corresponds to the
     /// model's own entity unless <paramref name="corresponds"/> is false.
     /// </summary>
-    public FakeEntity ShowAsProxy(FakeView view, FakeEntity own, bool corresponds = true)
+    public FakeEntity ShowAsProxy(FakeView view, FakeEntity own, bool corresponds = true, Point3? shiftedBy = null)
     {
         var i = own.Info;
-        var proxy = new FakeEntity(own.Kind, new EntityInfo { Geometry = i.Geometry, Origin = i.Origin, Axis = i.Axis, RadiusMm = i.RadiusMm, LengthMm = i.LengthMm, Feature = i.Feature }) { Id = TwinId, State = PersistState.Invalid };
+        var origin = i.Origin == null || shiftedBy == null ? i.Origin : new Point3(i.Origin.X + shiftedBy.X, i.Origin.Y + shiftedBy.Y, i.Origin.Z + shiftedBy.Z);
+        var proxy = new FakeEntity(own.Kind, new EntityInfo { Geometry = i.Geometry, Origin = origin, Axis = i.Axis, RadiusMm = i.RadiusMm, LengthMm = i.LengthMm, Feature = i.Feature }) { Id = TwinId, State = PersistState.Invalid };
         Proxies[proxy] = corresponds ? own : null;
         view.Visible.Add(new VisibleEntity(proxy, own.Kind == ReferenceKind.Vertex, false));
         return proxy;

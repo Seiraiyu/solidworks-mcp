@@ -396,7 +396,9 @@ public sealed class ViewEntitiesOperation : Operation<ViewEntitiesRequest, ViewE
         for (int i = 0; i < shown.Count; i++)
         {
             var e = shown[i];
-            var described = model.Describe(e.Entity);
+            // Described as the part has it when a reference names it: SP4 can give a view's proxy its position in
+            // another frame (5.C live run, round 4).
+            var described = model.Describe(Own(model, references[i]) ?? e.Entity);
             var drawn = ViewGeometry.Draw(t, described, e.Vertex);
             drawn.Reference = references[i];
             drawn.Kind = e.Vertex ? ReferenceKind.Vertex : ReferenceKind.Edge;
@@ -407,6 +409,19 @@ public sealed class ViewEntitiesOperation : Operation<ViewEntitiesRequest, ViewE
         }
         context.Log.Info($"view.entities: {view}: {result.Entities.Count} entities, {result.Entities.Count(x => x.Reference != null)} with a model reference");
         return result;
+    }
+
+    object? Own(ISwDocument model, string? reference)
+    {
+        if (reference == null) return null;
+        try
+        {
+            return _services.References.Resolve(model, reference, "").Entity;
+        }
+        catch (SwAgentException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The view still shows as many entities: nothing changed it while it was read.</summary>
