@@ -242,3 +242,45 @@ public sealed class AnnotationImportResult : IDrawingChangeResult
     [Description("What changed in the drawing: created holds each annotation brought; models each model shown, unchanged.")]
     public DrawingChange Change { get; set; } = new DrawingChange();
 }
+
+[Operation("annotation.dimension", typeof(AnnotationDimensionResult))]
+[Description("Adds a reference (driven) dimension to a view between one or two model entities the view shows, each a ViewEntity (a reference issued in the view's model, a {component, entity} pair, or a name) selected through the view (IView.SelectEntity), never picked by sheet coordinates. kind: linear (a straight edge's length; the distance between two parallel edges; a vertex's or a circle's centre's distance from an edge; or between two of those), horizontal or vertical (an edge's run across or up the sheet; or between vertices, circle centres and edges square to that direction), radius or diameter (one circular edge the view draws as a circle or arc), or angle (two straight edges that are not parallel). Its text goes at at (sheet mm). Checked by measuring: its value equals the same quantity measured on the model between those entities as the view draws them (through the view's transform, divided by its scale, so model mm) within 0.001 mm, or within 0.01° for an angle (the angle or its supplement, whichever SOLIDWORKS dimensions); it is driven, a reference dimension of the drawing; and the model is unchanged. An entity the view does not show is refused naming the view and the entity. Otherwise the dimension is deleted again (rolled back). A model dimension's value is changed with dimension.set on the model, never from the drawing.")]
+public sealed class AnnotationDimensionRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("linear, horizontal, vertical, radius, diameter or angle.")]
+    public DimensionKind Kind { get; set; }
+
+    [Required]
+    [Description("One or two entities of one view: edges or vertices it shows (view.entities lists them).")]
+    public List<ViewEntity> Entities { get; set; } = new List<ViewEntity>();
+
+    [Required]
+    [Description("Where its text goes, sheet mm from the sheet's lower-left corner.")]
+    public SheetPoint At { get; set; } = new SheetPoint();
+}
+
+[Description("The reference dimension made.")]
+public sealed class AnnotationDimensionResult : IDrawingChangeResult
+{
+    [Required]
+    [Description("The dimension, as read back.")]
+    public AnnotationInfo Annotation { get; set; } = new AnnotationInfo();
+
+    [Description("Its value as read back: model mm, or degrees for an angle.")]
+    public double Value { get; set; }
+
+    [Description("The same quantity measured on the model, which its value equals.")]
+    public double ModelValue { get; set; }
+
+    [Required]
+    [Description("What was measured on the model: the distance between the two parallel lines, the circle's diameter, ….")]
+    public string Measured { get; set; } = "";
+
+    [Required]
+    [Description("What changed in the drawing: created holds the dimension; models each model shown, unchanged.")]
+    public DrawingChange Change { get; set; } = new DrawingChange();
+}
