@@ -134,10 +134,13 @@ sealed partial class FakeDocument : ISwDocument
 
     public int Activations { get; private set; }
 
+    /// <summary>When true, Activate does not make it active (SOLIDWORKS refusing).</summary>
+    public bool ActivateIgnored { get; set; }
+
     public void Activate()
     {
         Activations++;
-        Activated?.Invoke();
+        if (!ActivateIgnored) Activated?.Invoke();
     }
 
     /// <summary>How many times MarkDirty was called.</summary>

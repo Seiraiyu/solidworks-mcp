@@ -36,7 +36,7 @@ public sealed class DocumentNewResult
 }
 
 [Operation("document.open", typeof(DocumentOpenResult))]
-[Description("Opens a part, assembly or drawing from a local file and makes it the active document. An assembly opens with every component resolved (never lightweight), and never with a dialog. When a component's file is not where the assembly says, SOLIDWORKS looks for the same file name in other folders (ones it opened this session, the assembly's own) and loads what it finds without asking: each such file is listed in substituted, and references issued before to that component's entities no longer resolve (component_file_changed). A file it finds nowhere is listed in missing. A document that is already open is made active, not opened again. A document this call opened is the agent's own, so document.close may close it.")]
+[Description("Opens a part, assembly or drawing from a local file and makes it the active document. An assembly opens with every component resolved (never lightweight), and never with a dialog. When a component's file is not where the assembly says, SOLIDWORKS looks for the same file name in other folders (ones it opened this session, the assembly's own) and loads what it finds without asking: each such file is listed in substituted, and references issued before to that component's entities no longer resolve (component_file_changed). A file it finds nowhere is listed in missing. A drawing opens with the models it shows loaded (each model file not found is listed in missing, each found elsewhere in substituted) and is left the active document, not one of its models. A document that is already open is made active, not opened again. A document this call opened is the agent's own, so document.close may close it.")]
 public sealed class DocumentOpenRequest
 {
     [Required]
@@ -65,11 +65,11 @@ public sealed class DocumentOpenResult
     public List<string> Warnings { get; set; } = new List<string>();
 
     [Required]
-    [Description("Files the document uses (an assembly's components) that SOLIDWORKS could not find; those components stay suppressed. Empty when nothing is missing.")]
+    [Description("Files the document uses (an assembly's components, a drawing's models) that SOLIDWORKS could not find; those components stay suppressed, and those views show nothing. Empty when nothing is missing.")]
     public List<string> Missing { get; set; } = new List<string>();
 
     [Required]
-    [Description("An assembly's component files SOLIDWORKS loaded from another folder than the assembly says, because the file was not there: check each is the file meant before saving the assembly, which would then point at it. Empty when nothing was substituted.")]
+    [Description("An assembly's component files (or a drawing's model files) SOLIDWORKS loaded from another folder than the document says, because the file was not there: check each is the file meant before saving the document, which would then point at it. Empty when nothing was substituted.")]
     public List<SubstitutedFile> Substituted { get; set; } = new List<SubstitutedFile>();
 }
 

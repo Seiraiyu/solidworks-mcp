@@ -60,7 +60,7 @@
       "items": {
         "type": "string"
       },
-      "description": "Files the document uses (an assembly's components) that SOLIDWORKS could not find; those components stay suppressed. Empty when nothing is missing."
+      "description": "Files the document uses (an assembly's components, a drawing's models) that SOLIDWORKS could not find; those components stay suppressed, and those views show nothing. Empty when nothing is missing."
     },
     "substituted": {
       "type": "array",
@@ -83,7 +83,7 @@
         ],
         "additionalProperties": false
       },
-      "description": "An assembly's component files SOLIDWORKS loaded from another folder than the assembly says, because the file was not there: check each is the file meant before saving the assembly, which would then point at it. Empty when nothing was substituted."
+      "description": "An assembly's component files (or a drawing's model files) SOLIDWORKS loaded from another folder than the document says, because the file was not there: check each is the file meant before saving the document, which would then point at it. Empty when nothing was substituted."
     }
   },
   "required": [

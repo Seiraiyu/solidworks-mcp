@@ -7,6 +7,74 @@ using Xunit;
 
 namespace SwAgent.AddIn.Tests;
 
+public class DocumentOpenDrawingTests : DocumentTestBase
+{
+    DocumentOpenResult Open(string path) => Run(new DocumentOpenOperation(Services), new DocumentOpenRequest { Path = path });
+
+    /// <summary>block.SLDDRW on disk, showing block.SLDPRT (on disk) and gone.SLDPRT (not).</summary>
+    (string Path, string Block, string Gone) Files()
+    {
+        string path = PathOf("block.SLDDRW"), block = PathOf("block.SLDPRT"), gone = PathOf("gone.SLDPRT");
+        File.WriteAllText(path, "drawing");
+        File.WriteAllText(block, "part");
+        Sw.OpenWith = p =>
+        {
+            var drawing = FakeDocument.NewDrawing("block.SLDDRW", p);
+            drawing.Uses.AddRange(new[] { block, gone });
+            return new OpenOutcome(Sw.Track(drawing), 0, 0);
+        };
+        return (path, block, gone);
+    }
+
+    [Fact]
+    public void A_drawing_lists_the_model_files_that_are_not_there()
+    {
+        var (path, _, gone) = Files();
+        var result = Open(path);
+        Assert.Equal(DocumentType.Drawing, result.Document.Type);
+        Assert.Equal(new[] { gone }, result.Missing);
+        Assert.Equal((path, DocumentType.Drawing, false), Sw.Opened[0]);
+    }
+
+    [Fact]
+    public void A_drawings_model_found_in_another_folder_is_listed_as_substituted()
+    {
+        var (path, block, _) = Files();
+        Sw.Stored[path] = new List<string> { PathOf(Path.Combine("moved", "block.SLDPRT")) };
+        var s = Assert.Single(Open(path).Substituted);
+        Assert.Equal(block, s.Loaded);
+    }
+
+    [Fact]
+    public void A_model_SOLIDWORKS_leaves_active_is_replaced_by_the_drawing()
+    {
+        var (path, block, _) = Files();
+        var model = Sw.Track(FakeDocument.Part("block.SLDPRT", block));
+        model.Document.Visible = false;
+        Sw.OpenLeavesActive = model;
+        var result = Open(path);
+        Assert.Equal("block.SLDDRW", Sw.ActiveDoc()!.Info().Title);
+        Assert.Equal(path, result.Document.Path);
+    }
+
+    [Fact]
+    public void A_drawing_that_will_not_become_active_fails_verification()
+    {
+        var (path, block, _) = Files();
+        Sw.OpenLeavesActive = Sw.Track(FakeDocument.Part("block.SLDPRT", block));
+        var open = Sw.OpenWith!;
+        Sw.OpenWith = p =>
+        {
+            var outcome = open(p);
+            ((FakeDocument)outcome.Document!).ActivateIgnored = true;
+            return outcome;
+        };
+        var e = Fails(() => Open(path));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("active", e.Error.Details!["check"]);
+    }
+}
+
 public class DocumentNewDrawingTests : DocumentTestBase
 {
     readonly string _drawingTemplate;

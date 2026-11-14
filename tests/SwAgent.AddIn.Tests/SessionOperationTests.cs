@@ -120,6 +120,9 @@ sealed class FakeSolidWorks : ISolidWorksApplication
     public System.Collections.Generic.IReadOnlyList<string> StoredReferences(string path) =>
         Stored.TryGetValue(path, out var paths) ? paths : new System.Collections.Generic.List<string>();
 
+    /// <summary>When set, opening a document leaves this one active instead (an older SOLIDWORKS leaving a drawing's model active).</summary>
+    public FakeDocument? OpenLeavesActive { get; set; }
+
     public OpenOutcome OpenDocument(string path, DocumentType type, bool readOnly)
     {
         Opened.Add((path, type, readOnly));
@@ -135,7 +138,7 @@ sealed class FakeSolidWorks : ISolidWorksApplication
         if (outcome.Document is FakeDocument doc)
         {
             Track(doc);
-            CurrentDoc = doc;
+            CurrentDoc = OpenLeavesActive ?? doc;
         }
         return outcome;
     }

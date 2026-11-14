@@ -228,7 +228,7 @@ public sealed class DocumentOpenOperation : Operation<DocumentOpenRequest, Docum
         }
 
         // Read before opening: once open, SOLIDWORKS holds the paths it found instead (plan 4.B; 4.A live run, case 7).
-        var stored = PathRules.TypeOf(path) == DocumentType.Assembly ? _services.SolidWorks.StoredReferences(path) : new string[0];
+        var stored = PathRules.TypeOf(path) != DocumentType.Part ? _services.SolidWorks.StoredReferences(path) : new string[0];
         var outcome = _services.SolidWorks.OpenDocument(path, PathRules.TypeOf(path), readOnly);
         var warnings = SolidWorksCodes.LoadWarnings(outcome.Warnings).ToList();
         if (outcome.Document == null)
@@ -251,6 +251,12 @@ public sealed class DocumentOpenOperation : Operation<DocumentOpenRequest, Docum
         if (missing.Count > 0) context.Log.Warn($"document.open: {path} uses {missing.Count} file(s) that are not there: {string.Join(", ", missing)}");
         var substituted = Substitutions.Find(stored, used);
         foreach (var s in substituted) context.Log.Warn($"document.open: {path} names {s.Expected}, which is not there; SOLIDWORKS loaded {s.Loaded} instead");
+        // Design 611: CADapter saw an older SOLIDWORKS leave one of a drawing's models active after opening it.
+        if (info.Type == DocumentType.Drawing && !(_services.SolidWorks.ActiveDoc() is ISwDocument active && DocumentUse.Same(active, outcome.Document)))
+        {
+            context.Log.Warn($"document.open: SOLIDWORKS left {_services.SolidWorks.ActiveDoc()?.Info().Title ?? "nothing"} active after opening {path}; activating the drawing");
+            outcome.Document.Activate();
+        }
         return new DocumentOpenResult { Document = info, ReadOnly = outcome.Document.ReadOnly, Warnings = warnings, Missing = missing, Substituted = substituted };
     }
 
@@ -263,6 +269,12 @@ public sealed class DocumentOpenOperation : Operation<DocumentOpenRequest, Docum
         if (!doc.Info().Visible) throw new SwAgentException(ErrorCode.VerificationFailed, $"{path} is loaded but has no window after document.open");
         if (request.ReadOnly == true && !result.AlreadyOpen && !doc.ReadOnly)
             throw new SwAgentException(ErrorCode.VerificationFailed, $"{path} was asked to open read-only but is writable");
+        if (doc.Info().Type == DocumentType.Drawing && !(_services.SolidWorks.ActiveDoc() is ISwDocument active && DocumentUse.Same(active, doc)))
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"{path} is open but {_services.SolidWorks.ActiveDoc()?.Info().Title ?? "no document"} is the active document, although the drawing was activated after opening",
+                new JsonObject { ["check"] = "active", ["document"] = path });
+        }
     }
 }
 
