@@ -12,7 +12,7 @@ It offers these tools:
 - `sw_dialog_respond` presses a button on the modal dialog SOLIDWORKS is showing.
 - `sw_events` returns what happened since a cursor: documents opened, saved, closed and changed, the user's selection, dialogs, and the late outcomes of operations.
 - `sw_reconnect` connects again, to a named SOLIDWORKS when several run.
-- Documents: `sw_document_new` (a part or an assembly from your default template, saved at once when given a path), `sw_document_open`, `sw_document_save`, `sw_document_save_as`, `sw_document_close` and `sw_document_rebuild`.
+- Documents: `sw_document_new` (a part, an assembly or a drawing from your default template, saved at once when given a path), `sw_document_open`, `sw_document_save`, `sw_document_save_as`, `sw_document_close` and `sw_document_rebuild`.
 - Inspection of parts: `sw_model_tree`, `sw_model_mass`, `sw_model_bounding_box`, `sw_model_rebuild_status` and `sw_model_find`.
 - Assemblies: `sw_assembly_insert` puts a part or subassembly in as a component, `sw_assembly_components` lists them with their placement and state, `sw_component_place` moves one, `sw_component_set` fixes, floats, suppresses, resolves, hides it or changes its configuration, and `sw_component_delete` deletes components (and component patterns). `sw_model_find`, `sw_model_measure`, `sw_model_mass`, `sw_model_bounding_box`, `sw_model_rebuild_status`, `sw_selection_get` and the configuration tools take assemblies too. See **Assemblies**.
 - `sw_selection_get` reads what is selected in a part.
@@ -30,6 +30,7 @@ It offers these tools:
 - `sw_assembly_interference` lists each pair of components that overlap, with the volume (mm³) and box of the overlap; touching faces count only when asked. SOLIDWORKS' interference session is always closed. The check changes nothing in the model, but on SOLIDWORKS 2026 SP4 the session can mark a saved assembly as having unsaved changes, and the API cannot clear that flag: the result then says `marked_dirty: true`, and the assembly is not saved behind you. Since the flag then no longer shows a change, the add-in compares where every component is and the mate count before and after, and fails `document_unchanged` if any moved. Save it with `sw_document_save`, or close it with `discard: true`, if you want it clean. An assembly that already had unsaved changes keeps them and is not marked.
 - Exploded views: `sw_explode_create` makes a whole exploded view in one call, each step checked where it moved its components; `sw_explode_list`, `sw_explode_show` (explode or collapse) and `sw_explode_delete` (which empties a view: see **Assemblies** for what SOLIDWORKS 2026 SP4 allows).
 - `sw_export_assembly` writes a copy of an assembly as STEP, Parasolid, STL (one file) or 3MF.
+- Drawings: `sw_drawing_read` reads a drawing as a drafter does; `sw_sheet_add`, `sw_sheet_set`, `sw_sheet_activate` and `sw_sheet_delete` manage its sheets; `sw_view_create`, `sw_view_project`, `sw_view_section`, `sw_view_detail`, `sw_view_flat_pattern`, `sw_view_set` and `sw_view_delete` place and change views, and `sw_view_entities` lists what a view shows; `sw_annotation_import`, `sw_annotation_dimension`, `sw_annotation_note`, `sw_annotation_centre_marks`, `sw_annotation_centre_lines`, `sw_annotation_datum`, `sw_annotation_gtol`, `sw_annotation_balloons`, `sw_annotation_list`, `sw_annotation_set` and `sw_annotation_delete` annotate it; `sw_table_bom`, `sw_table_read` and `sw_table_delete` make and read bills of materials; `sw_drawing_properties` fills the title block through the drawing's custom properties; and `sw_export_drawing` writes its sheets as PDF, DXF or DWG. See **Drawings**.
 - `sw_api_call`, the escape hatch, calls any member of SOLIDWORKS' API the other tools do not cover yet. It can be turned off (see **The escape hatch**).
 
 There is one tool per add-in operation, named `sw_` and the operation with underscores (`document.save_as` is `sw_document_save_as`).
@@ -108,7 +109,29 @@ A suppressed, lightweight or missing component's entity answers `reference_unres
 
 ### Drawings
 
+A drawing shows saved files: a part or assembly never saved is refused before SOLIDWORKS is asked (`invalid_argument`; save it with `sw_document_save_as` first), because SOLIDWORKS would open a Save As box that waits for you. A model with unsaved changes is drawn as it is in memory, and the result says so (`model_unsaved`). `sw_document_save` of a drawing saves every model it shows that has unsaved changes first; `sw_document_close` of a drawing refuses, unless `discard`, when a model only it shows has unsaved changes.
+
+Positions on a sheet are **sheet millimetres** from the sheet's lower-left corner (`at`, a view's centre, its drawn extents); points in a model (a section's `through`, a detail's `centre`) are the **model's millimetres**. Sheets, views, annotations and tables are named by reference (`r1.sheet.…`, `r1.view.…`, `r1.annotation.…`, `r1.table.…`) or by name (`Sheet1`, `Drawing View1`). SOLIDWORKS 2026 SP4 gives none of them a persistent id, so each reference names its object by name: one renamed or deleted answers `reference_unresolved`.
+
+An entity of a model as a view shows it is a `ViewEntity`: the view, and the entity in exactly one of the forms the model tools take: a reference issued in the view's model (`sw_model_find`, or `sw_view_entities` for what the view draws), a `{component, entity}` pair in an assembly view, or a name (`Boss-Extrude1`, `Axis1@pin-1`). It is resolved in the view's model and selected through that view; nothing is ever picked by sheet coordinates. An entity the view does not show is `invalid_argument`, naming the view and the entity.
+
+What each change is checked against, by measuring what SOLIDWORKS drew rather than what it answered:
+
+- **Views**: each view's drawn extents (its edges as drawn, not its border) must be the model's box projected through the view's own transform at its scale, within 0.01 mm; a projected view must share its parent's centre line. A section must hatch faces in the plane through `through`; a detail's edges must lie inside its circle at its scale; a flat-pattern view must be `sw_sheetmetal_read`'s flat size, with one bend line per bend.
+- **Dimensions**: an imported one must be one of the model's with the model's value (0.001 mm); a reference dimension must equal the same quantity measured on the model between its entities (0.001 mm, 0.01°).
+- **Notes, centre marks and lines, datums and tolerance frames**: each must read back attached to the entity it was given, and a tolerance frame its symbol, tolerance, datums and material condition. A tolerance frame's datums must already be on the drawing.
+- **Bills of materials**: one row per component file and configuration, with the quantity `sw_assembly_components` counts; a bill with no rows is refused. **Balloons**: one per item, each numbered as the view's bill numbers its row.
+- **Exploded views**: each component's drawn image must lie inside its exploded box projected through the view.
+
 Drawing changes (sheets, views, annotations, `sw_drawing_properties`) are guarded as part changes are: each one waits, changing nothing, while you are in the middle of something in the drawing. It answers `busy` with `reason: user_editing` while you edit a view's sketch or have a command open, and adds `sheet_format: true` while you edit the sheet format; finish what you are doing, then the agent tries again. After you exit a view's sketch, SOLIDWORKS keeps that view activated (its border stays highlighted), and drawing changes keep answering `busy` until you let go of it: double-click the sheet outside every view. A view the add-in activates for its own work (a note in a view, a line in its sketch) is let go of when the change ends; if SOLIDWORKS keeps it activated anyway, or letting go of it fails, the result says so in `change.not_at_rest` (or a failed change in its error's `not_at_rest`), and the change itself stands. A drawing change never edits, rebuilds or marks a model as changed; one that does is rolled back. A centre mark sits on its circle's centre and cannot be moved: SOLIDWORKS 2026 SP4 keeps it there whatever position it is given, so `sw_annotation_set` refuses `at` for one (`invalid_argument`).
+
+**Known gaps**, measured on SOLIDWORKS 2026 SP4:
+
+- References to sheets, views, annotations and tables name them by name (SOLIDWORKS gives them no persistent id), so a renamed one no longer resolves.
+- A bill of materials with a component the user excluded from it is refused as a row short: exclusions are not read.
+- Projected, section and detail views are not shown exploded, and which of several exploded views a drawing view shows is not chosen (the API names none).
+- A DWG's contents are not read: it is checked by its header and size only. A DXF is checked against its sheet and its largest view.
+- Sheet formats and title-block geometry, automatic dimensioning, broken-out, half and aligned sections, auxiliary, crop and break views, hole, revision and weldment tables, and surface-finish and weld symbols are not offered; `sw_api_call` reaches them.
 
 ### Closing documents
 
@@ -130,6 +153,8 @@ The options are SOLIDWORKS preferences (Tools > Options > Export). The add-in se
 
 - **No custom mesh resolution.** SOLIDWORKS ignores `swSTLQuality = 3` (custom) when it is set through its API: the call returns and the value stays where it was. A custom resolution changed for an export could never be put back, so `export.part` offers only `coarse` and `fine`, and refuses either (`invalid_argument`, `options.resolution`) when your own resolution is custom; leave `resolution` out to export with your own mesh settings. Custom can be chosen only by hand, in Tools > Options > Export with a document open.
 - **AP242 depends on SOLIDWORKS MBD.** `SaveAs3` with `swStepAP = 242`, which SOLIDWORKS keeps, writes STEP AP203 (`FILE_DESCRIPTION 'STEP AP203'`, `FILE_SCHEMA CONFIG_CONTROL_DESIGN`), so `ap242` is published instead, by a chain that stops at the first attempt that writes: `PublishSTEP242File` with the path, the same with its extension in upper case, then `GetMBDSTEP242Data` with `PublishSTEP242File2`. On a seat without the SOLIDWORKS MBD product (the Save As dialog offers only STEP AP203 and AP214, and there is no Publish STEP 242 command) every attempt answers `swPublishStep242_InvalidPath`, and the call answers `operation_failed` listing each attempt and SOLIDWORKS' answer in `details.attempts`. `ap214` works everywhere.
+
+`sw_export_drawing` writes a drawing's sheets: every sheet, or the ones named in `sheets` (by reference or name), in the drawing's order. PDF is one file with a page per sheet. DXF and DWG are one file per sheet: the path itself for one sheet, and for several `<name>-<sheet>.dxf` (or `.dwg`) beside it, each sheet shown in turn and the sheet you had shown put back. A drawing never saved is refused before SOLIDWORKS is asked (`invalid_argument`). For the call it sets: no PDF viewer opened after saving; for DXF and DWG, the shown sheet only, at sheet scale (not 1:1 model scale), views as plain entities (not blocks), no mapping file and no hidden-layer warning; all put back afterwards, through the same journal. Each file is then checked on disk: a PDF must start `%PDF-` and have one page per sheet, each its sheet's size within 0.1 mm (turned or not); a DXF's entities must lie on the sheet (within 0.1 mm), and the largest view's drawn extents, as `sw_drawing_read` gives them, must be found among them within 0.01 mm; a DWG must start with its `AC10xx` version and be at least 1 KB. The drawing's sheets, views, annotations and tables are measured before and after and must be unchanged, and no model it shows may be marked as changed. When the export marks a saved drawing as having unsaved changes, the result says `marked_dirty: true` and the drawing is not saved behind you. A part or assembly given to `sw_export_drawing`, or a drawing given to `sw_export_part`, `sw_export_assembly` or `sw_export_flat_pattern`, answers `wrong_document_type` naming the tool to use.
 
 The file is then checked on disk. It must have been written by this call and not be empty, and it must start with its format's header: `ISO-10303-21;` with the schema asked for (STEP), the Parasolid transmit header, a binary STL whose size matches its triangle count, or a 3MF zip holding `3D/3dmodel.model`. The part's path and unsaved-changes flag must also be unchanged. Otherwise the call answers `verification_failed`, naming the check.
 
@@ -299,7 +324,8 @@ In your running SOLIDWORKS, an agent can:
 - read the feature tree, dimensions, mass properties, bounding box and rebuild errors, and measure;
 - export parts and assemblies as STEP, Parasolid, STL and 3MF, and find interference between components;
 - make sheet-metal parts with flanges, hems and bends, change their thickness, radius and allowance, flatten them, cut across bends, and write their flat patterns as DXF or DWG checked against the flat size;
-- make drawings of parts and assemblies: sheets, model, projected, section, detail and flat-pattern views, dimensions, notes, centre marks and lines, datums and tolerance frames, and the drawing's custom properties (see **Drawings**);
+- make drawings of parts and assemblies: sheets, model, projected, section, detail and flat-pattern views, exploded assembly views, dimensions, notes, centre marks and lines, datums and tolerance frames, bills of materials and balloons, and the drawing's custom properties (see **Drawings**);
+- export drawings as PDF, DXF and DWG, each file checked on disk;
 - see what you have selected;
 - reach the rest of SOLIDWORKS' API through `sw_api_call`.
 
@@ -309,7 +335,7 @@ In this release it cannot:
 - make teardrop or rolled hems: `sw_sheetmetal_hem` makes closed and open hems and refuses the other two kinds, which SOLIDWORKS does not make through its API as it does by hand;
 - fold a part whose cut reaches past a bend into the side that turns (see **Sheet metal**);
 - make sheet-metal corners, jogs, lofted bends, cross breaks, rips, gussets, tabs and slots, vents or forming tools, use bend or gauge tables, or put more than one sheet-metal body in a part;
-- export drawings (PDF, or a drawing sheet as DXF or DWG); a part's flat pattern is written as DXF or DWG by `sw_export_flat_pattern`, and a DWG's extents are not checked;
+- edit sheet formats or title blocks' geometry, dimension a drawing automatically, or make broken-out, half or aligned sections, auxiliary, crop or break views, or hole, revision or weldment tables (see **Drawings**); a DWG's contents are not checked;
 - set materials, appearances, equations, design tables or custom properties, except through `sw_api_call`;
 - make variable-radius fillets or chamfers other than distance-angle and distance-distance, or do surface, multibody, weldment or direct-editing work;
 - set a custom STL or 3MF mesh resolution, or write STEP AP242 on a seat without SOLIDWORKS MBD (see **Export**);
@@ -439,5 +465,19 @@ Remove-Item env:SWMCP_LIVE
 Its report is in `%LOCALAPPDATA%\solidworks-mcp\live-runs\<run>-assemblies-suite\report.md`.
 
 Its case 32 is the build-an-assembly scenario. It plays `tests/SwAgent.Live.Tests/Scenarios/stand.transcript.json` through the MCP server's own tools: an 80 x 40 x 10 mm plate, a 40 x 20 x 10 mm bracket and a Ø10 x 20 mm pin, each sketched and extruded, then assembled with the bracket pinned to the plate. The plate must end at (0, 0, 0), the bracket at (10, 10, 10) and the pin at (20, 20, 0), every component fixed or fully defined, with no interference, an exploded view, and a STEP file holding three occurrences. The calls and their answers are kept in the run's `stand-transcript.jsonl`.
+
+#### Drawings suite
+
+`DrawingsSuite` checks drawings against exact values on a 60 x 40 x 20 mm block with a Ø10 mm hole at (20, 20), drawn on an A3 sheet at 1:1: every view's drawn extents must be the block's projected box to 0.01 mm, a section through the hole must hatch (60 - 10) x 20 = 1000 mm², a detail must draw the hole at 2:1 inside its circle, the tab's flat pattern must be drawn 100 x 83.2832 mm with one bend line, imported dimensions must equal the model's, reference dimensions must read 60.000 mm, 10.000 mm and 90.00°, a datum and a position tolerance must attach to their edges, an assembly of the block and a pin must be drawn exploded with the pin 40 mm out, its bill must have two rows and its balloons be numbered to it, and the drawing's PDF must have a page per sheet of its size, its DXF the largest view where the drawing draws it, and its DWG an `AC10xx` header. Two cases ask you to edit the sheet format and a view's sketch by hand, and are skipped after 3 minutes if nobody does. It never ends SOLIDWORKS. It needs the add-in loaded with diagnostics on, as the parts suite does, and stops if any document it did not create is open:
+
+```powershell
+$env:SWMCP_LIVE = "1"
+dotnet test tests/SwAgent.Live.Tests -c Release --filter "FullyQualifiedName~SwAgent.Live.Tests.DrawingsSuite"
+Remove-Item env:SWMCP_LIVE
+```
+
+Its report is in `%LOCALAPPDATA%\solidworks-mcp\live-runs\<run>-drawings-suite\report.md`.
+
+Its case 40 is the make-a-drawing scenario. It plays `tests/SwAgent.Live.Tests/Scenarios/drawing.transcript.json` through the MCP server's own tools: the block and a Ø10 x 30 mm pin, sketched, extruded and assembled with an exploded view; a drawing with the block's front, top and right views and section A, its dimensions imported, its width and the hole's diameter dimensioned, datum A and a position tolerance of Ø0.1 to A; an Assembly sheet with the assembly exploded, a bill of materials and balloons; then the drawing saved and written as PDF. The width must read 60.000 mm, the diameter 10.000 mm, the bill two rows, and the PDF two A3 pages. The calls and their answers are kept in the run's `drawing-transcript.jsonl`.
 
 The SP4 canary, `Canary`, checks that a sketch call made through COM from outside SOLIDWORKS still crashes it. It is expected to crash SOLIDWORKS. It never runs by default: it needs `SWMCP_CANARY=1` as well, and is run on its own with `--filter "FullyQualifiedName~Canary"`, after a SOLIDWORKS update.
