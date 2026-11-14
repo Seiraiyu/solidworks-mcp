@@ -46,8 +46,8 @@ public static class SheetSetups
             return ("size", Size(wanted), Size(actual));
         if (!DrawingReader.SameScale(actual.Scale, wanted.Scale)) return ("scale", wanted.Scale.ToString(), actual.Scale.ToString());
         if (actual.Projection != wanted.Projection) return ("projection", WireNames.ForEnum(wanted.Projection), WireNames.ForEnum(actual.Projection));
-        if (wanted.Format != null && !(actual.Format != null && string.Equals(Full(actual.Format), Full(wanted.Format), StringComparison.OrdinalIgnoreCase)))
-            return ("format", wanted.Format, actual.Format ?? "none");
+        // Both ways: a format that should have gone, or a template's own one that did not come back, is a mismatch too.
+        if (!SameFormat(wanted.Format, actual.Format)) return ("format", wanted.Format ?? "none", actual.Format ?? "none");
         if (wanted.Name.Length > 0 && !string.Equals(actual.Name, wanted.Name, StringComparison.Ordinal)) return ("name", wanted.Name, actual.Name);
         return null;
     }
@@ -69,9 +69,25 @@ public static class SheetSetups
         return Path.IsPathRooted(name) && Path.GetFileName(name).Length > 0 ? name : null;
     }
 
+    /// <summary>
+    /// A sheet's format as ReadSheet reports it, from the name SOLIDWORKS gives (ISheet.GetTemplateName): null when it names
+    /// none, otherwise the name as it is, a format file's full path or a template's own format ("*.drt").
+    /// </summary>
+    public static string? FormatOf(string? templateName) => string.IsNullOrWhiteSpace(templateName) ? null : templateName;
+
+    /// <summary>True for a template's own format: one SOLIDWORKS names but that is no format file ("*.drt").</summary>
+    public static bool InTemplate(string? format) => format != null && FormatFile(format) == null;
+
+    /// <summary>What giving a sheet <paramref name="wanted"/>'s format takes (see <see cref="SheetFormatStep"/>).</summary>
+    public static SheetFormatStep Step(SheetFacts wanted) =>
+        wanted.Format == null ? SheetFormatStep.Remove : InTemplate(wanted.Format) ? SheetFormatStep.Keep : SheetFormatStep.UseFile;
+
     /// <summary>A sheet's values for a ChangedItem.</summary>
     public static string Describe(SheetFacts s) =>
         $"{Size(s)}, {s.Scale}, {WireNames.ForEnum(s.Projection)}{(s.Format == null ? "" : ", " + Name(s.Format))}";
+
+    static bool SameFormat(string? a, string? b) =>
+        a == null || b == null ? a == b : string.Equals(Full(a), Full(b), StringComparison.OrdinalIgnoreCase);
 
     static string Full(string path) => FormatFile(path) is string file ? Path.GetFullPath(file) : path;
 
@@ -81,4 +97,21 @@ public static class SheetSetups
         FormattableString.Invariant($"{s.WidthMm:0.##} x {s.HeightMm:0.##} mm");
 
     static string Field(string pointer, string name) => pointer + "/" + name;
+}
+
+/// <summary>How a sheet is given the format asked.</summary>
+public enum SheetFormatStep
+{
+    /// <summary>No format: swDwgTemplateNone.</summary>
+    Remove,
+
+    /// <summary>A format file: swDwgTemplateCustom with its path.</summary>
+    UseFile,
+
+    /// <summary>
+    /// A template's own format ("*.drt"), which has no file to give: a sheet that has it keeps it, and one that does not is
+    /// left as it is, so the read-back reports the format not taken (5.A review). A new sheet is made with the template
+    /// type and name the first sheet reads (<see cref="SheetFacts.Template"/>), and read back the same way.
+    /// </summary>
+    Keep,
 }

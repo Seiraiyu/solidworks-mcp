@@ -280,7 +280,7 @@ public sealed class SheetInfo
     [Description("first_angle or third_angle.")]
     public Projection Projection { get; set; }
 
-    [Description("Full path of its sheet format; absent when it has none.")]
+    [Description("Its sheet format: the full path of its .SLDDRT, or *.drt for the drawing template's own format (held in the template, with no file); absent when it has none.")]
     public string? Format { get; set; }
 
     [Description("True for the sheet shown now.")]

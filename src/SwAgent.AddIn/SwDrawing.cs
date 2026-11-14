@@ -117,12 +117,22 @@ public sealed class SheetFacts
 
     public Projection Projection { get; set; } = Projection.ThirdAngle;
 
-    /// <summary>Full path of its sheet format (.SLDDRT), or null when it has none.</summary>
+    /// <summary>
+    /// Its sheet format as SOLIDWORKS names it (ISheet.GetTemplateName): the full path of a .SLDDRT, a template's own format
+    /// held in the drawing template with no file ("*.drt", <see cref="SheetSetups.InTemplate"/>), or null when it has none.
+    /// </summary>
     public string? Format { get; set; }
+
+    /// <summary>
+    /// SOLIDWORKS' template type for it (swDwgTemplates_e, ISheet.GetProperties2()[1]) as read, or null when not read from
+    /// SOLIDWORKS; the type a new sheet in a template's own format is made with. Not compared.
+    /// </summary>
+    public int? Template { get; set; }
 
     public SheetFacts Copy() => new SheetFacts
     {
         Name = Name, WidthMm = WidthMm, HeightMm = HeightMm, Scale = new ScaleRatio(Scale.Numerator, Scale.Denominator), Projection = Projection, Format = Format,
+        Template = Template,
     };
 }
 

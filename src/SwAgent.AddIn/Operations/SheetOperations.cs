@@ -101,8 +101,14 @@ public sealed class SheetSetOperation : DrawingChangeOperation<SheetSetRequest, 
         tx.Edited(new ChangedItem { Name = sheet, Property = changed, Before = Describe(old), After = Describe(wanted) }, () =>
         {
             drawing.SetSheet(wanted.Name, old);
-            if (!(drawing.ReadSheet(old.Name) is SheetFacts back) || SheetSetups.Mismatch(old, back) != null)
-                throw new SwAgentException(ErrorCode.OperationFailed, $"the sheet {old.Name} did not take its old values back ({SheetSetups.Describe(old)})");
+            // Every value, the format both ways: a template's own format ("*.drt") has no file to give back (5.A review).
+            if (!(drawing.ReadSheet(old.Name) is SheetFacts back))
+                throw new SwAgentException(ErrorCode.OperationFailed, $"the sheet {old.Name} is not there to take its old values back ({SheetSetups.Describe(old)})");
+            if (SheetSetups.Mismatch(old, back) is { } left)
+            {
+                throw new SwAgentException(ErrorCode.OperationFailed,
+                    $"the sheet {old.Name} did not take its old {left.Check} back: wanted {left.Expected}, read back {left.Measured} ({SheetSetups.Describe(old)})");
+            }
         });
         context.Log.Info($"sheet.set: {sheet}: {changed}: {SheetSetups.Describe(old)} -> {SheetSetups.Describe(wanted)}");
         return new SheetResult { Sheet = new SheetInfo { Name = wanted.Name } };

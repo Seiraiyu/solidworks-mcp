@@ -47,7 +47,8 @@ internal sealed class SolidWorksDrawing : ISwDrawing
             Scale = new ScaleRatio(p[2], p[3]),
             Projection = p[4] != 0 ? Projection.FirstAngle : Projection.ThirdAngle,
             // The default template's sheet names its format "*.drt": held in the template, no file (5.A live run).
-            Format = SheetSetups.FormatFile(sheet.GetTemplateName()),
+            Format = SheetSetups.FormatOf(sheet.GetTemplateName()),
+            Template = (int)p[1],
         };
     }
 
@@ -56,7 +57,11 @@ internal sealed class SolidWorksDrawing : ISwDrawing
     public bool AddSheet(SheetFacts sheet)
     {
         int before = _drawing.GetSheetCount();
-        bool made = _drawing.NewSheet4(sheet.Name, PaperSize(sheet.WidthMm, sheet.HeightMm), sheet.Format == null ? (int)swDwgTemplates_e.swDwgTemplateNone : (int)swDwgTemplates_e.swDwgTemplateCustom,
+        // A template's own format has no file: the new sheet is made as the first sheet reads, its type and its "*.drt" (5.A review).
+        var step = SheetSetups.Step(sheet);
+        int template = step == SheetFormatStep.Remove ? (int)swDwgTemplates_e.swDwgTemplateNone
+            : step == SheetFormatStep.Keep && sheet.Template is int own ? own : (int)swDwgTemplates_e.swDwgTemplateCustom;
+        bool made = _drawing.NewSheet4(sheet.Name, PaperSize(sheet.WidthMm, sheet.HeightMm), template,
             sheet.Scale.Numerator, sheet.Scale.Denominator, sheet.Projection == Projection.FirstAngle, sheet.Format ?? "", sheet.WidthMm / Mm, sheet.HeightMm / Mm,
             "", 0, 0, 0, 0, 1, 1);
         return made && _drawing.GetSheetCount() > before;
@@ -66,10 +71,13 @@ internal sealed class SolidWorksDrawing : ISwDrawing
     {
         var target = _drawing.get_Sheet(name) ?? throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS gives no sheet {name}");
         string format = target.GetTemplateName() ?? "";
-        bool hasFormat = sheet.Format != null;
-        // With no format file asked, the sheet keeps the format it has (a template's own one has no file: 5.A live run).
-        int template = hasFormat ? (int)swDwgTemplates_e.swDwgTemplateCustom
-            : target.GetProperties2() is double[] p && p.Length > 1 ? (int)p[1] : (int)swDwgTemplates_e.swDwgTemplateNone;
+        var step = SheetSetups.Step(sheet);
+        bool hasFormat = step == SheetFormatStep.UseFile;
+        // No format asked takes the format off; a template's own format ("*.drt") has no file to give, so the sheet keeps the
+        // type it has: it keeps that format if it has it, and one that lost it stays as it is for the read-back to report (5.A review).
+        int template = step == SheetFormatStep.UseFile ? (int)swDwgTemplates_e.swDwgTemplateCustom
+            : step == SheetFormatStep.Remove ? (int)swDwgTemplates_e.swDwgTemplateNone
+            : target.GetProperties2() is double[] p && p.Length > 1 ? (int)p[1] : (int)swDwgTemplates_e.swDwgTemplateCustom;
         target.SetProperties2(PaperSize(sheet.WidthMm, sheet.HeightMm), template,
             sheet.Scale.Numerator, sheet.Scale.Denominator, sheet.Projection == Projection.FirstAngle, sheet.WidthMm / Mm, sheet.HeightMm / Mm, true);
         // CADapter measured SetupSheet5 leaving the scale as it was; ISheet.SetScale applies it (design 611, Sheets).

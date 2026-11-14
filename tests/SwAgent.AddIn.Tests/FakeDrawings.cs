@@ -106,7 +106,16 @@ sealed class FakeDrawing : ISwDrawing
 
     public string? ActiveSheet() => Active;
 
-    public SheetFacts? ReadSheet(string name) => Sheets.FirstOrDefault(s => s.Facts.Name == name)?.Facts.Copy();
+    /// <summary>
+    /// A sheet as SolidWorksDrawing.ReadSheet reads it: <see cref="FakeSheet.Facts"/>'s Format holds the name SOLIDWORKS
+    /// gives (ISheet.GetTemplateName, "*.drt" for a template's own format), read through the same rule.
+    /// </summary>
+    public SheetFacts? ReadSheet(string name)
+    {
+        var facts = Sheets.FirstOrDefault(s => s.Facts.Name == name)?.Facts.Copy();
+        if (facts != null) facts.Format = SheetSetups.FormatOf(facts.Format);
+        return facts;
+    }
 
     public bool EditingSheetFormat() => EditingFormat;
 
@@ -123,10 +132,17 @@ sealed class FakeDrawing : ISwDrawing
         var facts = sheet.Copy();
         if (facts.Name.Length == 0) facts.Name = "Sheet" + (Sheets.Count + 1);
         if (SheetScaleIgnored != null) facts.Scale = SheetScaleIgnored;
+        if (TemplateFormatNotRestored && SheetSetups.InTemplate(facts.Format)) facts.Format = null;
         Sheets.Add(new FakeSheet(facts));
         Active = facts.Name;
         return true;
     }
+
+    /// <summary>
+    /// When true, a template's own format ("*.drt") cannot be given to a sheet that does not have it: AddSheet makes the
+    /// sheet with none, and SetSheet leaves the format the sheet has.
+    /// </summary>
+    public bool TemplateFormatNotRestored { get; set; }
 
     /// <summary>When true, SetSheet changes nothing.</summary>
     public bool SetSheetIgnored { get; set; }
@@ -138,6 +154,7 @@ sealed class FakeDrawing : ISwDrawing
         var target = Sheet(name);
         var old = target.Facts;
         target.Facts = sheet.Copy();
+        if (TemplateFormatNotRestored && SheetSetups.InTemplate(sheet.Format) && !string.Equals(old.Format, sheet.Format, StringComparison.OrdinalIgnoreCase)) target.Facts.Format = old.Format;
         if (target.Facts.Name.Length == 0) target.Facts.Name = name;
         foreach (var v in target.Views) v.Facts.Sheet = target.Facts.Name;
         if (Active == name) Active = target.Facts.Name;

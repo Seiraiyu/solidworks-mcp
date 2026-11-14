@@ -68,6 +68,45 @@ public class SheetSetTests : DrawingTestBase
         Assert.Equal("size", e.Error.Details!["check"]);
     }
 
+    [Fact]
+    public void A_template_s_own_format_that_cannot_be_put_back_is_rollback_failed_not_a_clean_rollback()
+    {
+        Drw.Sheet("Sheet1").Facts.Format = "*.drt";
+        Drw.TemplateFormatNotRestored = true;
+        var view = Drw.AddView("Sheet1", Block, "front", new SheetPoint(100, 150));
+        view.KeepsScale = true;
+        string format = PathOf("a3.slddrt");
+        File.WriteAllText(format, "format");
+        var e = Fails(() => Set(new SheetSetRequest { Sheet = "Sheet1", Scale = new ScaleRatio(1, 2), Format = format }));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.Equal(true, e.Error.Details!["rollback_failed"]);
+        Assert.Equal("verification_failed", e.Error.Details["cause"]);
+        Assert.Contains("*.drt", e.Message);
+        Assert.Equal(format, Drw.ReadSheet("Sheet1")!.Format);
+    }
+
+    [Fact]
+    public void A_format_given_to_a_sheet_with_none_is_taken_off_again_on_rollback()
+    {
+        Drw.Sheet("Sheet1").Facts.Format = null;
+        var view = Drw.AddView("Sheet1", Block, "front", new SheetPoint(100, 150));
+        view.KeepsScale = true;
+        string format = PathOf("a3.slddrt");
+        File.WriteAllText(format, "format");
+        var e = Fails(() => Set(new SheetSetRequest { Sheet = "Sheet1", Scale = new ScaleRatio(1, 2), Format = format }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Null(Drw.ReadSheet("Sheet1")!.Format);
+    }
+
+    [Fact]
+    public void A_template_s_own_format_stays_when_another_value_changes()
+    {
+        Drw.Sheet("Sheet1").Facts.Format = "*.drt";
+        var result = Set(new SheetSetRequest { Sheet = "Sheet1", Scale = new ScaleRatio(1, 2) });
+        Assert.Equal("*.drt", result.Sheet.Format);
+        Assert.Equal("scale", result.Change.Changed.Single().Property);
+    }
+
     [Theory]
     [InlineData("nothing", "/sheet")]
     [InlineData("taken name", "/name")]
@@ -221,6 +260,28 @@ public class SheetAddTests : DrawingTestBase
         Assert.Null(sheet.Size);
         Assert.Equal(SheetOrientation.Portrait, sheet.Orientation);
         Assert.Equal(format, sheet.Format);
+    }
+
+    [Fact]
+    public void A_sheet_added_to_a_drawing_in_its_template_s_own_format_gets_that_format()
+    {
+        Drw.Sheet("Sheet1").Facts.Format = "*.drt";
+        var sheet = Add(new SheetAddRequest { Size = SheetSize.A3 }).Sheet;
+        Assert.Equal("*.drt", sheet.Format);
+        Assert.Equal("*.drt", Drw.Sheet(sheet.Name).Facts.Format);
+    }
+
+    [Fact]
+    public void A_sheet_that_does_not_take_the_template_s_own_format_is_deleted_again()
+    {
+        Drw.Sheet("Sheet1").Facts.Format = "*.drt";
+        Drw.TemplateFormatNotRestored = true;
+        var e = Fails(() => Add(new SheetAddRequest { Size = SheetSize.A3 }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("format", e.Error.Details!["check"]);
+        Assert.Equal("*.drt", e.Error.Details["expected"]);
+        Assert.Equal("none", e.Error.Details["measured"]);
+        Assert.Equal(new[] { "Sheet1" }, Drw.SheetNames());
     }
 
     [Theory]
