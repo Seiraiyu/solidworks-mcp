@@ -116,6 +116,7 @@ public sealed class ViewSetOperation : DrawingChangeOperation<ViewSetRequest, Vi
     SheetPoint _from = new SheetPoint();
     SheetPoint _at = new SheetPoint();
     SheetBox? _drawn;
+    (ISwDocument Model, ISwAssembly Assembly, System.Collections.Generic.IReadOnlyList<string> Views)? _exploding;
 
     protected override string? DocumentOf(ViewSetRequest request) => request.Document;
 
@@ -127,18 +128,24 @@ public sealed class ViewSetOperation : DrawingChangeOperation<ViewSetRequest, Vi
         string name = View(doc, drawing, request.View, "/view");
         var old = drawing.ReadView(name)!;
         _old = old;
-        if (request.At == null && request.Scale == null && request.SheetScale == null && request.Display == null && request.Configuration == null)
-            throw ViewRequests.Invalid("/view", "view.set changes nothing: give at, scale, sheet_scale, display or configuration");
+        _exploding = null;
+        if (request.At == null && request.Scale == null && request.SheetScale == null && request.Display == null && request.Configuration == null && request.Exploded == null)
+            throw ViewRequests.Invalid("/view", "view.set changes nothing: give at, scale, sheet_scale, display, configuration or exploded");
         if (request.Scale != null && request.SheetScale != null) throw ViewRequests.Invalid("/sheet_scale", "/sheet_scale: give scale or sheet_scale, not both");
         if (request.SheetScale == false) throw ViewRequests.Invalid("/sheet_scale", "/sheet_scale: false is not a scale; give scale for the view's own");
         ViewRequests.Scale(request.Scale, "/scale");
         bool projected = Aligned(old);
         if (projected && (request.Scale != null || request.SheetScale != null))
             throw ViewRequests.Invalid(request.Scale != null ? "/scale" : "/sheet_scale", $"{name} is {(old.Type == ViewType.Section ? "cut" : "projected")} from {old.Parent} and drawn at its scale; rescale {old.Parent}");
-        _drawn = old.Type == ViewType.Model || old.Type == ViewType.Projected ? null : DrawingReader.Extents(drawing, old);
+        // An exploded view kept exploded draws what it drew, moved and rescaled, as a section does: its model's box is collapsed.
+        _drawn = (old.Type == ViewType.Model || old.Type == ViewType.Projected) && !(old.Exploded && request.Exploded != false) ? null : DrawingReader.Extents(drawing, old);
         if (old.Type != ViewType.Model && request.Configuration != null)
             throw ViewRequests.Invalid("/configuration", $"/configuration: {name} is a {WireNames.ForEnum(old.Type)} view and shows its parent's configuration; change {old.Parent ?? "its parent"}'s");
         if (request.Configuration != null && request.Configuration.Trim().Length == 0) throw ViewRequests.Invalid("/configuration", "/configuration: give a configuration's name");
+        if (request.Exploded != null && old.Type != ViewType.Model)
+            throw ViewRequests.Invalid("/exploded", $"/exploded: {name} is a {WireNames.ForEnum(old.Type)} view; only a model view of an assembly is shown exploded");
+        if (request.Exploded == true)
+            _exploding = ExplodedViewChecks.Require(drawing, name, request.Configuration ?? old.Configuration, "/exploded", request.Configuration != null ? "/configuration" : "/view");
         // Where it is and goes: its position; for a detail, where it draws its circle's centre (DrawingReader.Placed).
         _from = DrawingReader.Placed(drawing, old);
         _at = request.At ?? _from;
@@ -163,6 +170,18 @@ public sealed class ViewSetOperation : DrawingChangeOperation<ViewSetRequest, Vi
             tx.Edited(new ChangedItem { Name = name, Property = "configuration", Before = old.Configuration ?? "", After = request.Configuration }, () =>
             {
                 if (old.Configuration != null) drawing.SetConfiguration(name, old.Configuration);
+            });
+        }
+        if (request.Exploded != null && request.Exploded != old.Exploded)
+        {
+            bool exploded = request.Exploded.Value;
+            if (!drawing.ShowExploded(name, exploded))
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not show {name} {(exploded ? "exploded" : "collapsed")}", new JsonObject { ["view"] = name });
+            tx.Edited(new ChangedItem { Name = name, Property = "exploded", Before = old.Exploded ? "true" : "false", After = exploded ? "true" : "false" }, () =>
+            {
+                drawing.ShowExploded(name, old.Exploded);
+                if (!(drawing.ReadView(name) is ViewFacts back) || back.Exploded != old.Exploded)
+                    throw new SwAgentException(ErrorCode.OperationFailed, $"{name} did not go back to {(old.Exploded ? "exploded" : "collapsed")}");
             });
         }
         if (request.Scale != null || request.SheetScale == true)
@@ -207,6 +226,8 @@ public sealed class ViewSetOperation : DrawingChangeOperation<ViewSetRequest, Vi
             throw ViewCreateOperation.Failed(name, "configuration", request.Configuration, facts.Configuration ?? "none");
         if (request.Display != null && facts.Display != request.Display)
             throw ViewCreateOperation.Failed(name, "display", WireNames.ForEnum(request.Display.Value), facts.Display == null ? "a mode the add-in does not name" : WireNames.ForEnum(facts.Display.Value));
+        if (request.Exploded != null && facts.Exploded != request.Exploded)
+            throw ViewCreateOperation.Failed(name, "exploded", request.Exploded.Value ? "shown exploded" : "shown collapsed", facts.Exploded ? "exploded" : "collapsed");
         var placed = DrawingReader.Placed(drawing, facts);
         if (!ViewGeometry.Near(placed, _at))
             throw ViewCreateOperation.Failed(name, "position", facts.Type == ViewType.Detail ? $"the circle's centre drawn at {_at}" : _at.ToString(),
@@ -214,14 +235,22 @@ public sealed class ViewSetOperation : DrawingChangeOperation<ViewSetRequest, Vi
         var scale = request.Scale ?? (request.SheetScale == true ? drawing.ReadSheet(facts.Sheet)!.Scale : _old.Scale);
         if (!DrawingReader.SameScale(facts.Scale, scale) || (request.Scale != null && facts.SheetScale) || (request.SheetScale == true && !facts.SheetScale))
             throw ViewCreateOperation.Failed(name, "scale", request.SheetScale == true ? $"the sheet's, {scale}" : scale.ToString(), $"{facts.Scale}{(facts.SheetScale ? " (the sheet's)" : "")}");
-        if (facts.Type == ViewType.Model || facts.Type == ViewType.Projected)
+        string? standard = facts.Orientation != null && ViewGeometry.Standard.Contains(facts.Orientation) && facts.Type == ViewType.Model ? facts.Orientation : null;
+        if (_exploding is { } exploding)
         {
-            string? orientation = facts.Orientation != null && ViewGeometry.Standard.Contains(facts.Orientation) && facts.Type == ViewType.Model ? facts.Orientation : null;
-            ViewChecks.Drawn(drawing, name, DrawingReader.Ratio(scale), orientation);
+            // Shown exploded now: each component where the assembly's exploded view puts it (ExplodedViewChecks).
+            ViewChecks.Turned(drawing, name, DrawingReader.Ratio(scale), standard);
+            var (shown, images) = ExplodedViewChecks.Check(drawing, exploding.Assembly, name, exploding.Views);
+            result.ExplodedView = shown;
+            result.Images = images;
+        }
+        else if ((facts.Type == ViewType.Model || facts.Type == ViewType.Projected) && !facts.Exploded)
+        {
+            ViewChecks.Drawn(drawing, name, DrawingReader.Ratio(scale), standard);
         }
         else
         {
-            // A section, detail or flat pattern draws what it drew, moved and rescaled about where it is.
+            // A section, detail, flat pattern or exploded view draws what it drew, moved and rescaled about where it is.
             ViewChecks.Scale(drawing, name, DrawingReader.Ratio(scale));
             var now = DrawingReader.Extents(drawing, facts);
             if (_drawn != null)
@@ -459,6 +488,7 @@ public sealed class ViewCreateOperation : DrawingChangeOperation<ViewCreateReque
 
     string _model = "";
     ViewDisplay _display;
+    (ISwDocument Model, ISwAssembly Assembly, System.Collections.Generic.IReadOnlyList<string> Views)? _exploding;
 
     protected override string? DocumentOf(ViewCreateRequest request) => request.Document;
 
@@ -475,6 +505,9 @@ public sealed class ViewCreateOperation : DrawingChangeOperation<ViewCreateReque
         ViewRequests.OnSheet(request.At, facts, "/at");
         bool part = PathRules.TypeOf(_model) == DocumentType.Part;
         _display = request.Display ?? (part && ViewGeometry.Orthographic.ContainsKey(orientation) ? ViewDisplay.HiddenLinesVisible : ViewDisplay.HiddenLinesRemoved);
+        _exploding = null;
+        if (request.Exploded == true && PathRules.TypeOf(_model) != DocumentType.Assembly)
+            throw ViewRequests.Invalid("/exploded", $"/exploded: {Path.GetFileName(_model)} is not an assembly; only a view of an assembly shows it exploded");
 
         if (drawing.ActiveSheet() != sheet && !drawing.ActivateSheet(sheet))
             throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not show the sheet {sheet} to put the view on", new JsonObject { ["sheet"] = sheet });
@@ -487,7 +520,14 @@ public sealed class ViewCreateOperation : DrawingChangeOperation<ViewCreateReque
         drawing.SetScale(name, request.Scale);
         drawing.SetDisplay(name, _display);
         drawing.SetPosition(name, request.At);
-        context.Log.Info($"view.create: {name} of {_model} ({orientation}) on {sheet} at {request.At}, scale {(request.Scale?.ToString() ?? "the sheet's")}, {WireNames.ForEnum(_display)}");
+        if (request.Exploded == true)
+        {
+            // The model is loaded now: its configuration and exploded views are read, and a configuration with none refused (the view rolled back).
+            _exploding = ExplodedViewChecks.Require(drawing, name, request.Configuration ?? drawing.ReadView(name)?.Configuration, "/exploded", request.Configuration != null ? "/configuration" : "/model");
+            if (!drawing.ShowExploded(name, true))
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS would not show {name} exploded", new JsonObject { ["view"] = name });
+        }
+        context.Log.Info($"view.create: {name} of {_model} ({orientation}) on {sheet} at {request.At}, scale {(request.Scale?.ToString() ?? "the sheet's")}, {WireNames.ForEnum(_display)}{(request.Exploded == true ? ", exploded" : "")}");
         return new ViewResult { View = new ViewInfo { Name = name, Sheet = sheet }, ModelUnsaved = open?.Info().Dirty == true };
     }
 
@@ -508,7 +548,19 @@ public sealed class ViewCreateOperation : DrawingChangeOperation<ViewCreateReque
         if (facts.SheetScale != (request.Scale == null) || !DrawingReader.SameScale(facts.Scale, scale))
             throw Failed(name, "scale", request.Scale == null ? $"the sheet's, {sheetScale}" : scale.ToString(), $"{facts.Scale}{(facts.SheetScale ? " (the sheet's)" : "")}");
         string orientation = request.Orientation.Trim().ToLowerInvariant();
-        ViewChecks.Drawn(drawing, name, DrawingReader.Ratio(scale), ViewGeometry.Standard.Contains(orientation) ? orientation : null);
+        string? standard = ViewGeometry.Standard.Contains(orientation) ? orientation : null;
+        if (_exploding is { } exploding)
+        {
+            if (!facts.Exploded) throw Failed(name, "exploded", "shown exploded", "collapsed");
+            ViewChecks.Turned(drawing, name, DrawingReader.Ratio(scale), standard);
+            var (shown, images) = ExplodedViewChecks.Check(drawing, exploding.Assembly, name, exploding.Views);
+            result.ExplodedView = shown;
+            result.Images = images;
+        }
+        else
+        {
+            ViewChecks.Drawn(drawing, name, DrawingReader.Ratio(scale), standard);
+        }
         result.View = Describe(doc, drawing, name);
     }
 

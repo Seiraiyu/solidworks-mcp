@@ -4,7 +4,7 @@ using System.ComponentModel;
 namespace SwAgent.Contracts;
 
 [Operation("view.create", typeof(ViewResult))]
-[Description("Places a model view of a saved part or assembly on a drawing sheet (IDrawingDoc.CreateDrawViewFromModelView3): front, back, left, right, top, bottom, isometric, dimetric, trimetric, or a named view the model has, centred at a point in sheet mm (from the sheet's lower-left corner), at the sheet's scale or its own. The model must be a saved file: a never-saved model is refused before SOLIDWORKS is called (save it with sw_document_save_as first); a model with unsaved changes is drawn as it is in memory (model_unsaved says so). Checked by measuring: the view is on the sheet with the model, configuration and display asked; its centre reads back within 0.01 mm and its scale exactly; it faces the orientation asked (the model axis toward the reader from its model-to-sheet transform: +Z front, -Z back, +Y top, -Y bottom, +X right, -X left; equal components for isometric); what it draws (its edges) equals the model's bounding box projected and scaled within 0.01 mm for the six orthographic views, and lies inside it for the others; and the model is unchanged. Otherwise the view is deleted again (rolled back)." + DrawingChangeText.Waits)]
+[Description("Places a model view of a saved part or assembly on a drawing sheet (IDrawingDoc.CreateDrawViewFromModelView3): front, back, left, right, top, bottom, isometric, dimetric, trimetric, or a named view the model has, centred at a point in sheet mm (from the sheet's lower-left corner), at the sheet's scale or its own. The model must be a saved file: a never-saved model is refused before SOLIDWORKS is called (save it with sw_document_save_as first); a model with unsaved changes is drawn as it is in memory (model_unsaved says so). Checked by measuring: the view is on the sheet with the model, configuration and display asked; its centre reads back within 0.01 mm and its scale exactly; it faces the orientation asked (the model axis toward the reader from its model-to-sheet transform: +Z front, -Z back, +Y top, -Y bottom, +X right, -X left; equal components for isometric); what it draws (its edges) equals the model's bounding box projected and scaled within 0.01 mm for the six orthographic views, and lies inside it for the others; and the model is unchanged. With exploded, a view of an assembly shows its configuration's exploded view (explode.create makes one), and is checked by measuring instead of against the box: where the explode steps put each component is read in the assembly (its placement and box shown exploded, as explode.list reads them; the configuration must be the assembly's active one), and the view must draw each component inside its exploded box projected and scaled within 0.01 mm, and outside its collapsed one when its steps move it across the sheet. Otherwise the view is deleted again (rolled back)." + DrawingChangeText.Waits)]
 public sealed class ViewCreateRequest
 {
     [Description("The drawing: its title or full path. The active document when absent.")]
@@ -33,6 +33,9 @@ public sealed class ViewCreateRequest
 
     [Description("hidden_lines_visible, hidden_lines_removed, wireframe, shaded or shaded_with_edges. Hidden lines visible for the six orthographic views of a part, hidden lines removed otherwise, when absent.")]
     public ViewDisplay? Display { get; set; }
+
+    [Description("true to show an assembly exploded: its configuration's exploded view with steps (explode.create makes one; a configuration without one is refused pointing at sw_explode_create). The configuration must be the assembly's active one. Collapsed when absent.")]
+    public bool? Exploded { get; set; }
 }
 
 [Operation("view.project", typeof(ViewResult))]
@@ -54,7 +57,7 @@ public sealed class ViewProjectRequest
 }
 
 [Operation("view.set", typeof(ViewResult))]
-[Description("Moves, rescales, restyles or reconfigures a drawing view in place: at (its centre, sheet mm; for a detail, the centre of what its circle shows), scale (its own) or sheet_scale (follow the sheet's), display, configuration (a model view's). Values not given stay; moved without at, a view keeps its centre. A projected or section view is drawn at its parent's scale and moves only along its parent's centre line (SOLIDWORKS silently keeps the aligned coordinate): moving it off that line is refused naming the parent. Each value is recorded before and put back on failure. Checked by measuring: every value reads back (the centre within 0.01 mm, the scale exactly), what it draws equals the model's box projected at its scale within 0.01 mm (orthographic model and projected views; inside it for others; a section, detail or flat pattern draws what it drew, moved and rescaled about its centre; a detail's centre is where it draws its circle's centre), the views projected or cut from it are still on its centre lines, and the model is unchanged." + DrawingChangeText.Waits)]
+[Description("Moves, rescales, restyles, reconfigures or explodes a drawing view in place: at (its centre, sheet mm; for a detail, the centre of what its circle shows), scale (its own) or sheet_scale (follow the sheet's), display, configuration (a model view's), exploded (a model view of an assembly: its configuration's exploded view, as view.create checks it). Values not given stay; moved without at, a view keeps its centre. A projected or section view is drawn at its parent's scale and moves only along its parent's centre line (SOLIDWORKS silently keeps the aligned coordinate): moving it off that line is refused naming the parent. Each value is recorded before and put back on failure. Checked by measuring: every value reads back (the centre within 0.01 mm, the scale exactly), what it draws equals the model's box projected at its scale within 0.01 mm (orthographic model and projected views; inside it for others; a section, detail or flat pattern draws what it drew, moved and rescaled about its centre; a detail's centre is where it draws its circle's centre), the views projected or cut from it are still on its centre lines, and the model is unchanged." + DrawingChangeText.Waits)]
 public sealed class ViewSetRequest
 {
     [Description("The drawing: its title or full path. The active document when absent.")]
@@ -78,6 +81,9 @@ public sealed class ViewSetRequest
 
     [Description("The model's configuration a model view shows.")]
     public string? Configuration { get; set; }
+
+    [Description("true to show a model view of an assembly exploded (its configuration's exploded view with steps; the configuration must be the assembly's active one), false to show it collapsed.")]
+    public bool? Exploded { get; set; }
 }
 
 [Operation("view.delete", typeof(ViewDeleteResult))]
@@ -207,6 +213,12 @@ public sealed class ViewResult : IDrawingChangeResult
 
     [Description("True when its model has unsaved changes: the view draws the model as it is in memory, not as its file is (document.save of the drawing saves the model first).")]
     public bool ModelUnsaved { get; set; }
+
+    [Description("For a view shown exploded: the assembly's exploded view it draws (Exploded View1), the one whose placements its images fit.")]
+    public string? ExplodedView { get; set; }
+
+    [Description("For a view shown exploded: each component's image against where its explode steps put it, sheet mm.")]
+    public List<ExplodedImage>? Images { get; set; }
 
     [Required]
     [Description("What changed in the drawing: created holds a new view; changed each value set, before and after; models each model shown, unchanged.")]
