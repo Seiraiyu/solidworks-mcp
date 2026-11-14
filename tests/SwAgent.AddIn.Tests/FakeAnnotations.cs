@@ -249,7 +249,7 @@ sealed partial class FakeDrawing
 
     public bool Shows(string view, object entity, object? component) => Visible(View(view), entity);
 
-    public IReadOnlyList<object> VisibleFaces(string view) => View(view).Faces.ToList();
+    public IReadOnlyList<object> VisibleFaces(string view, string? component = null) => View(view).Faces.Where(f => Of(f, component)).ToList();
 
     public bool SameEntity(object a, object b) => ReferenceEquals(a, b);
 

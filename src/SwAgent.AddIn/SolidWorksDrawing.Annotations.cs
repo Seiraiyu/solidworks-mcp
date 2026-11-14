@@ -63,6 +63,7 @@ internal sealed partial class SolidWorksDrawing
             Position = a.GetPosition() is double[] p && p.Length >= 2 ? new SheetPoint(p[0] * Mm, p[1] * Mm) : null,
             Attached = a.GetAttachedEntities3() is object[] attached ? attached.Where(o => o != null).ToList() : new List<object>(),
         };
+        facts.Components = facts.Attached.Select(ComponentName).Where(n => n != null).Select(n => n!).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         switch (a.GetSpecificAnnotation())
         {
             case IDisplayDimension d:
@@ -82,6 +83,12 @@ internal sealed partial class SolidWorksDrawing
             case INote note:
                 facts.Text = note.GetText();
                 facts.LinkedText = note.PropertyLinkedText;
+                // An Auto Balloon is a note with a balloon showing its item number (design 611, Assembly drawings).
+                if (note.IsBomBalloon() || note.HasBalloon())
+                {
+                    facts.Kind = AnnotationKind.Balloon;
+                    facts.ItemNumber = facts.Text?.Trim();
+                }
                 break;
             case IDatumTag tag:
                 facts.Label = tag.GetLabel();
@@ -107,6 +114,14 @@ internal sealed partial class SolidWorksDrawing
         }
         return facts;
     }
+
+    /// <summary>The name of the component an attached entity belongs to (the component itself, or IEntity.GetComponent); null for none.</summary>
+    static string? ComponentName(object attached) => attached switch
+    {
+        IComponent2 c => c.Name2,
+        IEntity e => (Try(() => e.GetComponent()) as IComponent2)?.Name2,
+        _ => null,
+    };
 
     /// <summary>A centre mark's own position, sheet mm (ICenterMark.GetPosition, index 0, else 1), with the index that gave it.</summary>
     static (int Index, SheetPoint? Position) MarkPosition(ICenterMark mark)
@@ -321,8 +336,13 @@ internal sealed partial class SolidWorksDrawing
         return false;
     }
 
-    public IReadOnlyList<object> VisibleFaces(string view) =>
-        View(view).GetVisibleEntities2(null, (int)swViewEntityType_e.swViewEntityType_Face) is object[] found ? found.Where(o => o != null).ToList() : new List<object>();
+    public IReadOnlyList<object> VisibleFaces(string view, string? component = null)
+    {
+        var v = View(view);
+        var of = ComponentIn(v, component);
+        if (component != null && of == null) return new List<object>();
+        return v.GetVisibleEntities2(of, (int)swViewEntityType_e.swViewEntityType_Face) is object[] found ? found.Where(o => o != null).ToList() : new List<object>();
+    }
 
     static object? Try(Func<object?> call)
     {

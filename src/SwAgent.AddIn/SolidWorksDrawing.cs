@@ -274,13 +274,15 @@ internal sealed partial class SolidWorksDrawing : ISwDrawing
     public ISwDocument? ModelOf(string view) =>
         Find(view)?.ReferencedDocument is IModelDoc2 model ? new SolidWorksDocument(_sw, model) : null;
 
-    public IReadOnlyList<VisibleEntity> VisibleEntities(string view, bool edges, bool vertices)
+    public IReadOnlyList<VisibleEntity> VisibleEntities(string view, bool edges, bool vertices, string? component = null)
     {
         var v = View(view);
         var list = new List<VisibleEntity>();
+        var of = ComponentIn(v, component);
+        if (component != null && of == null) return list;
         void Add(swViewEntityType_e type, bool vertex, bool silhouette)
         {
-            if (!(v.GetVisibleEntities2(null, (int)type) is object[] found)) return;
+            if (!(v.GetVisibleEntities2(of, (int)type) is object[] found)) return;
             foreach (var o in found)
             {
                 if (o != null && !list.Any(e => ReferenceEquals(e.Entity, o))) list.Add(new VisibleEntity(o, vertex, silhouette));

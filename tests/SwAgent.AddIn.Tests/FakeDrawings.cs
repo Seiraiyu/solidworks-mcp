@@ -66,6 +66,12 @@ sealed class FakeView
     /// <summary>The model's faces the view shows (VisibleFaces).</summary>
     public List<object> Faces { get; } = new List<object>();
 
+    /// <summary>The components an assembly view shows (VisibleComponents), when a test names them; else those of its visible entities.</summary>
+    public List<string> ShownComponents { get; } = new List<string>();
+
+    /// <summary>Components the view draws none of (hidden behind others): ComponentImages leaves them out.</summary>
+    public HashSet<string> HiddenComponents { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>A section view's section, or null.</summary>
     public SectionFacts? Section { get; set; }
 
@@ -423,11 +429,15 @@ sealed partial class FakeDrawing : ISwDrawing
     /// <summary>How many times what a view shows was listed (VisibleEntities), by view name.</summary>
     public Dictionary<string, int> VisibleReads { get; } = new Dictionary<string, int>();
 
-    public IReadOnlyList<VisibleEntity> VisibleEntities(string view, bool edges, bool vertices)
+    public IReadOnlyList<VisibleEntity> VisibleEntities(string view, bool edges, bool vertices, string? component = null)
     {
         VisibleReads[view] = VisibleReads.TryGetValue(view, out int n) ? n + 1 : 1;
-        return View(view).Visible.Where(e => e.Vertex ? vertices : edges).ToList();
+        return View(view).Visible.Where(e => (e.Vertex ? vertices : edges) && Of(e.Entity, component)).ToList();
     }
+
+    /// <summary>True when <paramref name="entity"/> is one of <paramref name="component"/>'s, or no component is asked for.</summary>
+    static bool Of(object entity, string? component) =>
+        component == null || string.Equals((entity as FakeEntity)?.Component?.Info.Name, component, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Each line and circle drawn in a view's sketch, sheet mm: "line (x1, y1) (x2, y2)" or "circle (x, y) r".</summary>
     public List<string> Sketched { get; } = new List<string>();
