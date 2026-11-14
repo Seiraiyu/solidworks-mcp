@@ -115,6 +115,16 @@ public class ViewSetTests : DrawingTestBase
     }
 
     [Fact]
+    public void A_projected_view_moves_with_its_parent_the_whole_way_as_SOLIDWORKS_drags_it()
+    {
+        // 5.A live run: the front moved 10 mm along x and its right view, aligned along y, moved 10 mm along x too.
+        Set(new ViewSetRequest { View = _front.Facts.Name, At = new SheetPoint(110, 150) });
+        var right = Drw.ReadView(_right)!;
+        Assert.Equal(170, right.Position.X, 9);
+        Assert.Equal(150, right.Position.Y, 9);
+    }
+
+    [Fact]
     public void A_projected_view_moves_along_its_alignment_and_not_off_it()
     {
         Assert.Equal(250, Set(new ViewSetRequest { View = _right, At = new SheetPoint(250, 150) }).View.Position.X, 9);

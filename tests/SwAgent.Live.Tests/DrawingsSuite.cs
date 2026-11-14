@@ -266,6 +266,8 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
         Box(moved.View.Extents, 100, 160, 160, 200, "front moved");
         Near(130, (await View(Views["above"])).Position.X, "above follows the front along x");
         Near(180, (await View(Views["right"])).Position.Y, "right stays on y 180");
+        // SOLIDWORKS drags a projected view the whole way with its parent (5.A live run), not only along its centre line.
+        Near(190, (await View(Views["right"])).Position.X, "right moves 10 mm along x with the front");
         var offLine = await Refused(() => Call<ViewSetRequest, ViewResult>(new ViewSetRequest { Document = Drawing, View = Views["right"], At = new SheetPoint(200, 170) }));
         Assert.Equal("/at/y", offLine.Error.Details!["field"]);
         var iso = await Call<ViewSetRequest, ViewResult>(new ViewSetRequest { Document = Drawing, View = Views["iso"], Scale = new ScaleRatio(1, 2), Display = ViewDisplay.Shaded });
@@ -333,7 +335,7 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
         var byName = sheet1.Views.ToDictionary(v => v.Name);
         Box(byName[Views["front"]].Extents, 100, 160, 160, 200, "front");
         Box(byName[Views["top"]].Extents, 90, 150, 70, 90, "top");
-        Box(byName[Views["right"]].Extents, 170, 190, 160, 200, "right");
+        Box(byName[Views["right"]].Extents, 180, 200, 160, 200, "right");
         Assert.Equal(ViewType.Projected, byName[Views["right"]].Type);
         Assert.Equal(Views["front"], byName[Views["right"]].Parent);
         var model = Assert.Single(read.Models);

@@ -292,13 +292,10 @@ sealed class FakeDrawing : ISwDrawing
             if (Math.Abs(ViewGeometry.ToSheet(v.Transform!, origin).Y - ViewGeometry.ToSheet(parent.Transform!, origin).Y) < 1e-9) dy = 0;
             else dx = 0;
         }
-        // Views projected from it follow it along their centre lines, as SOLIDWORKS keeps them aligned.
+        // Views projected from it move with it the whole way, as SOLIDWORKS drags them (5.A live run: the front moved
+        // 10 mm along x and its right view moved 10 mm along x too), so they stay aligned.
         foreach (var child in AllViews.Where(c => c.Facts.Parent == view && c.Facts.Type == ViewType.Projected && c.Transform != null && v.Transform != null).ToList())
-        {
-            var origin = new Point3(0, 0, 0);
-            bool horizontal = Math.Abs(ViewGeometry.ToSheet(child.Transform!, origin).Y - ViewGeometry.ToSheet(v.Transform!, origin).Y) < 1e-9;
-            Shift(child, horizontal ? 0 : dx, horizontal ? dy : 0);
-        }
+            Shift(child, dx, dy);
         Shift(v, dx, dy);
         AfterMove?.Invoke(view);
     }
