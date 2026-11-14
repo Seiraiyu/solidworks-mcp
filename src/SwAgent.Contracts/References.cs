@@ -22,6 +22,10 @@ public enum ReferenceKind
     Dimension,
     Component,
     Mate,
+    Sheet,
+    View,
+    Annotation,
+    Table,
 }
 
 /// <summary>What a reference string carries (design 371, References).</summary>

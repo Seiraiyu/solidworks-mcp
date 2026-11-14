@@ -69,7 +69,11 @@
               "point",
               "dimension",
               "component",
-              "mate"
+              "mate",
+              "sheet",
+              "view",
+              "annotation",
+              "table"
             ],
             "description": "feature, sketch, plane, axis or point."
           },

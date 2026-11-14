@@ -58,7 +58,11 @@
             "point",
             "dimension",
             "component",
-            "mate"
+            "mate",
+            "sheet",
+            "view",
+            "annotation",
+            "table"
           ],
           "description": "What it is."
         },
@@ -275,7 +279,11 @@
             "point",
             "dimension",
             "component",
-            "mate"
+            "mate",
+            "sheet",
+            "view",
+            "annotation",
+            "table"
           ],
           "description": "What it is."
         },

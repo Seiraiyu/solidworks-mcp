@@ -35,6 +35,9 @@ public class OperationFamiliesTests
         Assert.Equal(TimeSpan.FromSeconds(60), OperationFamilies.DefaultDeadline("component"));
         Assert.Equal(TimeSpan.FromSeconds(60), OperationFamilies.DefaultDeadline("mate"));
         Assert.Equal(TimeSpan.FromSeconds(60), OperationFamilies.DefaultDeadline("explode"));
+        Assert.Equal(TimeSpan.FromSeconds(60), OperationFamilies.DefaultDeadline("drawing"));
+        Assert.Equal(TimeSpan.FromSeconds(30), OperationFamilies.DefaultDeadline("sheet"));
+        Assert.Equal(TimeSpan.FromSeconds(60), OperationFamilies.DefaultDeadline("view"));
     }
 
     [Fact]

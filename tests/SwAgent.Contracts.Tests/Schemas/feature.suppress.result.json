@@ -68,7 +68,11 @@
                   "point",
                   "dimension",
                   "component",
-                  "mate"
+                  "mate",
+                  "sheet",
+                  "view",
+                  "annotation",
+                  "table"
                 ],
                 "description": "What it is: feature, sketch, sketch_entity, sketch_point, dimension, plane, axis or point."
               },
@@ -276,7 +280,11 @@
               "point",
               "dimension",
               "component",
-              "mate"
+              "mate",
+              "sheet",
+              "view",
+              "annotation",
+              "table"
             ],
             "description": "What it is."
           },
