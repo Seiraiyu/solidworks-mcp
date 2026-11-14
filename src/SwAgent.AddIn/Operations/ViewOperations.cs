@@ -227,6 +227,56 @@ public sealed class ViewSetOperation : DrawingChangeOperation<ViewSetRequest, Vi
     static string Scale(ViewFacts v) => v.SheetScale ? $"the sheet's, {v.Scale}" : v.Scale.ToString();
 }
 
+public sealed class ViewDeleteOperation : DrawingChangeOperation<ViewDeleteRequest, ViewDeleteResult>
+{
+    public ViewDeleteOperation(AddInServices services)
+        : base(services)
+    {
+    }
+
+    System.Collections.Generic.List<string> _kept = new System.Collections.Generic.List<string>();
+
+    protected override string? DocumentOf(ViewDeleteRequest request) => request.Document;
+
+    protected override ViewDeleteResult Change(ISwDocument doc, ISwDrawing drawing, ViewDeleteRequest request, ModelTransaction tx, IOperationContext context)
+    {
+        if (request.Views.Count == 0) throw ViewRequests.Invalid("/views", "/views: name at least one view to delete");
+        var views = new System.Collections.Generic.List<string>();
+        for (int i = 0; i < request.Views.Count; i++)
+        {
+            string name = View(doc, drawing, request.Views[i], $"/views/{i}");
+            if (views.Contains(name)) throw ViewRequests.Invalid($"/views/{i}", $"/views/{i}: {name} is named twice");
+            views.Add(name);
+        }
+        var all = drawing.SheetNames().SelectMany(drawing.ViewNames).Select(drawing.ReadView).Where(v => v != null).Select(v => v!).ToList();
+        for (int i = 0; i < views.Count; i++)
+        {
+            var dependents = all.Where(v => v.Parent == views[i] && !views.Contains(v.Name)).Select(v => v.Name).ToList();
+            if (dependents.Count == 0) continue;
+            throw new SwAgentException(ErrorCode.InvalidArgument,
+                $"/views/{i}: {string.Join(", ", dependents)} {(dependents.Count == 1 ? "was" : "were")} made from {views[i]}; delete {(dependents.Count == 1 ? "it" : "them")} in the same request, or keep {views[i]}",
+                new JsonObject { ["field"] = $"/views/{i}", ["view"] = views[i], ["dependents"] = dependents.Select(d => (object?)d).ToList() });
+        }
+        _kept = all.Select(v => v.Name).Except(views).ToList();
+        if (!drawing.DeleteViews(views))
+            throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not delete {string.Join(", ", views)}", new JsonObject { ["views"] = views.Select(v => (object?)v).ToList() });
+        context.Log.Info($"view.delete: {string.Join(", ", views)}");
+        return new ViewDeleteResult { Deleted = views };
+    }
+
+    /// <summary>Each deleted view is gone, and each other view is still there.</summary>
+    protected override void Check(ISwDocument doc, ISwDrawing drawing, ViewDeleteRequest request, ViewDeleteResult result)
+    {
+        var now = drawing.SheetNames().SelectMany(drawing.ViewNames).ToList();
+        var left = result.Deleted.Where(now.Contains).ToList();
+        var lost = _kept.Where(k => !now.Contains(k)).ToList();
+        if (left.Count == 0 && lost.Count == 0) return;
+        throw new SwAgentException(ErrorCode.VerificationFailed,
+            left.Count > 0 ? $"SOLIDWORKS reported the views deleted, but {string.Join(", ", left)} {(left.Count == 1 ? "is" : "are")} still there" : $"deleting went too far: {string.Join(", ", lost)} went too",
+            new JsonObject { ["check"] = "views", ["left"] = left.Select(l => (object?)l).ToList(), ["lost"] = lost.Select(l => (object?)l).ToList() });
+    }
+}
+
 public sealed class ViewCreateOperation : DrawingChangeOperation<ViewCreateRequest, ViewResult>
 {
     public ViewCreateOperation(AddInServices services)

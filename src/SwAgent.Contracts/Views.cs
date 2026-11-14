@@ -80,6 +80,30 @@ public sealed class ViewSetRequest
     public string? Configuration { get; set; }
 }
 
+[Operation("view.delete", typeof(ViewDeleteResult))]
+[Description("Deletes drawing views by selecting each (SelectByID2 \"DRAWINGVIEW\") and deleting the selection. A view other views were made from (projected, section, detail) is refused unless they are deleted in the same request. Checked: each view is gone and every other view is still there. Not rolled back (a deleted view's annotations cannot be made again as they were): a failed check says what is left. A reference to a deleted view no longer resolves.")]
+public sealed class ViewDeleteRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The views to delete: each a reference (r1.view.…) or a name (Drawing View2).")]
+    public List<string> Views { get; set; } = new List<string>();
+}
+
+[Description("The views deleted.")]
+public sealed class ViewDeleteResult : IDrawingChangeResult
+{
+    [Required]
+    [Description("The names of the views deleted.")]
+    public List<string> Deleted { get; set; } = new List<string>();
+
+    [Required]
+    [Description("What changed in the drawing: views before and after.")]
+    public DrawingChange Change { get; set; } = new DrawingChange();
+}
+
 [Description("The view made or changed.")]
 public sealed class ViewResult : IDrawingChangeResult
 {

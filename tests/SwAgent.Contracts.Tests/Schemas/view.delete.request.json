@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "description": "Deletes drawing views by selecting each (SelectByID2 \"DRAWINGVIEW\") and deleting the selection. A view other views were made from (projected, section, detail) is refused unless they are deleted in the same request. Checked: each view is gone and every other view is still there. Not rolled back (a deleted view's annotations cannot be made again as they were): a failed check says what is left. A reference to a deleted view no longer resolves.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "views": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The views to delete: each a reference (r1.view.…) or a name (Drawing View2)."
+    }
+  },
+  "required": [
+    "views"
+  ],
+  "additionalProperties": false
+}

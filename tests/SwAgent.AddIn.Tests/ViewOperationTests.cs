@@ -189,6 +189,70 @@ public class ViewSetTests : DrawingTestBase
     }
 }
 
+public class ViewDeleteTests : DrawingTestBase
+{
+    readonly string _front;
+    readonly string _right;
+    readonly string _iso;
+
+    public ViewDeleteTests()
+    {
+        _front = Drw.AddView("Sheet1", Block, "front", new SheetPoint(100, 150)).Facts.Name;
+        _right = Drw.ProjectView(_front, new SheetPoint(160, 150))!;
+        _iso = Drw.AddView("Sheet1", Block, "isometric", new SheetPoint(300, 200)).Facts.Name;
+        Drw.Calls.Clear();
+    }
+
+    ViewDeleteResult Delete(params string[] views) => Run(new ViewDeleteOperation(Services), new ViewDeleteRequest { Views = views.ToList() });
+
+    [Fact]
+    public void Deletes_views_by_name_or_reference_and_a_stale_reference_is_unresolved()
+    {
+        string reference = Services.References.IssueView(Doc, Drw.ReadView(_iso)!);
+        var result = Delete(reference);
+        Assert.Equal(new[] { _iso }, result.Deleted);
+        Assert.Equal((3, 2), (result.Change.ViewsBefore, result.Change.ViewsAfter));
+        var e = Fails(() => Delete(reference));
+        Assert.Equal(ErrorCode.ReferenceUnresolved, e.Code);
+        Assert.Equal("not_found", e.Error.Details!["reason"]);
+    }
+
+    [Fact]
+    public void A_view_others_were_made_from_is_refused_unless_they_go_too()
+    {
+        var e = Fails(() => Delete(_front));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal("/views/0", e.Error.Details!["field"]);
+        Assert.Equal(new object?[] { _right }, (List<object?>)e.Error.Details["dependents"]!);
+        Assert.Empty(Drw.Calls);
+        Assert.Equal(new[] { _front, _right }, Delete(_front, _right).Deleted);
+        Assert.Equal(new[] { _iso }, Drw.ViewNames("Sheet1"));
+    }
+
+    [Fact]
+    public void A_view_SOLIDWORKS_will_not_delete_is_operation_failed()
+    {
+        Drw.DeleteFails = true;
+        Assert.Equal(ErrorCode.OperationFailed, Fails(() => Delete(_iso)).Code);
+    }
+
+    [Theory]
+    [InlineData("twice", "/views/1")]
+    [InlineData("unknown", "/views/1")]
+    [InlineData("none", "/views")]
+    public void Bad_lists_are_refused_naming_the_field(string what, string field)
+    {
+        var e = what switch
+        {
+            "twice" => Fails(() => Delete(_iso, _iso)),
+            "unknown" => Fails(() => Delete(_iso, "Drawing View9")),
+            _ => Fails(() => Delete()),
+        };
+        Assert.Equal(field, e.Error.Details!["field"]);
+        Assert.Empty(Drw.Calls);
+    }
+}
+
 public class ViewCreateTests : DrawingTestBase
 {
     ViewResult Create(ViewCreateRequest request) => Run(new ViewCreateOperation(Services), request);
