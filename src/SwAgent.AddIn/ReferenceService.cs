@@ -109,6 +109,27 @@ public sealed class ReferenceService
     }
 
     /// <summary>
+    /// The one of <paramref name="shown"/> whose persistent id is the one <paramref name="text"/> (a reference issued in
+    /// <paramref name="doc"/>) carries, with the kind it was issued as; null when it is not a reference to one of them,
+    /// or is another document's. For what a drawing view shows: view.entities
+    /// issues a reference from the entity IView.GetVisibleEntities2 gives, and the 5.C live run measured SP4's part not
+    /// finding that id again (IModelDocExtension.GetObjectByPersistReference3), so it is matched, byte for byte, among
+    /// the same view's entities instead. Nothing is substituted: an id that matches none is still unresolved.
+    /// </summary>
+    public (object Entity, ReferenceKind Kind)? MatchShown(ISwDocument doc, string text, IEnumerable<object> shown)
+    {
+        if (!References.IsReference(text)) return null;
+        var data = References.Decode(text, "");
+        if (!DocumentKeys.Same(_renames.Current(data.DocumentKey), DocumentKeys.Of(doc.Info()))) return null;
+        foreach (var o in shown)
+        {
+            var id = doc.PersistId(o);
+            if (id != null && id.SequenceEqual(data.PersistId)) return (o, data.Kind);
+        }
+        return null;
+    }
+
+    /// <summary>
     /// The pair form <c>{component, entity}</c> (design 455, Assembly references): <paramref name="text"/> is a reference
     /// issued in <paramref name="component"/>'s own document, or a name there (front, top, right and origin are its own),
     /// mapped into the assembly with IComponent2.GetCorresponding. invalid_argument naming

@@ -1,3 +1,4 @@
+using System.Linq;
 using SwAgent.Contracts;
 using SwAgent.Contracts.Serialization;
 
@@ -42,11 +43,36 @@ public static class ViewEntities
         var model = drawing.ModelOf(view)
             ?? throw Invalid(field + "/view", $"{field}/view: {view} shows no model that is loaded, so it has no entity to name");
         var (entity, kind) = given.Reference != null
-            ? references.Resolve(model, given.Reference, field + "/reference", accepted)
+            ? ResolveReference(references, drawing, view, model, given.Reference, field + "/reference", accepted)
             : given.Component != null
                 ? references.ResolveInComponent(model, given.Entity!, given.Component, field + "/entity", field + "/component", accepted)
                 : references.Resolve(model, given.Entity!, field + "/entity", accepted);
         return new ResolvedViewEntity(view, model, entity, kind);
+    }
+
+    /// <summary>
+    /// A reference in the view's model, with phase 4's resolver; when the model no longer finds its id, the entity of
+    /// the view's whose id it is (view.entities issued it from one: <see cref="ReferenceService.MatchShown"/>), or the
+    /// resolver's own reference_unresolved when none is.
+    /// </summary>
+    static (object Entity, ReferenceKind Kind) ResolveReference(ReferenceService references, ISwDrawing drawing, string view, ISwDocument model, string reference, string field, ReferenceKind[] accepted)
+    {
+        try
+        {
+            return references.Resolve(model, reference, field, accepted);
+        }
+        catch (SwAgentException e) when (e.Code == ErrorCode.ReferenceUnresolved && Equals(e.Error.Details?["reason"], "not_found"))
+        {
+            var shown = drawing.VisibleEntities(view, edges: true, vertices: true).Select(v => v.Entity).Concat(drawing.VisibleFaces(view));
+            if (!(references.MatchShown(model, reference, shown) is (object, ReferenceKind) found)) throw;
+            if (accepted.Length > 0 && !accepted.Contains(found.Kind))
+            {
+                throw new SwAgentException(ErrorCode.InvalidArgument,
+                    $"{field} names a {WireNames.ForEnum(found.Kind)}, but this needs {string.Join(" or ", accepted.Select(k => WireNames.ForEnum(k)))}",
+                    new JsonObject { ["field"] = field, ["kind"] = WireNames.ForEnum(found.Kind), ["accepted"] = accepted.Select(k => (object?)WireNames.ForEnum(k)).ToList() });
+            }
+            return found;
+        }
     }
 
     /// <summary>
