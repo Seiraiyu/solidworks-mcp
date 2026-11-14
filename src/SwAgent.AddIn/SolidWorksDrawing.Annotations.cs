@@ -64,7 +64,10 @@ internal sealed partial class SolidWorksDrawing
             Attached = a.GetAttachedEntities3() is object[] attached ? attached.Where(o => o != null).ToList() : new List<object>(),
         };
         string? root = inView == null ? null : RootOf(inView);
-        facts.Components = facts.Attached.Select(o => ComponentName(o, root) ?? (inView == null ? null : ShownComponentOf(inView, o, root)))
+        // Only a view of an assembly has components to match against: in a part's view, GetVisibleEntities2 per
+        // component left the view activated in SP4 (5.D live run, round 4), so it is never called there.
+        bool assemblyView = inView != null && Try(() => inView.ReferencedDocument) is IAssemblyDoc;
+        facts.Components = facts.Attached.Select(o => ComponentName(o, root) ?? (assemblyView ? ShownComponentOf(inView!, o, root) : null))
             .Where(n => n != null).Select(n => n!).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (facts.Components.Count == 0 && facts.Attached.Count > 0)
             facts.AttachedNote = string.Join(", ", facts.Attached.Select(Interfaces)) + " (no component by IEntity.GetComponent, IDrawingComponent, or the one component the view shows it of)";
