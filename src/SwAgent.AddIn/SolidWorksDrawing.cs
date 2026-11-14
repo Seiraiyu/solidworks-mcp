@@ -39,7 +39,6 @@ internal sealed class SolidWorksDrawing : ISwDrawing
         if (!SheetNames().Contains(name, StringComparer.Ordinal)) return null;
         var sheet = _drawing.get_Sheet(name);
         if (sheet == null || !(sheet.GetProperties2() is double[] p) || p.Length < 7) return null;
-        string format = sheet.GetTemplateName() ?? "";
         return new SheetFacts
         {
             Name = sheet.GetName(),
@@ -47,7 +46,8 @@ internal sealed class SolidWorksDrawing : ISwDrawing
             HeightMm = p[6] * Mm,
             Scale = new ScaleRatio(p[2], p[3]),
             Projection = p[4] != 0 ? Projection.FirstAngle : Projection.ThirdAngle,
-            Format = format.Length == 0 ? null : format,
+            // The default template's sheet names its format "*.drt": held in the template, no file (5.A live run).
+            Format = SheetSetups.FormatFile(sheet.GetTemplateName()),
         };
     }
 
@@ -67,7 +67,10 @@ internal sealed class SolidWorksDrawing : ISwDrawing
         var target = _drawing.get_Sheet(name) ?? throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS gives no sheet {name}");
         string format = target.GetTemplateName() ?? "";
         bool hasFormat = sheet.Format != null;
-        target.SetProperties2(PaperSize(sheet.WidthMm, sheet.HeightMm), hasFormat ? (int)swDwgTemplates_e.swDwgTemplateCustom : (int)swDwgTemplates_e.swDwgTemplateNone,
+        // With no format file asked, the sheet keeps the format it has (a template's own one has no file: 5.A live run).
+        int template = hasFormat ? (int)swDwgTemplates_e.swDwgTemplateCustom
+            : target.GetProperties2() is double[] p && p.Length > 1 ? (int)p[1] : (int)swDwgTemplates_e.swDwgTemplateNone;
+        target.SetProperties2(PaperSize(sheet.WidthMm, sheet.HeightMm), template,
             sheet.Scale.Numerator, sheet.Scale.Denominator, sheet.Projection == Projection.FirstAngle, sheet.WidthMm / Mm, sheet.HeightMm / Mm, true);
         // CADapter measured SetupSheet5 leaving the scale as it was; ISheet.SetScale applies it (design 611, Sheets).
         target.SetScale(sheet.Scale.Numerator, sheet.Scale.Denominator, false, false);

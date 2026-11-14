@@ -46,7 +46,7 @@ public static class SheetSetups
             return ("size", Size(wanted), Size(actual));
         if (!DrawingReader.SameScale(actual.Scale, wanted.Scale)) return ("scale", wanted.Scale.ToString(), actual.Scale.ToString());
         if (actual.Projection != wanted.Projection) return ("projection", WireNames.ForEnum(wanted.Projection), WireNames.ForEnum(actual.Projection));
-        if (wanted.Format != null && !(actual.Format != null && string.Equals(Path.GetFullPath(actual.Format), Path.GetFullPath(wanted.Format), StringComparison.OrdinalIgnoreCase)))
+        if (wanted.Format != null && !(actual.Format != null && string.Equals(Full(actual.Format), Full(wanted.Format), StringComparison.OrdinalIgnoreCase)))
             return ("format", wanted.Format, actual.Format ?? "none");
         if (wanted.Name.Length > 0 && !string.Equals(actual.Name, wanted.Name, StringComparison.Ordinal)) return ("name", wanted.Name, actual.Name);
         return null;
@@ -58,9 +58,24 @@ public static class SheetSetups
             $"the sheet {sheet} did not take its {mismatch.Check}: asked {mismatch.Expected}, read back {mismatch.Measured}",
             new JsonObject { ["check"] = mismatch.Check, ["sheet"] = sheet, ["expected"] = mismatch.Expected, ["measured"] = mismatch.Measured });
 
+    /// <summary>
+    /// The sheet format file SOLIDWORKS names (ISheet.GetTemplateName), or null when the name is not a full path to a file:
+    /// the default drawing template's sheet reads "*.drt", its format held in the template rather than in a file (5.A live run).
+    /// </summary>
+    public static string? FormatFile(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        if (name!.IndexOfAny(Path.GetInvalidPathChars()) >= 0 || name.IndexOfAny(new[] { '*', '?' }) >= 0) return null;
+        return Path.IsPathRooted(name) && Path.GetFileName(name).Length > 0 ? name : null;
+    }
+
     /// <summary>A sheet's values for a ChangedItem.</summary>
     public static string Describe(SheetFacts s) =>
-        $"{Size(s)}, {s.Scale}, {WireNames.ForEnum(s.Projection)}{(s.Format == null ? "" : ", " + Path.GetFileName(s.Format))}";
+        $"{Size(s)}, {s.Scale}, {WireNames.ForEnum(s.Projection)}{(s.Format == null ? "" : ", " + Name(s.Format))}";
+
+    static string Full(string path) => FormatFile(path) is string file ? Path.GetFullPath(file) : path;
+
+    static string Name(string path) => FormatFile(path) is string file ? Path.GetFileName(file) : path;
 
     static string Size(SheetFacts s) =>
         FormattableString.Invariant($"{s.WidthMm:0.##} x {s.HeightMm:0.##} mm");
