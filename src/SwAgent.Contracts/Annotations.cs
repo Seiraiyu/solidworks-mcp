@@ -284,3 +284,48 @@ public sealed class AnnotationDimensionResult : IDrawingChangeResult
     [Description("What changed in the drawing: created holds the dimension; models each model shown, unchanged.")]
     public DrawingChange Change { get; set; } = new DrawingChange();
 }
+
+[Operation("annotation.note", typeof(AnnotationNoteResult))]
+[Description("Adds a note (IModelDoc2.InsertNote): on a sheet, or in a view, with a leader to a model entity the view shows when attach_to names one (a ViewEntity selected through its view, never picked by sheet coordinates), its text placed at at (sheet mm). text may link properties: $PRP:\"Title\" shows the drawing's Title (drawing.properties writes them), and shown gives the text as resolved. Checked: the note is on the sheet or in the view asked, its text reads back as written, its position within 0.01 mm, and its leader is attached to that entity; the model is unchanged. An entity the view does not show is refused naming the view and the entity. Otherwise the note is deleted again (rolled back).")]
+public sealed class AnnotationNoteRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The note's text; $PRP:\"name\" links a property of the drawing.")]
+    public string Text { get; set; } = "";
+
+    [Required]
+    [Description("Where its text goes, sheet mm from the sheet's lower-left corner.")]
+    public SheetPoint At { get; set; } = new SheetPoint();
+
+    [Description("The model entity its leader points at, as a view shows it: an edge, vertex or face. The note goes into that view.")]
+    public ViewEntity? AttachTo { get; set; }
+
+    [Description("The view the note goes into (a reference or a name), without a leader unless attach_to is given (then it must be attach_to's view). On the sheet itself when view and attach_to are absent.")]
+    public string? View { get; set; }
+
+    [Description("The sheet for a note on a sheet itself (a reference or a name); the sheet shown when absent. With view or attach_to, it must be that view's sheet.")]
+    public string? Sheet { get; set; }
+}
+
+[Description("The note made.")]
+public sealed class AnnotationNoteResult : IDrawingChangeResult
+{
+    [Required]
+    [Description("The note, as read back.")]
+    public AnnotationInfo Annotation { get; set; } = new AnnotationInfo();
+
+    [Required]
+    [Description("Its text as written, links unresolved.")]
+    public string Text { get; set; } = "";
+
+    [Required]
+    [Description("Its text as the drawing shows it, linked properties resolved.")]
+    public string Shown { get; set; } = "";
+
+    [Required]
+    [Description("What changed in the drawing: created holds the note; models each model shown, unchanged.")]
+    public DrawingChange Change { get; set; } = new DrawingChange();
+}
