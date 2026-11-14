@@ -290,3 +290,117 @@ public sealed class ExportAssemblyResult
     [Description("Each check made on the file and the assembly, and what it found.")]
     public List<string> Checks { get; set; } = new List<string>();
 }
+
+[Description("A format export.drawing writes.")]
+public enum DrawingExportFormat
+{
+    [Description("PDF (.pdf): one file, a page per sheet, each page its sheet's size.")]
+    Pdf,
+
+    [Description("DXF (.dxf), ASCII: one file per sheet, in sheet mm from the sheet's lower-left corner.")]
+    Dxf,
+
+    [Description("DWG (.dwg): one file per sheet, checked by its header and size.")]
+    Dwg,
+}
+
+[Operation("export.drawing", typeof(ExportDrawingResult))]
+[Description("Writes a drawing's sheets as PDF, DXF or DWG: every sheet when sheets is absent, else the ones named (by reference r1.sheet.… or name), in the drawing's order. PDF is one file with a page per sheet. DXF and DWG are one file per sheet: the path itself for one sheet, and for several <folder>\\<name>-<sheet>.dxf (or .dwg) beside it, the sheet's name with any character a file name cannot hold made _. Each sheet is shown in turn for DXF and DWG, and the sheet that was shown is shown again afterwards. The drawing must be saved to disk: a drawing never saved is refused before SOLIDWORKS is called (save it with sw_document_save_as first), because SOLIDWORKS then opens a Save As box that waits for the user. The export options it needs are set for the call and put back afterwards: no PDF viewer opened after saving; DXF and DWG of the shown sheet only, at sheet scale (not 1:1 model scale), views as plain entities (not blocks), no mapping file and no hidden-layer warning. Checked on disk: each file was written by this call and is not empty; a PDF starts %PDF-, has one page per sheet exported, and each page is its sheet's size within 0.1 mm (turned or not); a DXF parses, every entity lies on its sheet (within 0.1 mm), and the largest view's drawn extents (sw_drawing_read's extents, sheet mm) are found among its entities within 0.01 mm (at least the view's scale × 0.01 mm); a DWG starts with its AC10xx version and is at least 1 KB (its contents are not read). Otherwise verification_failed, naming the check; the files are left where they were written. The drawing keeps its path, sheets, views, annotations and tables (measured before and after), and every model it shows keeps its unsaved-changes flag. On SOLIDWORKS 2026 SP4 an export may mark a saved drawing as having unsaved changes, and the API cannot clear that: then marked_dirty is true, and the drawing is not saved behind you (save it with sw_document_save to clear it). Waits, writing nothing (busy, user_editing), while the user edits a view's sketch or the sheet format or has a command open. A part or an assembly is refused (export.part, export.assembly and export.flat_pattern write those).")]
+public sealed class ExportDrawingRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("Full path of the file to write, in an existing folder, ending .pdf, .dxf or .dwg as format says. For DXF or DWG of several sheets, the name each sheet's file is named after.")]
+    public string Path { get; set; } = "";
+
+    [Description("pdf, dxf or dwg.")]
+    public DrawingExportFormat Format { get; set; }
+
+    [Description("The sheets to write, each a reference (r1.sheet.…) or a name (Sheet1). Every sheet when absent.")]
+    public List<string>? Sheets { get; set; }
+
+    [Description("Replace the files if they exist. Default false.")]
+    public bool? Overwrite { get; set; }
+}
+
+[Description("A PDF page export.drawing wrote, as read back from the file.")]
+public sealed class ExportedPage
+{
+    [Required]
+    [Description("The sheet it shows.")]
+    public string Sheet { get; set; } = "";
+
+    [Description("Its width as shown (its media box, turned by its /Rotate), mm.")]
+    public double WidthMm { get; set; }
+
+    [Description("Its height as shown, mm.")]
+    public double HeightMm { get; set; }
+}
+
+[Description("A file export.drawing wrote, as read back from disk.")]
+public sealed class DrawingExportFile
+{
+    [Required]
+    [Description("The file written.")]
+    public string Path { get; set; } = "";
+
+    [Required]
+    [Description("The sheets it holds, in order.")]
+    public List<string> Sheets { get; set; } = new List<string>();
+
+    [Description("Its size in bytes.")]
+    public long Bytes { get; set; }
+
+    [Required]
+    [Description("What it starts with: %PDF- and its version, DXF, or the DWG's version (AC1032).")]
+    public string Header { get; set; } = "";
+
+    [Required]
+    [Description("A PDF's pages, in order; empty for DXF and DWG.")]
+    public List<ExportedPage> Pages { get; set; } = new List<ExportedPage>();
+
+    [Description("A DXF's extents: the rectangle its entities fill, sheet mm; absent for PDF and DWG.")]
+    public DrawingExtents? Extents { get; set; }
+
+    [Description("A DXF's largest view, whose drawn extents were found among its entities; absent when its sheet has no view, and for PDF and DWG.")]
+    public string? View { get; set; }
+
+    [Description("The extents that view's entities fill in the file, sheet mm.")]
+    public SheetBox? ViewExtents { get; set; }
+}
+
+[Description("The files export.drawing wrote, as read back from disk.")]
+public sealed class ExportDrawingResult
+{
+    [Required]
+    [Description("The drawing, as it is after the export: same path; its unsaved-changes flag the same unless marked_dirty.")]
+    public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Description("The format written.")]
+    public DrawingExportFormat Format { get; set; }
+
+    [Required]
+    [Description("The sheets written, in the drawing's order.")]
+    public List<string> Sheets { get; set; } = new List<string>();
+
+    [Required]
+    [Description("The files written: one PDF, or one DXF or DWG per sheet.")]
+    public List<DrawingExportFile> Files { get; set; } = new List<DrawingExportFile>();
+
+    [Description("True when the export marked a drawing that had no unsaved changes as having them (SOLIDWORKS 2026 SP4 may, and the API cannot clear the flag). It was not saved to clear it; its sheets, views, annotations and tables are measured unchanged.")]
+    public bool MarkedDirty { get; set; }
+
+    [Required]
+    [Description("The SOLIDWORKS export preferences set for the call and put back afterwards, each as name = value.")]
+    public List<string> Preferences { get; set; } = new List<string>();
+
+    [Required]
+    [Description("What SOLIDWORKS warned about while exporting (swFileSaveWarning_e names).")]
+    public List<string> Warnings { get; set; } = new List<string>();
+
+    [Required]
+    [Description("Each check made on the files and the drawing, and what it found.")]
+    public List<string> Checks { get; set; } = new List<string>();
+}
