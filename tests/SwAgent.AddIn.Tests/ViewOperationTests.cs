@@ -412,14 +412,15 @@ public class ViewEntitiesTests : DrawingTestBase
     }
 
     [Fact]
-    public void An_assembly_view_is_refused_naming_the_view()
+    public void An_assembly_view_that_shows_no_component_lists_nothing()
     {
+        // Plan 5.D lifts 5.A's refusal: an assembly view is read component by component (AssemblyViewEntitiesTests).
         var asm = FakeDocument.NewAssembly("stand.SLDASM", PathOf("stand.SLDASM"));
         asm.ExactBox = new Box3 { Max = new Point3(10, 10, 10) };
         var view = Drw.AddView("Sheet1", asm, "front", new SheetPoint(300, 200));
-        var e = Fails(() => Entities(new ViewEntitiesRequest { View = view.Facts.Name }));
-        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
-        Assert.Equal("/view", e.Error.Details!["field"]);
+        var result = Entities(new ViewEntitiesRequest { View = view.Facts.Name });
+        Assert.Equal(asm.Document.Path, result.Model);
+        Assert.Empty(result.Entities);
     }
 
     [Fact]

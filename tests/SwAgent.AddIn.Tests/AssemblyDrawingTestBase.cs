@@ -7,8 +7,8 @@ namespace SwAgent.AddIn.Tests;
 /// The drawings suite's assembly, faked: pinblock.SLDASM holds the block (block-1, fixed at the origin, 60 x 40 x 20) and
 /// a Ø10 x 30 pin (pin-1) standing in its hole at (20, 20), z 0 to 30; its Default configuration has ExplView1, whose one
 /// step moves the pin 40 mm along +y. Its front view is on Sheet1 at 1:1, centred at (250, 150), the assembly's origin
-/// drawn at (220, 135); it shows the block's front bottom edge and the pin's front circle (r 5 at (20, 20, 30), drawn at
-/// (240, 155)) as the components' own entities.
+/// drawn at (220, 130); it shows the block's front bottom edge (drawn from (220, 130) to (280, 130)) and the pin's front
+/// circle (r 5 at (20, 20, 30), drawn at (240, 150)) as the components' own entities.
 /// </summary>
 public abstract class AssemblyDrawingTestBase : DrawingTestBase
 {

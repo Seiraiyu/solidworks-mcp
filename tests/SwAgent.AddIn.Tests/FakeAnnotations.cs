@@ -264,7 +264,7 @@ sealed partial class FakeDrawing
     {
         var i = own.Info;
         var origin = i.Origin == null || shiftedBy == null ? i.Origin : new Point3(i.Origin.X + shiftedBy.X, i.Origin.Y + shiftedBy.Y, i.Origin.Z + shiftedBy.Z);
-        var proxy = new FakeEntity(own.Kind, new EntityInfo { Geometry = i.Geometry, Origin = origin, Axis = i.Axis, RadiusMm = i.RadiusMm, LengthMm = i.LengthMm, Feature = i.Feature }) { Id = TwinId, State = PersistState.Invalid };
+        var proxy = new FakeEntity(own.Kind, new EntityInfo { Geometry = i.Geometry, Origin = origin, Axis = i.Axis, RadiusMm = i.RadiusMm, LengthMm = i.LengthMm, Feature = i.Feature }) { Id = TwinId, State = PersistState.Invalid, Component = own.Component };
         view.Visible.Add(new VisibleEntity(proxy, own.Kind == ReferenceKind.Vertex, false));
         return proxy;
     }

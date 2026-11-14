@@ -140,7 +140,7 @@ public enum DrawnShape
 }
 
 [Operation("view.entities", typeof(ViewEntitiesResult), ReadOnly = true)]
-[Description("Lists what a view of a part shows (IView.GetVisibleEntities2): each visible edge, silhouette edge and vertex of the model, with its model reference (r1.edge.…, r1.vertex.…, issued in the part, when SOLIDWORKS gives the part a persistent id for it), its description in model mm, and how it is drawn on the sheet in sheet mm: a line's start and end, a circle's or arc's centre and radius (a circle seen face on), a vertex's point, computed from the model's geometry through the view's model-to-sheet transform. This is how to find the edge to dimension or the hole to tolerance, and to check that a reference already held is visible in a view. Views of parts only: an assembly view is refused. Changes nothing.")]
+[Description("Lists what a view shows (IView.GetVisibleEntities2): each visible edge, silhouette edge and vertex of the model, with its model reference (r1.edge.…, r1.vertex.…, issued in the part, when SOLIDWORKS gives the part a persistent id for it), its description in model mm, and how it is drawn on the sheet in sheet mm: a line's start and end, a circle's or arc's centre and radius (a circle seen face on), a vertex's point, computed from the model's geometry through the view's model-to-sheet transform. In a view of an assembly, component by component (every component it shows, or the one named): each entity names its component, and its reference is the assembly-context one model.find gives in the assembly (naming the component), matched to the component's own entity the same way. This is how to find the edge to dimension or the hole to tolerance, and to check that a reference already held is visible in a view. Changes nothing.")]
 public sealed class ViewEntitiesRequest
 {
     [Description("The drawing: its title or full path. The active document when absent.")]
@@ -152,13 +152,19 @@ public sealed class ViewEntitiesRequest
 
     [Description("edge, vertex or both. Both when absent.")]
     public List<ViewEntityKind>? Kinds { get; set; }
+
+    [Description("In a view of an assembly: only this component's entities, by reference (r1.component.…) or name (pin-1). Every component the view shows when absent.")]
+    public string? Component { get; set; }
 }
 
 [Description("An entity of the model as a view shows it.")]
 public sealed class ViewEntityInfo
 {
-    [Description("Its model reference, issued in the part from the part's own entity and checked to name exactly this one; absent when SOLIDWORKS gives none that can be checked (a silhouette edge, or a view proxy SOLIDWORKS maps to no entity of the part), never one another entity shares. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+    [Description("Its model reference, issued in the part from the part's own entity (in an assembly view, in the assembly from the component's entity) and checked to name exactly this one; absent when SOLIDWORKS gives none that can be checked (a silhouette edge, or a view proxy SOLIDWORKS maps to no entity of the model), never one another entity shares. References are opaque: pass one back exactly as it was given, and never build or change one.")]
     public string? Reference { get; set; }
+
+    [Description("In a view of an assembly, the component it belongs to (pin-1); absent in a view of a part.")]
+    public string? Component { get; set; }
 
     [Description("edge or vertex.")]
     public ReferenceKind Kind { get; set; }
@@ -200,7 +206,7 @@ public sealed class ViewEntitiesResult
     public double Scale { get; set; }
 
     [Required]
-    [Description("Each entity it shows: edges first, then vertices.")]
+    [Description("Each entity it shows: edges first, then vertices (in an assembly view, component by component).")]
     public List<ViewEntityInfo> Entities { get; set; } = new List<ViewEntityInfo>();
 }
 

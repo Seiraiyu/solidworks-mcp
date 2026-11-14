@@ -414,8 +414,7 @@ public sealed class ViewEntitiesOperation : Operation<ViewEntitiesRequest, ViewE
         var model = drawing.ModelOf(view)
             ?? throw ViewRequests.Invalid("/view", $"/view: {view} shows no model that is loaded, so it shows no entity");
         var info = model.Info();
-        if (info.Type != DocumentType.Part)
-            throw ViewRequests.Invalid("/view", $"/view: view.entities lists the entities of a view of a part, and {view} shows {info.Title}, an assembly");
+        var components = Components(model, drawing, view, request.Component);
         var t = drawing.Transform(view) ?? throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS gives no transform for {view}");
         var kinds = request.Kinds == null || request.Kinds.Count == 0 ? new[] { ViewEntityKind.Edge, ViewEntityKind.Vertex }.ToList() : request.Kinds;
         var result = new ViewEntitiesResult { View = view, Model = info.Path ?? info.Title, Scale = t.Scale };
@@ -430,25 +429,51 @@ public sealed class ViewEntitiesOperation : Operation<ViewEntitiesRequest, ViewE
         {
             context.Log.Warn($"view.entities: letting go of the add-in's view before reading {view} failed ({e.Message}); read as it is");
         }
-        var shown = drawing.VisibleEntities(view, kinds.Contains(ViewEntityKind.Edge), kinds.Contains(ViewEntityKind.Vertex)).OrderBy(e => e.Vertex).ToList();
-        // Each reference from the model's own entity, verified, and none two entities would share (ShownEntities).
-        var references = ShownEntities.References(_services.References, model, drawing, view, shown.Select(e => e.Entity).ToList());
-        for (int i = 0; i < shown.Count; i++)
+        foreach (var component in components)
         {
-            var e = shown[i];
-            // Described as the part has it when a reference names it: SP4 can give a view's proxy its position in
-            // another frame (5.C live run, round 4).
-            var described = model.Describe(Own(model, references[i]) ?? e.Entity);
-            var drawn = ViewGeometry.Draw(t, described, e.Vertex);
-            drawn.Reference = references[i];
-            drawn.Kind = e.Vertex ? ReferenceKind.Vertex : ReferenceKind.Edge;
-            drawn.Silhouette = e.Silhouette;
-            described.Reference = null;
-            drawn.Entity = described;
-            result.Entities.Add(drawn);
+            var shown = drawing.VisibleEntities(view, kinds.Contains(ViewEntityKind.Edge), kinds.Contains(ViewEntityKind.Vertex), component).OrderBy(e => e.Vertex).ToList();
+            // Each reference from the model's own entity (a component's, in an assembly view), verified, and none two
+            // entities would share (ShownEntities).
+            var references = ShownEntities.References(_services.References, model, drawing, view, shown.Select(e => e.Entity).ToList(), component);
+            for (int i = 0; i < shown.Count; i++)
+            {
+                var e = shown[i];
+                // Described as the model has it when a reference names it: SP4 can give a view's proxy its position in
+                // another frame (5.C live run, round 4).
+                var own = Own(model, references[i]);
+                var described = own != null ? _services.References.Describe(model, own) : ShownEntities.DescribeIn(model, component, e.Entity) ?? model.Describe(e.Entity);
+                var drawn = ViewGeometry.Draw(t, described, e.Vertex);
+                drawn.Reference = references[i];
+                drawn.Kind = e.Vertex ? ReferenceKind.Vertex : ReferenceKind.Edge;
+                drawn.Silhouette = e.Silhouette;
+                drawn.Component = component;
+                described.Reference = null;
+                drawn.Entity = described;
+                result.Entities.Add(drawn);
+            }
         }
-        context.Log.Info($"view.entities: {view}: {result.Entities.Count} entities, {result.Entities.Count(x => x.Reference != null)} with a model reference");
+        context.Log.Info($"view.entities: {view}: {result.Entities.Count} entities{(components.Any(c => c != null) ? $" of {components.Count} components" : "")}, {result.Entities.Count(x => x.Reference != null)} with a model reference");
         return result;
+    }
+
+    /// <summary>
+    /// What to list, component by component: for a view of a part, the part itself (null); for a view of an assembly, the
+    /// component named or every one the view shows. invalid_argument naming /component for a component in a view of a
+    /// part, or one the view does not show.
+    /// </summary>
+    System.Collections.Generic.List<string?> Components(ISwDocument model, ISwDrawing drawing, string view, string? named)
+    {
+        if (!(model.Assembly() is ISwAssembly asm))
+        {
+            if (named != null) throw ViewRequests.Invalid("/component", $"/component: {view} shows {model.Info().Title}, a part, which has no components; leave component out");
+            return new System.Collections.Generic.List<string?> { null };
+        }
+        var shown = drawing.VisibleComponents(view);
+        if (named == null) return shown.Select(c => (string?)c).ToList();
+        string name = asm.Identify(ComponentLookup.Find(_services.References, model, asm, named, "/component")).Name;
+        if (!shown.Contains(name, StringComparer.OrdinalIgnoreCase))
+            throw ViewRequests.Invalid("/component", $"/component: {view} does not show {name} (it shows {string.Join(", ", shown.DefaultIfEmpty("no component"))})");
+        return new System.Collections.Generic.List<string?> { name };
     }
 
     object? Own(ISwDocument model, string? reference)
@@ -469,7 +494,9 @@ public sealed class ViewEntitiesOperation : Operation<ViewEntitiesRequest, ViewE
     {
         var (_, drawing) = DocumentLocator.FindDrawing(_services.SolidWorks, request.Document, Name);
         var kinds = request.Kinds == null || request.Kinds.Count == 0 ? new[] { ViewEntityKind.Edge, ViewEntityKind.Vertex }.ToList() : request.Kinds;
-        int now = drawing.ReadView(result.View) == null ? -1 : drawing.VisibleEntities(result.View, kinds.Contains(ViewEntityKind.Edge), kinds.Contains(ViewEntityKind.Vertex)).Count;
+        var model = drawing.ReadView(result.View) == null ? null : drawing.ModelOf(result.View);
+        var components = model == null ? new System.Collections.Generic.List<string?>() : Components(model, drawing, result.View, request.Component);
+        int now = model == null ? -1 : components.Sum(c => drawing.VisibleEntities(result.View, kinds.Contains(ViewEntityKind.Edge), kinds.Contains(ViewEntityKind.Vertex), c).Count);
         if (now != result.Entities.Count)
         {
             throw new SwAgentException(ErrorCode.VerificationFailed,
