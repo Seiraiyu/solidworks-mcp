@@ -933,7 +933,7 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
             ?? throw new SkipException("no sketch or command was seen open within 3 min");
         string what = seen.Sketch != null ? $"the sketch {seen.Sketch} (Edit Sketch)" : $"the command '{seen.Command}' (not a sketch edit)";
         Assert.True(busy.Error.Details!.ContainsKey("sketch") || busy.Error.Details.ContainsKey("command"), "busy names neither a sketch nor a command");
-        var waited = await FreeAfter("exit the sketch (the exit-sketch icon in the corner of the graphics area), or press Esc to end the line tool");
+        var waited = await FreeAfter("exit the sketch (the exit-sketch icon in the corner of the graphics area), or press Esc to end the line tool, then double-click an empty part of the sheet to deactivate the view");
         return $"busy, user_editing, {what}, detected before ({busy.Message}); worked again {waited.TotalSeconds:0} s after asking for it to be closed";
     });
 
