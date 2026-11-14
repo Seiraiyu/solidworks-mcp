@@ -66,6 +66,25 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         });
     }
 
+    /// <summary>
+    /// Records a section or detail view the change made, with its reference; a rollback deletes the view, then the section
+    /// line or detail circle <paramref name="label"/> it left in <paramref name="parent"/> (by selection), and checks both
+    /// are gone.
+    /// </summary>
+    protected void MadeCut(ISwDocument doc, ISwDrawing drawing, ModelTransaction tx, string name, string parent, string label, bool section)
+    {
+        var facts = drawing.ReadView(name);
+        tx.Made(new CreatedItem { Name = name, Kind = ReferenceKind.View, Reference = facts == null ? null : Services.References.IssueView(doc, facts) }, () =>
+        {
+            if (!drawing.DeleteViews(new[] { name }) || drawing.ReadView(name) != null)
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not delete the view {name}");
+            if (!drawing.CutLabels(parent).Contains(label, StringComparer.OrdinalIgnoreCase)) return;
+            bool deleted = section ? drawing.DeleteSectionLine(parent, label) : drawing.DeleteDetailCircle(parent, label);
+            if (!deleted || drawing.CutLabels(parent).Contains(label, StringComparer.OrdinalIgnoreCase))
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not delete the {(section ? "section line" : "detail circle")} {label} from {parent}");
+        });
+    }
+
     /// <summary>A view as results report it, read now.</summary>
     protected ViewInfo Describe(ISwDocument doc, ISwDrawing drawing, string view) =>
         DrawingReader.View(Services.References, doc, drawing, drawing.ReadView(view) ?? throw new SwAgentException(ErrorCode.VerificationFailed, $"the view {view} is not on the drawing",
