@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "description": "Lists a drawing's annotations (IView.GetAnnotations): every sheet's own and every view's, or those on one sheet (its own and its views'), or one view's. Each with its reference, kind (dimension, note, centre_mark, centre_line, datum, gtol, other), view, position (sheet mm), a note's text as written and as shown, a dimension's kind, value (model mm, or degrees), name and whether it is one of the model's or a reference dimension of the drawing, a datum's label, a tolerance frame's contents, and the model entities it is attached to as references issued in its view's model. Changes nothing.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "sheet": {
+      "type": "string",
+      "description": "Only the annotations on this sheet, its own and its views' (a reference or a name)."
+    },
+    "view": {
+      "type": "string",
+      "description": "Only this view's annotations (a reference or a name)."
+    }
+  },
+  "additionalProperties": false
+}

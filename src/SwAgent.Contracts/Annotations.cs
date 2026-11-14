@@ -428,6 +428,74 @@ public sealed class AnnotationGtolRequest
     public SheetPoint? At { get; set; }
 }
 
+[Operation("annotation.list", typeof(AnnotationListResult), ReadOnly = true)]
+[Description("Lists a drawing's annotations (IView.GetAnnotations): every sheet's own and every view's, or those on one sheet (its own and its views'), or one view's. Each with its reference, kind (dimension, note, centre_mark, centre_line, datum, gtol, other), view, position (sheet mm), a note's text as written and as shown, a dimension's kind, value (model mm, or degrees), name and whether it is one of the model's or a reference dimension of the drawing, a datum's label, a tolerance frame's contents, and the model entities it is attached to as references issued in its view's model. Changes nothing.")]
+public sealed class AnnotationListRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("Only the annotations on this sheet, its own and its views' (a reference or a name).")]
+    public string? Sheet { get; set; }
+
+    [Description("Only this view's annotations (a reference or a name).")]
+    public string? View { get; set; }
+}
+
+[Description("The drawing's annotations.")]
+public sealed class AnnotationListResult
+{
+    [Required]
+    [Description("Each annotation, sheet by sheet: the sheet's own, then each view's.")]
+    public List<AnnotationInfo> Annotations { get; set; } = new List<AnnotationInfo>();
+}
+
+[Operation("annotation.set", typeof(AnnotationResult))]
+[Description("Moves an annotation's text to at (sheet mm; IAnnotation.SetPosition2), or gives a note new text (INote.SetText; $PRP:\"…\" links allowed). Each value is recorded before and put back on failure. Checked: the position reads back within 0.01 mm and the text as written; the model is unchanged. text is for notes only: a model dimension's value is changed with dimension.set on the model, never from the drawing.")]
+public sealed class AnnotationSetRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The annotation: a reference (r1.annotation.…), or its name (with @view when names repeat).")]
+    public string Annotation { get; set; } = "";
+
+    [Description("Where its text goes, sheet mm.")]
+    public SheetPoint? At { get; set; }
+
+    [Description("A note's new text.")]
+    public string? Text { get; set; }
+}
+
+[Operation("annotation.delete", typeof(AnnotationDeleteResult))]
+[Description("Deletes annotations by selecting each (IAnnotation.Select3, its sheet shown) and deleting the selection (IModelDoc2.EditDelete), a view or sheet at a time. Deleting an imported model dimension removes it from the drawing only: the model keeps it, with its value (checked). Checked: each is gone, every other annotation is still there, and the model is unchanged. Not rolled back (a deleted annotation cannot be made again as it was): a failed check says what is left, and when SOLIDWORKS refuses one view's annotations after deleting another's, operation_failed gives what is left with rollback_failed. A reference to a deleted annotation no longer resolves.")]
+public sealed class AnnotationDeleteRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The annotations to delete: each a reference (r1.annotation.…) or a name (with @view when names repeat).")]
+    public List<string> Annotations { get; set; } = new List<string>();
+}
+
+[Description("The annotations deleted.")]
+public sealed class AnnotationDeleteResult : IDrawingChangeResult
+{
+    [Required]
+    [Description("Each annotation deleted, as name@view (or name@sheet for one on a sheet itself).")]
+    public List<string> Deleted { get; set; } = new List<string>();
+
+    [Required]
+    [Description("Each model dimension deleted from the drawing that the model keeps, as D1@Sketch2 = 20 (model mm, or degrees).")]
+    public List<string> ModelDimensionsKept { get; set; } = new List<string>();
+
+    [Required]
+    [Description("What changed in the drawing: changed lists each annotation deleted; annotations before and after; models each model shown, unchanged.")]
+    public DrawingChange Change { get; set; } = new DrawingChange();
+}
+
 [Description("The annotation made or changed.")]
 public sealed class AnnotationResult : IDrawingChangeResult
 {

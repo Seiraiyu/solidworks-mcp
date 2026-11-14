@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "description": "Moves an annotation's text to at (sheet mm; IAnnotation.SetPosition2), or gives a note new text (INote.SetText; $PRP:\"…\" links allowed). Each value is recorded before and put back on failure. Checked: the position reads back within 0.01 mm and the text as written; the model is unchanged. text is for notes only: a model dimension's value is changed with dimension.set on the model, never from the drawing.",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "annotation": {
+      "type": "string",
+      "description": "The annotation: a reference (r1.annotation.…), or its name (with @view when names repeat)."
+    },
+    "at": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "Mm to the right of the sheet's lower-left corner."
+        },
+        "y": {
+          "type": "number",
+          "description": "Mm above the sheet's lower-left corner."
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false,
+      "description": "Where its text goes, sheet mm."
+    },
+    "text": {
+      "type": "string",
+      "description": "A note's new text."
+    }
+  },
+  "required": [
+    "annotation"
+  ],
+  "additionalProperties": false
+}

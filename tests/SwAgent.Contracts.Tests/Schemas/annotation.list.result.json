@@ -1,0 +1,196 @@
+{
+  "type": "object",
+  "description": "The drawing's annotations.",
+  "properties": {
+    "annotations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "An annotation on a drawing, as annotation.list and the annotation operations report it. Positions in sheet mm; dimension values in model mm (or degrees).",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Its name in its view (or on its sheet), as SOLIDWORKS names it."
+          },
+          "reference": {
+            "type": "string",
+            "description": "Its reference (r1.annotation.…). It names the annotation by its sheet, view and name: one deleted, or whose view is renamed or deleted, no longer resolves. References are opaque: pass one back exactly as it was given, and never build or change one."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "dimension",
+              "note",
+              "centre_mark",
+              "centre_line",
+              "datum",
+              "gtol",
+              "other"
+            ],
+            "description": "dimension, note, centre_mark, centre_line, datum, gtol or other."
+          },
+          "sheet": {
+            "type": "string",
+            "description": "The sheet it is on."
+          },
+          "view": {
+            "type": "string",
+            "description": "The view it belongs to; absent for one on the sheet itself."
+          },
+          "position": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "Mm to the right of the sheet's lower-left corner."
+              },
+              "y": {
+                "type": "number",
+                "description": "Mm above the sheet's lower-left corner."
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ],
+            "additionalProperties": false,
+            "description": "Where it is on the sheet, sheet mm (its text's position); absent when SOLIDWORKS gives none."
+          },
+          "text": {
+            "type": "string",
+            "description": "A note's text as shown, with linked properties resolved; absent for other kinds."
+          },
+          "linked_text": {
+            "type": "string",
+            "description": "A note's text as written, with any $PRP:\"…\" links unresolved; absent for other kinds."
+          },
+          "dimension_kind": {
+            "type": "string",
+            "enum": [
+              "linear",
+              "horizontal",
+              "vertical",
+              "radius",
+              "diameter",
+              "angle"
+            ],
+            "description": "A dimension's kind: linear, horizontal, vertical, radius, diameter or angle; absent for another kind of dimension, or another annotation."
+          },
+          "value": {
+            "type": "number",
+            "description": "A dimension's value: model mm, or degrees for an angle."
+          },
+          "dimension_name": {
+            "type": "string",
+            "description": "A dimension's name: the model's (D1@Sketch2) for a model dimension, the drawing's (RD1@Drawing View1) for a reference dimension."
+          },
+          "model_dimension": {
+            "type": "boolean",
+            "description": "For a dimension: true for one of the model's (it drives the model, and is changed with dimension.set on the model), false for a reference dimension made on the drawing."
+          },
+          "label": {
+            "type": "string",
+            "description": "A datum tag's label."
+          },
+          "gtol": {
+            "type": "object",
+            "properties": {
+              "characteristic": {
+                "type": "string",
+                "enum": [
+                  "straightness",
+                  "flatness",
+                  "circularity",
+                  "cylindricity",
+                  "profile_of_a_line",
+                  "profile_of_a_surface",
+                  "angularity",
+                  "perpendicularity",
+                  "parallelism",
+                  "position",
+                  "concentricity",
+                  "symmetry",
+                  "circular_runout",
+                  "total_runout"
+                ],
+                "description": "Its geometric characteristic; absent when SOLIDWORKS gives one the add-in does not name."
+              },
+              "tolerance_mm": {
+                "type": "number",
+                "description": "Its tolerance, mm; absent when its text is not a number."
+              },
+              "diameter": {
+                "type": "boolean",
+                "description": "True when the tolerance carries the diameter symbol (Ø): a cylindrical tolerance zone."
+              },
+              "material_condition": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "mmc",
+                  "lmc"
+                ],
+                "description": "The tolerance's material condition; absent when SOLIDWORKS gives one the add-in does not name."
+              },
+              "datums": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Its datum references, primary first (up to three); empty for none."
+              }
+            },
+            "required": [
+              "diameter",
+              "datums"
+            ],
+            "additionalProperties": false,
+            "description": "A geometric tolerance frame's contents."
+          },
+          "attached": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "An entity of a model as one drawing view shows it: the view, and the entity in exactly one of the forms the model tools take (a reference issued in the view's model, a {component, entity} pair, or a name such as Boss-Extrude1 or Axis1@pin-1). It is resolved in the view's model and selected through that view.",
+              "properties": {
+                "view": {
+                  "type": "string",
+                  "description": "The view: a reference (r1.view.…) or its name (Drawing View1)."
+                },
+                "reference": {
+                  "type": "string",
+                  "description": "A reference issued in the view's model (model.find, view.entities), alone. One of reference or entity."
+                },
+                "component": {
+                  "type": "string",
+                  "description": "With entity in an assembly view: the component, by reference or name; entity is then a reference issued in the component's own part, or a name there."
+                },
+                "entity": {
+                  "type": "string",
+                  "description": "A name in the view's model (Boss-Extrude1, front, Axis1@pin-1), or with component an entity of that component. One of reference or entity."
+                }
+              },
+              "required": [
+                "view"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The model entities it is attached to, each as its view shows it (view and the reference issued in the view's model; reference is absent when SOLIDWORKS gives none). Empty when it is attached to none."
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "sheet",
+          "attached"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Each annotation, sheet by sheet: the sheet's own, then each view's."
+    }
+  },
+  "required": [
+    "annotations"
+  ],
+  "additionalProperties": false
+}

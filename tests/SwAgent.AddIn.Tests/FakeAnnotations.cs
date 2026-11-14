@@ -61,6 +61,9 @@ sealed partial class FakeDrawing
     /// <summary>When true, DeleteAnnotations deletes nothing and says so.</summary>
     public bool AnnotationDeleteFails { get; set; }
 
+    /// <summary>When set, DeleteAnnotations deletes nothing in this view (or on this sheet itself) and says so; elsewhere it deletes.</summary>
+    public string? AnnotationDeleteFailsIn { get; set; }
+
     /// <summary>When true, DeleteAnnotations says it deleted but leaves them.</summary>
     public bool AnnotationDeleteLeaves { get; set; }
 
@@ -208,7 +211,7 @@ sealed partial class FakeDrawing
     public bool DeleteAnnotations(string sheet, string? view, IReadOnlyList<string> names)
     {
         Calls.Add($"delete annotations {string.Join(", ", names)}");
-        if (AnnotationDeleteFails || names.Any(n => !Annotated.Any(a => a.Sheet == sheet && a.View == view && a.Name == n))) return false;
+        if (AnnotationDeleteFails || AnnotationDeleteFailsIn == (view ?? sheet) || names.Any(n => !Annotated.Any(a => a.Sheet == sheet && a.View == view && a.Name == n))) return false;
         if (!AnnotationDeleteLeaves) Annotated.RemoveAll(a => a.Sheet == sheet && a.View == view && names.Contains(a.Name));
         return true;
     }
