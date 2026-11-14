@@ -104,6 +104,100 @@ public sealed class ViewDeleteResult : IDrawingChangeResult
     public DrawingChange Change { get; set; } = new DrawingChange();
 }
 
+[Description("What view.entities lists.")]
+public enum ViewEntityKind
+{
+    [Description("Edges and silhouette edges the view draws.")]
+    Edge,
+
+    [Description("Vertices the view shows.")]
+    Vertex,
+}
+
+[Description("How an entity is drawn on the sheet.")]
+public enum DrawnShape
+{
+    [Description("A straight line: start and end.")]
+    Line,
+
+    [Description("A whole circle seen face on: centre and radius.")]
+    Circle,
+
+    [Description("Part of a circle seen face on: centre and radius.")]
+    Arc,
+
+    [Description("A point: a vertex, or a line seen end on.")]
+    Point,
+
+    [Description("Anything else (a circle seen at an angle, a spline): no sheet geometry is given.")]
+    Other,
+}
+
+[Operation("view.entities", typeof(ViewEntitiesResult), ReadOnly = true)]
+[Description("Lists what a view of a part shows (IView.GetVisibleEntities2): each visible edge, silhouette edge and vertex of the model, with its model reference (r1.edge.…, r1.vertex.…, issued in the part, when SOLIDWORKS gives the part a persistent id for it), its description in model mm, and how it is drawn on the sheet in sheet mm: a line's start and end, a circle's or arc's centre and radius (a circle seen face on), a vertex's point, computed from the model's geometry through the view's model-to-sheet transform. This is how to find the edge to dimension or the hole to tolerance, and to check that a reference already held is visible in a view. Views of parts only: an assembly view is refused. Changes nothing.")]
+public sealed class ViewEntitiesRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The view: a reference (r1.view.…) or its name (Drawing View1).")]
+    public string View { get; set; } = "";
+
+    [Description("edge, vertex or both. Both when absent.")]
+    public List<ViewEntityKind>? Kinds { get; set; }
+}
+
+[Description("An entity of the model as a view shows it.")]
+public sealed class ViewEntityInfo
+{
+    [Description("Its model reference, issued in the part; absent when SOLIDWORKS gives none for it. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+    public string? Reference { get; set; }
+
+    [Description("edge or vertex.")]
+    public ReferenceKind Kind { get; set; }
+
+    [Description("True for a silhouette edge (the outline of a curved face), which has no edge of its own in the model.")]
+    public bool Silhouette { get; set; }
+
+    [Description("How it is drawn: line, circle, arc, point or other.")]
+    public DrawnShape Shape { get; set; }
+
+    [Description("A line's start, or a point's position, sheet mm.")]
+    public SheetPoint? Start { get; set; }
+
+    [Description("A line's end, sheet mm.")]
+    public SheetPoint? End { get; set; }
+
+    [Description("A circle's or arc's centre, sheet mm.")]
+    public SheetPoint? Centre { get; set; }
+
+    [Description("A circle's or arc's radius as drawn, sheet mm (the model's radius times the view's scale).")]
+    public double? RadiusMm { get; set; }
+
+    [Description("The entity in the model: its shape and measurements in model mm.")]
+    public EntityInfo? Entity { get; set; }
+}
+
+[Description("What a view shows.")]
+public sealed class ViewEntitiesResult
+{
+    [Required]
+    [Description("The view.")]
+    public string View { get; set; } = "";
+
+    [Required]
+    [Description("Full path of its model.")]
+    public string Model { get; set; } = "";
+
+    [Description("The view's scale as a number (0.5 for 1:2).")]
+    public double Scale { get; set; }
+
+    [Required]
+    [Description("Each entity it shows: edges first, then vertices.")]
+    public List<ViewEntityInfo> Entities { get; set; } = new List<ViewEntityInfo>();
+}
+
 [Description("The view made or changed.")]
 public sealed class ViewResult : IDrawingChangeResult
 {

@@ -308,6 +308,70 @@ public static class ViewGeometry
         return (int)value;
     }
 
+    /// <summary>
+    /// How a model entity (described in model mm, as model.find describes it) is drawn by a view, in sheet mm: a vertex
+    /// as a point; a straight edge as a line from end to end (a point when seen end on); a circular edge seen face on as
+    /// a circle or arc, its radius times the view's scale, and seen edge on as a line across its diameter; anything else
+    /// as other, with no geometry. Only Shape, Start, End, Centre and RadiusMm are filled.
+    /// </summary>
+    public static ViewEntityInfo Draw(ViewTransform t, EntityInfo entity, bool vertex)
+    {
+        var drawn = new ViewEntityInfo { Shape = DrawnShape.Other };
+        var facing = Facing(t);
+        if (vertex || entity.Geometry == GeometryType.Point)
+        {
+            if (entity.Origin == null) return drawn;
+            drawn.Shape = DrawnShape.Point;
+            drawn.Start = ToSheet(t, entity.Origin);
+            return drawn;
+        }
+        if (entity.Geometry == GeometryType.Line && entity.Origin != null && entity.Axis != null && entity.LengthMm != null)
+        {
+            var half = Scaled(Unit(entity.Axis), entity.LengthMm.Value / 2);
+            var start = ToSheet(t, Offset(entity.Origin, half, -1));
+            var end = ToSheet(t, Offset(entity.Origin, half, 1));
+            if (Near(start, end, 1e-9)) return new ViewEntityInfo { Shape = DrawnShape.Point, Start = start };
+            drawn.Shape = DrawnShape.Line;
+            drawn.Start = start;
+            drawn.End = end;
+            return drawn;
+        }
+        if (entity.Geometry == GeometryType.Circle && entity.Origin != null && entity.Axis != null && entity.RadiusMm != null)
+        {
+            double along = Dot(Unit(entity.Axis), facing);
+            if (Math.Abs(Math.Abs(along) - 1) <= DirectionTolerance)
+            {
+                bool whole = entity.LengthMm == null || Math.Abs(entity.LengthMm.Value - 2 * Math.PI * entity.RadiusMm.Value) <= 1e-6 * Math.Max(1, entity.RadiusMm.Value);
+                drawn.Shape = whole ? DrawnShape.Circle : DrawnShape.Arc;
+                drawn.Centre = ToSheet(t, entity.Origin);
+                drawn.RadiusMm = entity.RadiusMm.Value * t.Scale;
+                return drawn;
+            }
+            if (Math.Abs(along) <= DirectionTolerance && (entity.LengthMm == null || Math.Abs(entity.LengthMm.Value - 2 * Math.PI * entity.RadiusMm.Value) <= 1e-6 * Math.Max(1, entity.RadiusMm.Value)))
+            {
+                var across = Scaled(Unit(Cross(facing, entity.Axis)), entity.RadiusMm.Value);
+                drawn.Shape = DrawnShape.Line;
+                drawn.Start = ToSheet(t, Offset(entity.Origin, across, -1));
+                drawn.End = ToSheet(t, Offset(entity.Origin, across, 1));
+            }
+        }
+        return drawn;
+    }
+
+    static double Dot(Vector3 a, Vector3 b) => a.X * b.X + a.Y * b.Y + a.Z * b.Z;
+
+    static Vector3 Cross(Vector3 a, Vector3 b) => new Vector3(a.Y * b.Z - a.Z * b.Y, a.Z * b.X - a.X * b.Z, a.X * b.Y - a.Y * b.X);
+
+    static Vector3 Unit(Vector3 v)
+    {
+        double n = Math.Sqrt(Dot(v, v));
+        return n == 0 ? v : new Vector3(v.X / n, v.Y / n, v.Z / n);
+    }
+
+    static Vector3 Scaled(Vector3 v, double by) => new Vector3(v.X * by, v.Y * by, v.Z * by);
+
+    static Point3 Offset(Point3 p, Vector3 by, int sign) => new Point3(p.X + sign * by.X, p.Y + sign * by.Y, p.Z + sign * by.Z);
+
     static Vector3 Negate(Vector3 v) => new Vector3(-v.X, -v.Y, -v.Z);
 
     static string Wire(System.Enum value) => SwAgent.Contracts.WireNames.ForEnum(value);

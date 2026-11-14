@@ -253,6 +253,76 @@ public class ViewDeleteTests : DrawingTestBase
     }
 }
 
+public class ViewEntitiesTests : DrawingTestBase
+{
+    readonly FakeView _front;
+    readonly FakeEntity _hole;
+
+    public ViewEntitiesTests()
+    {
+        // The block's front view at 1:1 centred at (100, 150): its origin is drawn at (70, 130).
+        _front = Drw.AddView("Sheet1", Block, "front", new SheetPoint(100, 150));
+        _hole = Block.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Circle, Origin = new Point3(20, 20, 20), Axis = new Vector3(0, 0, 1), RadiusMm = 5, LengthMm = 2 * System.Math.PI * 5, Feature = "Cut-Extrude1" });
+        var top = Block.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, Origin = new Point3(30, 40, 20), Axis = new Vector3(1, 0, 0), LengthMm = 60, Feature = "Boss-Extrude1" });
+        top.Id = null;
+        var corner = Block.Add(ReferenceKind.Vertex, new EntityInfo { Geometry = GeometryType.Point, Origin = new Point3(60, 40, 20) });
+        _front.Visible.Add(new VisibleEntity(corner, vertex: true, silhouette: false));
+        _front.Visible.Add(new VisibleEntity(_hole, vertex: false, silhouette: false));
+        _front.Visible.Add(new VisibleEntity(top, vertex: false, silhouette: false));
+    }
+
+    ViewEntitiesResult Entities(ViewEntitiesRequest request) => Run(new ViewEntitiesOperation(Services), request);
+
+    [Fact]
+    public void Lists_edges_then_vertices_with_model_references_and_their_sheet_geometry()
+    {
+        var result = Entities(new ViewEntitiesRequest { View = _front.Facts.Name });
+        Assert.Equal(Block.Document.Path, result.Model);
+        Assert.Equal(1, result.Scale);
+        Assert.Equal(new[] { ReferenceKind.Edge, ReferenceKind.Edge, ReferenceKind.Vertex }, result.Entities.Select(e => e.Kind));
+        var hole = result.Entities[0];
+        Assert.Equal(DrawnShape.Circle, hole.Shape);
+        Assert.Equal(90, hole.Centre!.X, 9);
+        Assert.Equal(150, hole.Centre.Y, 9);
+        Assert.Equal(5, hole.RadiusMm!.Value, 9);
+        Assert.Equal("Cut-Extrude1", hole.Entity!.Feature);
+        var (entity, _) = Services.References.Resolve(Block, hole.Reference!, "edge");
+        Assert.Same(_hole, entity);
+        Assert.Null(result.Entities[1].Reference);
+        Assert.Equal(DrawnShape.Line, result.Entities[1].Shape);
+        Assert.Equal(130, result.Entities[2].Start!.X, 9);
+    }
+
+    [Fact]
+    public void Kinds_limit_what_is_listed()
+    {
+        var result = Entities(new ViewEntitiesRequest { View = _front.Facts.Name, Kinds = new List<ViewEntityKind> { ViewEntityKind.Vertex } });
+        Assert.Equal(DrawnShape.Point, Assert.Single(result.Entities).Shape);
+    }
+
+    [Fact]
+    public void An_assembly_view_is_refused_naming_the_view()
+    {
+        var asm = FakeDocument.NewAssembly("stand.SLDASM", PathOf("stand.SLDASM"));
+        asm.ExactBox = new Box3 { Max = new Point3(10, 10, 10) };
+        var view = Drw.AddView("Sheet1", asm, "front", new SheetPoint(300, 200));
+        var e = Fails(() => Entities(new ViewEntitiesRequest { View = view.Facts.Name }));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal("/view", e.Error.Details!["field"]);
+    }
+
+    [Fact]
+    public void A_view_that_changes_while_it_is_read_fails_verification()
+    {
+        var op = new ViewEntitiesOperation(Services);
+        SwAgent.AddIn.Core.IOperation o = op;
+        var request = new ViewEntitiesRequest { View = _front.Facts.Name };
+        var result = (ViewEntitiesResult)o.Run(request, new TestContext());
+        _front.Visible.RemoveAt(0);
+        Assert.Equal(ErrorCode.VerificationFailed, Fails(() => o.Verify(request, result, new TestContext())).Code);
+    }
+}
+
 public class ViewCreateTests : DrawingTestBase
 {
     ViewResult Create(ViewCreateRequest request) => Run(new ViewCreateOperation(Services), request);

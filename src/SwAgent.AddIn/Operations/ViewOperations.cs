@@ -277,6 +277,57 @@ public sealed class ViewDeleteOperation : DrawingChangeOperation<ViewDeleteReque
     }
 }
 
+public sealed class ViewEntitiesOperation : Operation<ViewEntitiesRequest, ViewEntitiesResult>
+{
+    readonly AddInServices _services;
+
+    public ViewEntitiesOperation(AddInServices services)
+    {
+        _services = services;
+    }
+
+    protected override ViewEntitiesResult Run(ViewEntitiesRequest request, IOperationContext context)
+    {
+        var (doc, drawing) = DocumentLocator.FindDrawing(_services.SolidWorks, request.Document, Name);
+        string view = _services.References.ResolveView(doc, drawing, request.View, "/view");
+        var model = drawing.ModelOf(view)
+            ?? throw ViewRequests.Invalid("/view", $"/view: {view} shows no model that is loaded, so it shows no entity");
+        var info = model.Info();
+        if (info.Type != DocumentType.Part)
+            throw ViewRequests.Invalid("/view", $"/view: view.entities lists the entities of a view of a part, and {view} shows {info.Title}, an assembly");
+        var t = drawing.Transform(view) ?? throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS gives no transform for {view}");
+        var kinds = request.Kinds == null || request.Kinds.Count == 0 ? new[] { ViewEntityKind.Edge, ViewEntityKind.Vertex }.ToList() : request.Kinds;
+        var result = new ViewEntitiesResult { View = view, Model = info.Path ?? info.Title, Scale = t.Scale };
+        foreach (var e in drawing.VisibleEntities(view, kinds.Contains(ViewEntityKind.Edge), kinds.Contains(ViewEntityKind.Vertex)).OrderBy(e => e.Vertex))
+        {
+            var described = _services.References.Describe(model, e.Entity);
+            var drawn = ViewGeometry.Draw(t, described, e.Vertex);
+            drawn.Reference = described.Reference;
+            drawn.Kind = e.Vertex ? ReferenceKind.Vertex : ReferenceKind.Edge;
+            drawn.Silhouette = e.Silhouette;
+            described.Reference = null;
+            drawn.Entity = described;
+            result.Entities.Add(drawn);
+        }
+        context.Log.Info($"view.entities: {view}: {result.Entities.Count} entities, {result.Entities.Count(x => x.Reference != null)} with a model reference");
+        return result;
+    }
+
+    /// <summary>The view still shows as many entities: nothing changed it while it was read.</summary>
+    protected override void Verify(ViewEntitiesRequest request, ViewEntitiesResult result, IOperationContext context)
+    {
+        var (_, drawing) = DocumentLocator.FindDrawing(_services.SolidWorks, request.Document, Name);
+        var kinds = request.Kinds == null || request.Kinds.Count == 0 ? new[] { ViewEntityKind.Edge, ViewEntityKind.Vertex }.ToList() : request.Kinds;
+        int now = drawing.ReadView(result.View) == null ? -1 : drawing.VisibleEntities(result.View, kinds.Contains(ViewEntityKind.Edge), kinds.Contains(ViewEntityKind.Vertex)).Count;
+        if (now != result.Entities.Count)
+        {
+            throw new SwAgentException(ErrorCode.VerificationFailed,
+                $"{result.View} changed while it was read ({result.Entities.Count} entities, now {(now < 0 ? "no view" : now.ToString())}); ask again",
+                new JsonObject { ["check"] = "unchanged" });
+        }
+    }
+}
+
 public sealed class ViewCreateOperation : DrawingChangeOperation<ViewCreateRequest, ViewResult>
 {
     public ViewCreateOperation(AddInServices services)
