@@ -223,19 +223,35 @@ internal sealed class SolidWorksDrawing : ISwDrawing
 
     public bool DeleteViews(IReadOnlyList<string> views)
     {
-        _doc.ClearSelection2(true);
-        try
+        // SOLIDWORKS selects a view by name only on the sheet it shows (5.B live run: a detail on Sheet1 was not
+        // selected while Details was shown), so each sheet's views are deleted with that sheet shown. Showing a sheet is
+        // not put back, as view.create does not.
+        foreach (var onSheet in views.GroupBy(v => Find(v)?.Sheet?.GetName()))
         {
-            for (int i = 0; i < views.Count; i++)
-            {
-                if (!_doc.Extension.SelectByID2(views[i], "DRAWINGVIEW", 0, 0, 0, i > 0, 0, null, 0)) return false;
-            }
-            return _doc.Extension.DeleteSelection2(0);
-        }
-        finally
-        {
+            if (onSheet.Key != null) ShowSheet(onSheet.Key);
             _doc.ClearSelection2(true);
+            try
+            {
+                bool first = true;
+                foreach (string view in onSheet)
+                {
+                    if (!_doc.Extension.SelectByID2(view, "DRAWINGVIEW", 0, 0, 0, !first, 0, null, 0)) return false;
+                    first = false;
+                }
+                if (!_doc.Extension.DeleteSelection2(0)) return false;
+            }
+            finally
+            {
+                _doc.ClearSelection2(true);
+            }
         }
+        return true;
+    }
+
+    /// <summary>Shows a sheet when another is shown: SOLIDWORKS selects a sheet's views and what they hold only while it is shown.</summary>
+    void ShowSheet(string sheet)
+    {
+        if (ActiveSheet() != sheet) _drawing.ActivateSheet(sheet);
     }
 
     public ISwDocument? ModelOf(string view) =>
@@ -316,6 +332,7 @@ internal sealed class SolidWorksDrawing : ISwDrawing
         var v = Find(parent);
         var line = v == null ? null : Sections(v).FirstOrDefault(s => string.Equals(s.GetLabel(), label, StringComparison.OrdinalIgnoreCase));
         if (line == null) return true;
+        if (v!.Sheet?.GetName() is string sheet) ShowSheet(sheet);
         _doc.ClearSelection2(true);
         try
         {
@@ -362,6 +379,7 @@ internal sealed class SolidWorksDrawing : ISwDrawing
         var v = Find(parent);
         var circle = v == null ? null : Details(v).FirstOrDefault(d => string.Equals(d.GetLabel(), label, StringComparison.OrdinalIgnoreCase));
         if (circle == null) return true;
+        if (v!.Sheet?.GetName() is string sheet) ShowSheet(sheet);
         _doc.ClearSelection2(true);
         try
         {
