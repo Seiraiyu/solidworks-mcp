@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "Saves a document to a new file, which it then is (not a copy). Refuses an existing file unless overwrite. References issued before keep working. Checked on disk: the file was written by this call.",
+  "description": "Saves a document to a new file, which it then is (not a copy). Refuses an existing file unless overwrite. A drawing's file only is written: its views keep their models' paths. References issued before keep working. Checked on disk: the file was written by this call.",
   "properties": {
     "document": {
       "type": "string",

@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "Closes a document. Refuses one with unsaved changes unless discard, and one the agent did not open or create (document.new, document.open) unless users_document, which is only for when the user asked for it to be closed. Closing an assembly also unloads the components no other open document uses (listed in unloaded), so it is refused, unless discard, when any of them has unsaved changes too. A part an open assembly uses only loses its window: it stays loaded for the assembly, with its changes (still_used_by).",
+  "description": "Closes a document. Refuses one with unsaved changes unless discard, and one the agent did not open or create (document.new, document.open) unless users_document, which is only for when the user asked for it to be closed. Closing an assembly also unloads the components no other open document uses (listed in unloaded), and closing a drawing the models only it shows, so either is refused, unless discard, when any of them has unsaved changes too. A part an open assembly or drawing uses only loses its window: it stays loaded for that document, with its changes (still_used_by).",
   "properties": {
     "document": {
       "type": "string",

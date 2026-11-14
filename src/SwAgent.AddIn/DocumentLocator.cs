@@ -25,6 +25,9 @@ public static class DocumentLocator
         }
         var open = sw.Documents();
         var matches = open.Where(d => Names(d.Info(), document!)).ToList();
+        // A drawing is usually named as its model (block.SLDDRW shows block.SLDPRT): a full title names one of them exactly.
+        if (matches.Count > 1 && matches.Count(d => string.Equals(d.Info().Title, document, StringComparison.OrdinalIgnoreCase)) == 1)
+            matches = matches.Where(d => string.Equals(d.Info().Title, document, StringComparison.OrdinalIgnoreCase)).ToList();
         if (matches.Count == 1) return matches[0];
         var details = new JsonObject
         {

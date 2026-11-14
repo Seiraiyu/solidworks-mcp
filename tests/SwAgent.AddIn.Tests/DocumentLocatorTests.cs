@@ -35,6 +35,17 @@ public class DocumentLocatorTests
     }
 
     [Fact]
+    public void A_full_title_tells_a_drawing_from_its_model_and_a_bare_name_is_ambiguous()
+    {
+        var drawing = FakeDocument.NewDrawing("bracket.SLDDRW", @"C:\parts\bracket.SLDDRW");
+        _sw.Docs.Add(drawing);
+        Assert.Same(drawing, DocumentLocator.Find(_sw, "bracket.SLDDRW"));
+        Assert.Same(_bracket, DocumentLocator.Find(_sw, "bracket.sldprt"));
+        var e = Assert.Throws<SwAgentException>(() => DocumentLocator.Find(_sw, "bracket"));
+        Assert.Contains("more than one", e.Message);
+    }
+
+    [Fact]
     public void A_document_not_open_is_invalid_argument_listing_what_is()
     {
         var e = Assert.Throws<SwAgentException>(() => DocumentLocator.Find(_sw, "plate"));

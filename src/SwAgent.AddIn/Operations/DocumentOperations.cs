@@ -347,7 +347,7 @@ public sealed class DocumentSaveOperation : Operation<DocumentSaveRequest, Docum
                 new JsonObject { ["field"] = "document", ["document"] = info.Title });
         }
         string path = Path.GetFullPath(info.Path);
-        var referenced = info.Type == DocumentType.Assembly ? SaveUsed(doc, info, context) : new System.Collections.Generic.List<SavedFile>();
+        var referenced = info.Type != DocumentType.Part ? SaveUsed(doc, info, context) : new System.Collections.Generic.List<SavedFile>();
         var result = Saving.Save(doc, path, doc.Save, context);
         result.Referenced = referenced;
         return result;
@@ -355,11 +355,12 @@ public sealed class DocumentSaveOperation : Operation<DocumentSaveRequest, Docum
 
     /// <summary>
     /// Design 455, owner's answer 454: every document the assembly uses that has unsaved changes is saved first, where it
-    /// is, and checked on disk. A failure stops before the assembly is saved and says which were saved already.
+    /// is, and checked on disk. A failure stops before the assembly is saved and says which were saved already. A drawing
+    /// saves the models it shows the same way (design 611, Drawing documents).
     /// </summary>
-    System.Collections.Generic.List<SavedFile> SaveUsed(ISwDocument assembly, DocumentInfo info, IOperationContext context)
+    System.Collections.Generic.List<SavedFile> SaveUsed(ISwDocument user, DocumentInfo info, IOperationContext context)
     {
-        var dirty = DocumentUse.Used(_services.SolidWorks, assembly).Where(d => d.Info().Dirty).ToList();
+        var dirty = DocumentUse.Used(_services.SolidWorks, user).Where(d => d.Info().Dirty).ToList();
         var saved = new System.Collections.Generic.List<SavedFile>();
         foreach (var used in dirty)
         {
@@ -373,7 +374,7 @@ public sealed class DocumentSaveOperation : Operation<DocumentSaveRequest, Docum
             {
                 var details = e.Error.Details ?? new JsonObject();
                 details["saved"] = saved.Select(s => (object?)s.Path).ToList();
-                details["assembly"] = DocumentLocator.Label(info);
+                details[info.Type == DocumentType.Drawing ? "drawing" : "assembly"] = DocumentLocator.Label(info);
                 throw new SwAgentException(e.Code,
                     $"{e.Message}. {info.Title} was not saved{(saved.Count == 0 ? "" : $"; {saved.Count} of the documents it uses were saved before this one (details.saved)")}",
                     details);
@@ -452,10 +453,10 @@ public sealed class DocumentCloseOperation : Operation<DocumentCloseRequest, Doc
         if (!info.Visible)
         {
             throw new SwAgentException(ErrorCode.InvalidArgument,
-                $"{info.Title} has no window: it is loaded only because {(usedBy.Count == 0 ? "an open assembly" : string.Join(", ", usedBy))} uses it. Close the assembly instead",
+                $"{info.Title} has no window: it is loaded only because {(usedBy.Count == 0 ? "an open assembly or drawing" : string.Join(", ", usedBy))} uses it. Close {(usedBy.Count == 1 ? usedBy[0] : "what uses it")} instead",
                 new JsonObject { ["field"] = "document", ["document"] = key, ["used_by"] = usedBy.Select(u => (object?)u).ToList() });
         }
-        // Design 455: a document an assembly the agent owns uses is the agent's too.
+        // Designs 455 and 611: a document an assembly or drawing the agent owns uses is the agent's too.
         bool owned = DocumentUse.OwnedByAgent(sw, doc, _services.Runtime.Owned);
         if (!owned && request.UsersDocument != true)
         {
@@ -472,7 +473,7 @@ public sealed class DocumentCloseOperation : Operation<DocumentCloseRequest, Doc
                 ? $"{info.Title} has unsaved changes"
                 : $"closing {info.Title} would lose the unsaved changes of {string.Join(", ", lost.Select(l => l.Title))}";
             throw new SwAgentException(ErrorCode.InvalidArgument,
-                $"{what} and it was not closed; save {(info.Type == DocumentType.Assembly ? "the assembly (document.save saves its components too)" : "it")} first, or pass discard: true to lose them",
+                $"{what} and it was not closed; save {SaveFirst(info.Type)} first, or pass discard: true to lose them",
                 new JsonObject { ["field"] = "discard", ["document"] = key, ["unsaved"] = lost.Select(l => (object?)DocumentLocator.Label(l)).ToList() });
         }
         sw.Close(doc);
@@ -486,8 +487,16 @@ public sealed class DocumentCloseOperation : Operation<DocumentCloseRequest, Doc
         return new DocumentCloseResult { Closed = info, Discarded = lost.Count > 0, Unloaded = unloaded, StillUsedBy = usedBy };
     }
 
+    /// <summary>What to save before closing: an assembly or drawing saves the documents it uses too.</summary>
+    static string SaveFirst(DocumentType type) => type switch
+    {
+        DocumentType.Assembly => "the assembly (document.save saves its components too)",
+        DocumentType.Drawing => "the drawing (document.save saves the models it shows too)",
+        _ => "it",
+    };
+
     /// <summary>
-    /// The closed document is no longer open, nor anything it unloaded; or, when an assembly still uses it, it is still
+    /// The closed document is no longer open, nor anything it unloaded; or, when an assembly or drawing still uses it, it is still
     /// loaded but has no window.
     /// </summary>
     protected override void Verify(DocumentCloseRequest request, DocumentCloseResult result, IOperationContext context)
@@ -503,7 +512,7 @@ public sealed class DocumentCloseOperation : Operation<DocumentCloseRequest, Doc
             {
                 throw new SwAgentException(ErrorCode.VerificationFailed,
                     $"{result.Closed.Title} lost its window, and SOLIDWORKS keeps its changes in memory but reports it saved, so nothing would save or protect them; " +
-                    $"save it from the assembly (document.save of {string.Join(", ", result.StillUsedBy)}) now",
+                    $"save it through what uses it (document.save of {string.Join(", ", result.StillUsedBy)}) now",
                     new JsonObject { ["document"] = key, ["dirty"] = false });
             }
             if (still == null)

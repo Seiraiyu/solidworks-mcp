@@ -346,7 +346,7 @@ public class AssemblyCloseTests : DocumentTestBase
         plate.SaveFlagIgnored = true;
         var e = Fails(() => Close("plate.SLDPRT"));
         Assert.Equal(ErrorCode.VerificationFailed, e.Code);
-        Assert.Contains("save it from the assembly", e.Message);
+        Assert.Contains("save it through what uses it", e.Message);
     }
 
     // 4.A live run, case 6: SOLIDWORKS unloaded a part the assembly was said to use. That is never a quiet success.

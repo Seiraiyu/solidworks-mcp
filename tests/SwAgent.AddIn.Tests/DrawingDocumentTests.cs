@@ -7,6 +7,122 @@ using Xunit;
 
 namespace SwAgent.AddIn.Tests;
 
+/// <summary>A drawing the agent opened, showing a block and a pin loaded only for it.</summary>
+public abstract class DrawingSceneBase : DocumentTestBase
+{
+    internal readonly FakeDocument Drawing;
+    internal readonly FakeDocument Block;
+    internal readonly FakeDocument Pin;
+
+    protected DrawingSceneBase()
+    {
+        Drawing = Sw.Track(FakeDocument.NewDrawing("block.SLDDRW", PathOf("block.SLDDRW")));
+        Block = Sw.Track(FakeDocument.Part("block.SLDPRT", PathOf("block.SLDPRT")));
+        Pin = Sw.Track(FakeDocument.Part("pin.SLDPRT", PathOf("pin.SLDPRT")));
+        Block.Document.Visible = Pin.Document.Visible = false;
+        Drawing.Uses.AddRange(new[] { Block.Document.Path!, Pin.Document.Path! });
+        Drawing.Document.Dirty = true;
+        Services.Runtime.DocumentOpened(Drawing.Document.Path!, owned: true);
+    }
+}
+
+public class DrawingSaveTests : DrawingSceneBase
+{
+    DocumentSaveResult Save(string document) => Run(new DocumentSaveOperation(Services), new DocumentSaveRequest { Document = document });
+
+    [Fact]
+    public void Saves_the_dirty_models_it_shows_first_then_the_drawing_and_lists_each()
+    {
+        Block.Document.Dirty = true;
+        var result = Save("block.SLDDRW");
+        Assert.Equal(new[] { Block.Document.Path, Drawing.Document.Path }, Block.Saves.Concat(Drawing.Saves).ToArray());
+        Assert.Empty(Pin.Saves);
+        Assert.Equal(new[] { Block.Document.Path }, result.Referenced.Select(r => r.Path));
+        Assert.False(Block.Document.Dirty);
+    }
+
+    [Fact]
+    public void A_model_that_will_not_save_stops_before_the_drawing_and_names_it()
+    {
+        Block.Document.Dirty = Pin.Document.Dirty = true;
+        Pin.FailNextSave = new SaveOutcome(false, 1, 0);
+        var e = Fails(() => Save("block.SLDDRW"));
+        Assert.Equal(ErrorCode.OperationFailed, e.Code);
+        Assert.Empty(Drawing.Saves);
+        Assert.Equal(Drawing.Document.Path, e.Error.Details!["drawing"]);
+        Assert.Equal(new object?[] { Block.Document.Path }, (List<object?>)e.Error.Details["saved"]!);
+    }
+
+    [Fact]
+    public void Save_as_writes_the_drawing_only()
+    {
+        Block.Document.Dirty = true;
+        string copy = PathOf("copy.SLDDRW");
+        var result = Run(new DocumentSaveAsOperation(Services), new DocumentSaveAsRequest { Document = "block.SLDDRW", Path = copy });
+        Assert.Equal(copy, result.Path);
+        Assert.Empty(result.Referenced);
+        Assert.Empty(Block.Saves);
+        Assert.True(Block.Document.Dirty);
+    }
+}
+
+public class DrawingCloseTests : DrawingSceneBase
+{
+    DocumentCloseResult Close(string document, bool discard = false) =>
+        Run(new DocumentCloseOperation(Services), new DocumentCloseRequest { Document = document, Discard = discard });
+
+    [Fact]
+    public void Closing_a_drawing_unloads_the_models_only_it_shows_and_lists_them()
+    {
+        Drawing.Document.Dirty = false;
+        var result = Close("block.SLDDRW");
+        Assert.Equal(new[] { "block.SLDPRT", "pin.SLDPRT" }, result.Unloaded.Select(u => u.Title));
+        Assert.Empty(Sw.Docs);
+        Assert.False(Services.Runtime.Owned.Contains(Drawing.Document.Path!));
+    }
+
+    [Fact]
+    public void A_dirty_model_it_would_unload_refuses_the_close_and_says_to_save_the_drawing()
+    {
+        Drawing.Document.Dirty = false;
+        Pin.Document.Dirty = true;
+        var e = Fails(() => Close("block.SLDDRW"));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal("discard", e.Error.Details!["field"]);
+        Assert.Equal(new object?[] { Pin.Document.Path }, (List<object?>)e.Error.Details["unsaved"]!);
+        Assert.Contains("the drawing (document.save saves the models it shows too)", e.Message);
+        Assert.Contains(Drawing, Sw.Docs);
+    }
+
+    [Fact]
+    public void A_model_with_its_own_window_stays_open()
+    {
+        Drawing.Document.Dirty = false;
+        Block.Document.Visible = true;
+        var result = Close("block.SLDDRW");
+        Assert.Equal(new[] { "pin.SLDPRT" }, result.Unloaded.Select(u => u.Title));
+        Assert.Contains(Block, Sw.Docs);
+    }
+
+    [Fact]
+    public void A_model_loaded_only_for_the_drawing_is_closed_through_the_drawing()
+    {
+        var e = Fails(() => Close("pin.SLDPRT"));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Contains($"Close {Drawing.Document.Path} instead", e.Message);
+        Assert.Equal(new object?[] { Drawing.Document.Path }, (List<object?>)e.Error.Details!["used_by"]!);
+    }
+
+    [Fact]
+    public void A_model_of_the_agents_drawing_is_the_agents()
+    {
+        Pin.Document.Visible = true;
+        var result = Close("pin.SLDPRT");
+        Assert.Equal(new[] { Drawing.Document.Path }, result.StillUsedBy);
+        Assert.False(Pin.Document.Visible);
+    }
+}
+
 public class DocumentOpenDrawingTests : DocumentTestBase
 {
     DocumentOpenResult Open(string path) => Run(new DocumentOpenOperation(Services), new DocumentOpenRequest { Path = path });
