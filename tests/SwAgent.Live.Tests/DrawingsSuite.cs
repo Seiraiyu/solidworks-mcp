@@ -525,7 +525,7 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
     });
 
     [SkippableFact, Step(16)]
-    public Task A_detail_around_the_hole_shows_it_at_2_to_1_or_is_refused_as_the_known_gap() => _run.CaseAsync(16, "view.detail of the front view around the hole, r 8 at 2:1 at (330, 90): detail B whose drawn edges lie in its circle and show the hole as a circle of r 10 at its centre; or, if SP4 makes it empty, refused with check empty and nothing left (the stated gap)", async () =>
+    public Task A_detail_around_the_hole_shows_it_at_2_to_1_or_is_refused_as_the_known_gap() => _run.CaseAsync(16, "view.detail of the front view around the hole, r 8 at 2:1 at (330, 90): detail B whose drawn edges lie in its circle and show the hole as a circle of r 10 at its centre, reported (and read by drawing.read) at (330, 90); or, if SP4 makes it empty, refused with check empty and nothing left (the stated gap)", async () =>
     {
         await _run.RequireOnlyOwnDocumentsAsync();
         string hole = await HoleEdge();
@@ -545,14 +545,20 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
         }
         Assert.Equal("B", detail.Label);
         Assert.Equal(2, detail.View.Scale.Numerator);
-        // Where it is: the hole's centre drawn at (330, 90) (below); its Position is its own origin (5.B live run).
+        // Where it is: the hole's centre drawn at (330, 90) (below), which is also its reported position (5.B review: not
+        // SOLIDWORKS' Position, its own origin).
+        Near(330, detail.View.Position.X, "the detail's position, x");
+        Near(90, detail.View.Position.Y, "the detail's position, y");
+        var read = await View(detail.View.Name);
+        Near(330, read.Position.X, "drawing.read's position of the detail, x");
+        Near(90, read.Position.Y, "drawing.read's position of the detail, y");
         Assert.True(detail.PointsInside > 0, "the detail draws edges");
         var shown = await Call<ViewEntitiesRequest, ViewEntitiesResult>(new ViewEntitiesRequest { Document = Drawing, View = detail.View.Name });
         var circle = Assert.Single(shown.Entities, x => x.Shape == DrawnShape.Circle && Math.Abs(x.RadiusMm!.Value - 10) <= Tol);
         Near(330, circle.Centre!.X, "the hole's centre in the detail, x");
         Near(90, circle.Centre.Y, "the hole's centre in the detail, y");
         Views["detail"] = detail.View.Name;
-        return $"{detail.View.Name} ({detail.Label}) around {detail.CentreIs}, {detail.PointsInside} drawn points inside its circle, extents {detail.View.Extents}; the hole drawn r {circle.RadiusMm} at {circle.Centre}";
+        return $"{detail.View.Name} ({detail.Label}) around {detail.CentreIs} at {detail.View.Position} (drawing.read {read.Position}), {detail.PointsInside} drawn points inside its circle, extents {detail.View.Extents}; the hole drawn r {circle.RadiusMm} at {circle.Centre}";
     });
 
     /// <summary>The tab's straight edge on its base face nearest (x, y), as model.find gives it within 1 µm at the face's level.</summary>
@@ -609,7 +615,7 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
     });
 
     [SkippableFact, Step(18)]
-    public Task A_section_moves_along_its_centre_line_and_a_detail_is_deleted_with_its_circle() => _run.CaseAsync(18, "view.set moves section A 10 mm down its centre line, drawing what it drew; off the line refused; view.delete of detail B (and its circle); the front refused while its section remains", async () =>
+    public Task A_section_moves_along_its_centre_line_and_a_detail_is_deleted_with_its_circle() => _run.CaseAsync(18, "view.set moves section A 10 mm down its centre line, drawing what it drew; off the line refused; view.set moves detail B 40 mm down, by its circle's centre, to (330, 50), the hole drawn there; view.delete of detail B (and its circle); the front refused while its section remains", async () =>
     {
         await _run.RequireOnlyOwnDocumentsAsync();
         var was = await View(Views["section"]);
@@ -621,9 +627,19 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
         string detail = "no detail (case 16 recorded the gap)";
         if (Views.TryGetValue("detail", out var d))
         {
+            var drew = await View(d);
+            var shifted = await Call<ViewSetRequest, ViewResult>(new ViewSetRequest { Document = Drawing, View = d, At = new SheetPoint(330, 50) });
+            Near(330, shifted.View.Position.X, "the detail's position after the move, x");
+            Near(50, shifted.View.Position.Y, "the detail's position after the move, y");
+            Near(drew.Extents!.Min.Y - 40, shifted.View.Extents!.Min.Y, "the detail moved 40 mm down");
+            Near(drew.Extents.Min.X, shifted.View.Extents.Min.X, "the detail kept its x");
+            var shown = await Call<ViewEntitiesRequest, ViewEntitiesResult>(new ViewEntitiesRequest { Document = Drawing, View = d });
+            var hole = Assert.Single(shown.Entities, x => x.Shape == DrawnShape.Circle && Math.Abs(x.RadiusMm!.Value - 10) <= Tol);
+            Near(330, hole.Centre!.X, "the hole's centre in the moved detail, x");
+            Near(50, hole.Centre.Y, "the hole's centre in the moved detail, y");
             var gone = await Call<ViewDeleteRequest, ViewDeleteResult>(new ViewDeleteRequest { Document = Drawing, Views = { d } });
             Assert.Equal(new[] { d }, gone.Deleted);
-            detail = $"{d} deleted with its circle";
+            detail = $"{d} moved to {shifted.View.Position} ({shifted.View.Extents}), the hole drawn at {hole.Centre}; {d} deleted with its circle";
         }
         var parent = await Refused(() => Call<ViewDeleteRequest, ViewDeleteResult>(new ViewDeleteRequest { Document = Drawing, Views = { Views["front"] } }));
         Assert.Contains(Views["section"], ((List<object?>)parent.Error.Details!["dependents"]!).Cast<string>());
