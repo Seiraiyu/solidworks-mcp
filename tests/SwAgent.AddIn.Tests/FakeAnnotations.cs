@@ -224,9 +224,13 @@ sealed partial class FakeDrawing
 
     public IReadOnlyList<PropertyFacts> Properties() => Props.Select(p => new PropertyFacts(p.Key, p.Value, Resolve(p.Value))).ToList();
 
+    /// <summary>When set, SetProperty refuses this property (and writes nothing).</summary>
+    public string? PropertyRefused { get; set; }
+
     public bool SetProperty(string name, string value)
     {
         Calls.Add($"property {name}");
+        if (string.Equals(name, PropertyRefused, StringComparison.OrdinalIgnoreCase)) return false;
         if (!PropertiesIgnored) Props[name] = value;
         return true;
     }

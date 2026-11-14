@@ -496,6 +496,61 @@ public sealed class AnnotationDeleteResult : IDrawingChangeResult
     public DrawingChange Change { get; set; } = new DrawingChange();
 }
 
+[Description("A custom property to write: its name, and its value as text.")]
+public sealed class DrawingPropertyValue
+{
+    [Required]
+    [Description("The property's name, for example Title, PartNo, Material or DrawnBy.")]
+    public string Name { get; set; } = "";
+
+    [Required]
+    [Description("Its value as text; $PRP:\"name\" links another property of the drawing.")]
+    public string Value { get; set; } = "";
+}
+
+[Description("A custom property of the drawing.")]
+public sealed class DrawingProperty
+{
+    [Required]
+    [Description("Its name.")]
+    public string Name { get; set; } = "";
+
+    [Required]
+    [Description("Its value as written, links unresolved.")]
+    public string Value { get; set; } = "";
+
+    [Required]
+    [Description("Its value as SOLIDWORKS resolves it, which the title block shows.")]
+    public string Resolved { get; set; } = "";
+}
+
+[Operation("drawing.properties", typeof(DrawingPropertiesResult))]
+[Description("Reads the drawing's own custom properties, which its title block shows (a title, a part number, a material, a drafter), and with set writes them first, each as text (ICustomPropertyManager.Set2 for one it has, Add3 for a new one); a value may link another property ($PRP:\"PartNo\"). Read back through ICustomPropertyManager.Get2, the getter CADapter measured resolving where Get5 does not. Checked: each property written reads back as written, and resolved gives its value as shown. On failure each old value is put back and each new property deleted (rolled back). The drawing's own properties only: not a configuration's, not the model's; the title block's geometry is not edited.")]
+public sealed class DrawingPropertiesRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Description("The properties to write first, each by name (a name it has is overwritten). Nothing is written when absent.")]
+    public List<DrawingPropertyValue>? Set { get; set; }
+}
+
+[Description("The drawing's custom properties.")]
+public sealed class DrawingPropertiesResult : IDrawingChangeResult
+{
+    [Required]
+    [Description("Every custom property of the drawing, as read back after writing.")]
+    public List<DrawingProperty> Properties { get; set; } = new List<DrawingProperty>();
+
+    [Required]
+    [Description("The names of the properties written.")]
+    public List<string> Written { get; set; } = new List<string>();
+
+    [Required]
+    [Description("What changed in the drawing: changed holds each property written, its value before (empty for a new one) and after; models each model shown, unchanged.")]
+    public DrawingChange Change { get; set; } = new DrawingChange();
+}
+
 [Description("The annotation made or changed.")]
 public sealed class AnnotationResult : IDrawingChangeResult
 {
