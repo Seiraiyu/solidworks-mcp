@@ -46,6 +46,72 @@ public sealed class SheetAddRequest
     public SheetSetup Setup() => new SheetSetup { Size = Size, Orientation = Orientation, WidthMm = WidthMm, HeightMm = HeightMm, Scale = Scale, Projection = Projection, Format = Format };
 }
 
+[Operation("sheet.set", typeof(SheetResult))]
+[Description("Changes a sheet in place: its name, size (a standard size or width_mm and height_mm, sheet mm), scale, projection or sheet format (.SLDDRT). Values not given stay. Through ISheet.SetProperties2, the scale through ISheet.SetScale. Checked: every value reads back (sizes within 0.01 mm, the scale exactly), and every view that follows the sheet's scale is drawn at the new scale (its transform's scale, and its drawn edges equal to its model's box projected at that scale). Otherwise the sheet's old values are put back (rolled back).")]
+public sealed class SheetSetRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The sheet: a reference (r1.sheet.…) or its name (Sheet1).")]
+    public string Sheet { get; set; } = "";
+
+    [Description("A new name for it; one no other sheet has.")]
+    public string? Name { get; set; }
+
+    [Description("A standard paper size: a4, a3, a2, a1, a0 (ISO) or a, b, c, d, e (ANSI). Not with width_mm and height_mm.")]
+    public SheetSize? Size { get; set; }
+
+    [Description("With size: landscape (the default) or portrait.")]
+    public SheetOrientation? Orientation { get; set; }
+
+    [Description("A custom width, sheet mm, with height_mm; 10 to 10000.")]
+    public double? WidthMm { get; set; }
+
+    [Description("A custom height, sheet mm, with width_mm; 10 to 10000.")]
+    public double? HeightMm { get; set; }
+
+    [Description("The sheet's scale: views that follow the sheet are redrawn at it.")]
+    public ScaleRatio? Scale { get; set; }
+
+    [Description("first_angle or third_angle.")]
+    public Projection? Projection { get; set; }
+
+    [Description("Full path of a sheet format (.SLDDRT) to draw the sheet in.")]
+    public string? Format { get; set; }
+
+    /// <summary>The size, scale, projection and format asked, as document.new's sheet takes them.</summary>
+    public SheetSetup Setup() => new SheetSetup { Size = Size, Orientation = Orientation, WidthMm = WidthMm, HeightMm = HeightMm, Scale = Scale, Projection = Projection, Format = Format };
+}
+
+[Operation("sheet.activate", typeof(SheetActivateResult))]
+[Description("Shows a sheet of a drawing (IDrawingDoc.ActivateSheet), so new views go on it. Changes what is shown only, not the drawing, so nothing is rolled back. Waits, like a change, while the user edits a sketch, the sheet format or has a command open. Checked: the sheet is the one shown.")]
+public sealed class SheetActivateRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The sheet: a reference (r1.sheet.…) or its name (Sheet1).")]
+    public string Sheet { get; set; } = "";
+}
+
+[Description("The sheet shown now.")]
+public sealed class SheetActivateResult
+{
+    [Required]
+    [Description("The drawing.")]
+    public DocumentInfo Document { get; set; } = new DocumentInfo();
+
+    [Required]
+    [Description("The sheet shown now.")]
+    public string Sheet { get; set; } = "";
+
+    [Description("The sheet shown before.")]
+    public string? Before { get; set; }
+}
+
 [Description("The sheet added or changed.")]
 public sealed class SheetResult : IDrawingChangeResult
 {

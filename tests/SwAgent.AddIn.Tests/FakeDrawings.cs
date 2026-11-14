@@ -57,6 +57,9 @@ sealed class FakeView
     /// <summary>When set, Polylines returns these numbers instead of the model's box drawn through the transform.</summary>
     public List<double>? Drawn { get; set; }
 
+    /// <summary>When true, the view is not redrawn when its sheet's scale changes, although it says it follows it.</summary>
+    public bool KeepsScale { get; set; }
+
     /// <summary>The model's entities the view shows (VisibleEntities), with whether each is a vertex or a silhouette.</summary>
     public List<VisibleEntity> Visible { get; } = new List<VisibleEntity>();
 }
@@ -141,7 +144,7 @@ sealed class FakeDrawing : ISwDrawing
         double was = old.Scale.Numerator / old.Scale.Denominator, now = sheet.Scale.Numerator / sheet.Scale.Denominator;
         if (Math.Abs(was - now) > 1e-12)
         {
-            foreach (var v in target.Views.Where(v => v.Facts.SheetScale)) Rescale(v, new ScaleRatio(sheet.Scale.Numerator, sheet.Scale.Denominator));
+            foreach (var v in target.Views.Where(v => v.Facts.SheetScale && !v.KeepsScale)) Rescale(v, new ScaleRatio(sheet.Scale.Numerator, sheet.Scale.Denominator));
         }
     }
 

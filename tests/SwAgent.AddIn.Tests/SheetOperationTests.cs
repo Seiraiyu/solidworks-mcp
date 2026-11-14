@@ -1,11 +1,132 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using SwAgent.AddIn.Core;
 using SwAgent.AddIn.Operations;
 using SwAgent.Contracts;
 using Xunit;
 
 namespace SwAgent.AddIn.Tests;
+
+public class SheetSetTests : DrawingTestBase
+{
+    SheetResult Set(SheetSetRequest request) => Run(new SheetSetOperation(Services), request);
+
+    [Fact]
+    public void Changes_size_scale_and_projection_in_place_and_records_the_old_values()
+    {
+        var result = Set(new SheetSetRequest { Sheet = "Sheet1", Size = SheetSize.A2, Scale = new ScaleRatio(1, 5), Projection = Projection.FirstAngle });
+        Assert.Equal(SheetSize.A2, result.Sheet.Size);
+        Assert.Equal(5, result.Sheet.Scale.Denominator);
+        Assert.Equal(Projection.FirstAngle, result.Sheet.Projection);
+        var changed = result.Change.Changed.Single();
+        Assert.Equal("size, scale, projection", changed.Property);
+        Assert.StartsWith("Sheet1: 420 x 297 mm, 1:1, third_angle", changed.Before);
+        Assert.StartsWith("Sheet1: 594 x 420 mm, 1:5, first_angle", changed.After);
+    }
+
+    [Fact]
+    public void A_sheet_is_renamed_and_named_by_its_reference_too()
+    {
+        string reference = Services.References.IssueSheet(Doc, "Sheet1");
+        var result = Set(new SheetSetRequest { Sheet = reference, Name = "Front views" });
+        Assert.Equal("Front views", result.Sheet.Name);
+        Assert.Equal(new[] { "Front views" }, Drw.SheetNames());
+        var stale = Fails(() => Set(new SheetSetRequest { Sheet = reference, Scale = new ScaleRatio(1, 2) }));
+        Assert.Equal(ErrorCode.ReferenceUnresolved, stale.Code);
+    }
+
+    [Fact]
+    public void Views_that_follow_the_sheet_are_checked_at_the_new_scale()
+    {
+        var follows = Drw.AddView("Sheet1", Block, "front", new SheetPoint(100, 150));
+        var own = Drw.AddView("Sheet1", Block, "top", new SheetPoint(100, 60), new ScaleRatio(2, 1));
+        var result = Set(new SheetSetRequest { Sheet = "Sheet1", Scale = new ScaleRatio(1, 2) });
+        var views = result.Sheet.Views.ToDictionary(v => v.Name);
+        Assert.Equal(30, views[follows.Facts.Name].Extents!.Max.X - views[follows.Facts.Name].Extents!.Min.X, 9);
+        Assert.Equal(2, views[own.Facts.Name].Scale.Numerator);
+    }
+
+    [Fact]
+    public void A_view_not_redrawn_at_the_new_scale_rolls_the_sheet_back()
+    {
+        var view = Drw.AddView("Sheet1", Block, "front", new SheetPoint(100, 150));
+        view.KeepsScale = true;
+        var e = Fails(() => Set(new SheetSetRequest { Sheet = "Sheet1", Scale = new ScaleRatio(1, 2) }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("scale", e.Error.Details!["check"]);
+        Assert.Equal(view.Facts.Name, e.Error.Details["view"]);
+        Assert.Equal(1, Drw.ReadSheet("Sheet1")!.Scale.Denominator);
+    }
+
+    [Fact]
+    public void A_sheet_that_ignores_the_change_fails_verification()
+    {
+        Drw.SetSheetIgnored = true;
+        var e = Fails(() => Set(new SheetSetRequest { Sheet = "Sheet1", WidthMm = 500, HeightMm = 300 }));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("size", e.Error.Details!["check"]);
+    }
+
+    [Theory]
+    [InlineData("nothing", "/sheet")]
+    [InlineData("taken name", "/name")]
+    [InlineData("unknown sheet", "/sheet")]
+    [InlineData("orientation alone", "/orientation")]
+    public void Bad_requests_are_refused_before_anything_is_changed(string what, string field)
+    {
+        Drw.AddSheet(new SheetFacts { Name = "Sheet2", WidthMm = 420, HeightMm = 297 });
+        Drw.Calls.Clear();
+        var request = what switch
+        {
+            "nothing" => new SheetSetRequest { Sheet = "Sheet1" },
+            "taken name" => new SheetSetRequest { Sheet = "Sheet1", Name = "sheet2" },
+            "unknown sheet" => new SheetSetRequest { Sheet = "Sheet9", Scale = new ScaleRatio(1, 2) },
+            _ => new SheetSetRequest { Sheet = "Sheet1", Orientation = SheetOrientation.Portrait },
+        };
+        var e = Fails(() => Set(request));
+        Assert.Equal(ErrorCode.InvalidArgument, e.Code);
+        Assert.Equal(field, e.Error.Details!["field"]);
+        Assert.Empty(Drw.Calls);
+    }
+}
+
+public class SheetActivateTests : DrawingTestBase
+{
+    SheetActivateResult Activate(string sheet) => Run(new SheetActivateOperation(Services), new SheetActivateRequest { Sheet = sheet });
+
+    [Fact]
+    public void Shows_the_sheet_and_says_which_was_shown_before()
+    {
+        Drw.AddSheet(new SheetFacts { Name = "Sheet2", WidthMm = 420, HeightMm = 297 });
+        var result = Activate("Sheet1");
+        Assert.Equal("Sheet1", result.Sheet);
+        Assert.Equal("Sheet2", result.Before);
+        Assert.Equal("Sheet1", Drw.Active);
+    }
+
+    [Fact]
+    public void A_sheet_SOLIDWORKS_does_not_show_fails_verification()
+    {
+        Drw.AddSheet(new SheetFacts { Name = "Sheet2", WidthMm = 420, HeightMm = 297 });
+        var op = new SheetActivateOperation(Services);
+        IOperation o = op;
+        var request = new SheetActivateRequest { Sheet = "Sheet1" };
+        var result = (SheetActivateResult)o.Run(request, new TestContext());
+        Drw.Active = "Sheet2";
+        var e = Fails(() => o.Verify(request, result, new TestContext()));
+        Assert.Equal(ErrorCode.VerificationFailed, e.Code);
+        Assert.Equal("active", e.Error.Details!["check"]);
+    }
+
+    [Fact]
+    public void It_waits_while_the_user_edits_the_sheet_format()
+    {
+        Drw.EditingFormat = true;
+        var e = Fails(() => Activate("Sheet1"));
+        Assert.Equal(ErrorCode.Busy, e.Code);
+    }
+}
 
 public class SheetAddTests : DrawingTestBase
 {
