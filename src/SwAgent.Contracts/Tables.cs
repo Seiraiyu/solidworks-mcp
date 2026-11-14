@@ -122,6 +122,43 @@ public sealed class TableInfo
     public List<TableRow> Rows { get; set; } = new List<TableRow>();
 }
 
+[Operation("table.bom", typeof(TableResult))]
+[Description("Puts a bill of materials on a drawing for a view of an assembly (IView.InsertBomTable4 with the view's configuration named, never empty: CADapter measured an empty name making a table with no rows that reports success), in SOLIDWORKS' standard template: top_level (one row per distinct file and configuration among the top-level components; a subassembly is one row), parts_only (parts at every level) or indented. at (sheet mm) puts its anchor corner there; at the sheet format's bill of materials anchor point when absent. Checked by reading the table's cells back, not by SOLIDWORKS' answer: one row per distinct component file and configuration at the level asked, each with the quantity assembly.components counts for it (suppressed components are not counted), in any order; a table with no rows is verification_failed; the model is unchanged. The view's configuration must be the assembly's active one, which assembly.components reads (activate it with configuration.activate). Otherwise the table is deleted again (rolled back)." + DrawingChangeText.Waits)]
+public sealed class TableBomRequest
+{
+    [Description("The drawing: its title or full path. The active document when absent.")]
+    public string? Document { get; set; }
+
+    [Required]
+    [Description("The view of the assembly the bill lists: a reference (r1.view.…) or its name (Drawing View1).")]
+    public string View { get; set; } = "";
+
+    [Description("top_level, parts_only or indented; top_level when absent.")]
+    public BomKind? Kind { get; set; }
+
+    [Description("Where the table's anchor corner goes, sheet mm. The sheet format's bill of materials anchor point when absent.")]
+    public SheetPoint? At { get; set; }
+
+    [Description("Which corner of the table is at at (or the format's anchor point): top_left, top_right, bottom_left or bottom_right; top_left when absent.")]
+    public TableAnchor? Anchor { get; set; }
+}
+
+[Description("The table made.")]
+public sealed class TableResult : IDrawingChangeResult
+{
+    [Required]
+    [Description("The table, as read back.")]
+    public TableInfo Table { get; set; } = new TableInfo();
+
+    [Required]
+    [Description("The rows the bill should have, counted from assembly.components: file (configuration) xN.")]
+    public List<string> Expected { get; set; } = new List<string>();
+
+    [Required]
+    [Description("What changed in the drawing: created holds the table; tables before and after; models each model shown, unchanged.")]
+    public DrawingChange Change { get; set; } = new DrawingChange();
+}
+
 [Description("Where an exploded view draws one component, against where its explode steps put it.")]
 public sealed class ExplodedImage
 {
