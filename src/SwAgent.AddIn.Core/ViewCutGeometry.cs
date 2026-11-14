@@ -135,6 +135,38 @@ public static class ViewCutGeometry
         return null;
     }
 
+    /// <summary>
+    /// Where a detail view goes when no position is asked: to the right of its parent, centred on the parent's drawn
+    /// extents' height, <paramref name="gapMm"/> from them, the detail being <paramref name="drawnRadiusMm"/> in radius
+    /// as drawn (the circle's radius times the detail's scale).
+    /// </summary>
+    public static SheetPoint DetailPlace(SheetBox parentExtents, double drawnRadiusMm, double gapMm) =>
+        new SheetPoint(parentExtents.Max.X + gapMm + drawnRadiusMm, ViewGeometry.Centre(parentExtents).Y);
+
+    /// <summary>
+    /// Null when a detail view with transform <paramref name="detail"/> shows its parent's model the way the parent does:
+    /// the same three model directions to the sheet's right, up and toward the reader. Otherwise what was measured.
+    /// </summary>
+    public static string? DetailTurnMismatch(ViewTransform parent, ViewTransform detail)
+    {
+        if (ViewGeometry.Same(ViewGeometry.Right(parent), ViewGeometry.Right(detail)) && ViewGeometry.Same(ViewGeometry.Up(parent), ViewGeometry.Up(detail))
+            && ViewGeometry.Same(ViewGeometry.Facing(parent), ViewGeometry.Facing(detail)))
+            return null;
+        return $"a detail shows its parent's model turned as the parent shows it (right {ViewGeometry.Right(parent)}, up {ViewGeometry.Up(parent)}), but this one is turned right {ViewGeometry.Right(detail)}, up {ViewGeometry.Up(detail)}";
+    }
+
+    /// <summary>
+    /// Null when every point lies within <paramref name="radiusMm"/> of <paramref name="centre"/> (sheet mm, allowing
+    /// 0.01 mm) and there is at least one; otherwise what was measured: nothing drawn, or the farthest point and how far.
+    /// </summary>
+    public static string? OutsideCircle(IReadOnlyList<SheetPoint> points, SheetPoint centre, double radiusMm)
+    {
+        if (points.Count == 0) return "it draws nothing";
+        var far = points.Select(p => (Point: p, Distance: Math.Sqrt((p.X - centre.X) * (p.X - centre.X) + (p.Y - centre.Y) * (p.Y - centre.Y)))).OrderByDescending(p => p.Distance).First();
+        return far.Distance <= radiusMm + ViewGeometry.PositionToleranceMm ? null
+            : FormattableString.Invariant($"it draws {far.Point}, {far.Distance:0.###} mm from the circle's centre {centre}, beyond its radius {radiusMm:0.###} mm");
+    }
+
     /// <summary>The letters section and detail labels are given from, in order: A to Z without I, O and Q (ASME Y14.3), then doubled (AA, BB).</summary>
     public static IEnumerable<string> Labels()
     {
