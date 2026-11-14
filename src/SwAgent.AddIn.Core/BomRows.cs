@@ -71,7 +71,6 @@ public static class BomRows
             .Select(g => new BomExpectation(g.First().Path!, g.First().Configuration ?? "", g.Count(), level, g.Select(c => c.Name).ToList()))
             .ToList();
 
-    /// <summary>What names a row: its file and configuration, without regard to case.</summary>
     /// <summary>
     /// The configuration a bill lists: IBomFeature.Configuration when it names one, else the one configuration
     /// IBomFeature.GetConfigurations(true, out visible) shows (SP4 read Configuration as "" for a top-level bill, 5.D live
@@ -86,6 +85,7 @@ public static class BomRows
         return listed.Count == 1 ? listed[0] : null;
     }
 
+    /// <summary>What names a row: its file and configuration, without regard to case.</summary>
     public static string Key(string path, string? configuration) => path.ToUpperInvariant() + "|" + (configuration ?? "").ToUpperInvariant();
 
     /// <summary>
