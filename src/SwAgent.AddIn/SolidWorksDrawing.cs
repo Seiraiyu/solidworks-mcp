@@ -14,7 +14,7 @@ namespace SwAgent.AddIn;
 /// read SOLIDWORKS' arrays). Sheets and views are selected by name, never passed to SOLIDWORKS in an array. Covered by the
 /// drawings live suite, not by unit tests.
 /// </summary>
-internal sealed class SolidWorksDrawing : ISwDrawing
+internal sealed partial class SolidWorksDrawing : ISwDrawing
 {
     const double Mm = 1000.0;
 

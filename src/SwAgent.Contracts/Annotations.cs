@@ -87,6 +87,25 @@ public enum MaterialCondition
     Lmc,
 }
 
+[Description("A kind of the models' own annotations that annotation.import brings onto a drawing.")]
+public enum AnnotationImportType
+{
+    [Description("The models' dimensions, whether marked for drawing or not.")]
+    Dimensions,
+
+    [Description("Hole Wizard holes' callouts.")]
+    HoleCallouts,
+
+    [Description("The models' datum features.")]
+    Datums,
+
+    [Description("The models' geometric tolerances.")]
+    Gtols,
+
+    [Description("The models' notes.")]
+    Notes,
+}
+
 [Description("What a geometric tolerance frame says, as made or read back.")]
 public sealed class GtolFrame
 {
