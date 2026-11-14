@@ -225,7 +225,7 @@ public sealed class ViewInfo
     public string? Parent { get; set; }
 
     [Required]
-    [Description("Its centre on the sheet.")]
+    [Description("Its centre on the sheet; for a detail, the centre of what its circle shows (where the detail draws the circle's centre), as view.detail and view.set take it.")]
     public SheetPoint Position { get; set; } = new SheetPoint();
 
     [Required]

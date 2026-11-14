@@ -136,4 +136,72 @@ public class FakeDrawingTests
         var drawn = ViewGeometry.DrawnExtents(d.Polylines(front), d.ReadView(front)!.Position, 0.5)!;
         Assert.Equal(30, ViewGeometry.Width(drawn), 9);
     }
+
+    [Fact]
+    public void A_section_is_cut_where_its_line_was_drawn_faces_across_it_and_is_aligned()
+    {
+        var (drawing, block) = Scene();
+        var d = drawing.Drw!;
+        string front = d.CreateModelView(block.Document.Path!, "front", new SheetPoint(100, 150))!;
+        // The front draws the block 70..130 by 130..170; a line at y 150 is the block's y 20.
+        string section = d.CutSection(front, new SheetPoint(65, 150), new SheetPoint(135, 150), new SheetPoint(100, 90), "A", false)!;
+        var facts = d.ReadView(section)!;
+        Assert.Equal(ViewType.Section, facts.Type);
+        Assert.Equal(front, facts.Parent);
+        Assert.Equal("A", d.ReadSection(section)!.Label);
+        Assert.Equal(new[] { "A" }, d.CutLabels(front));
+        Assert.Null(ViewCutGeometry.SectionAlignmentMismatch(d.Transform(front)!, d.Transform(section)!, CutOrientation.Horizontal));
+        var face = Assert.Single(d.CutFaces(section));
+        Assert.Null(ViewCutGeometry.CutPlaneMismatch(ViewGeometry.Facing(d.Transform(section)!), new Point3(30, 20, 10), d.CutFaces(section)));
+        Assert.Equal(20, face.Point!.Y, 9);
+        Assert.Equal("line (65, 150) (135, 150)", d.Sketched.Single());
+        d.DeleteViews(new[] { section });
+        Assert.Equal(new[] { "A" }, d.CutLabels(front));
+        Assert.True(d.DeleteSectionLine(front, "A"));
+        Assert.Empty(d.CutLabels(front));
+    }
+
+    [Fact]
+    public void A_detail_is_its_parent_turned_the_same_drawn_inside_its_circle_at_its_scale()
+    {
+        var (drawing, block) = Scene();
+        var d = drawing.Drw!;
+        string front = d.CreateModelView(block.Document.Path!, "front", new SheetPoint(100, 150))!;
+        // The hole's centre (20, 20) is drawn at (90, 150); a circle of 8 mm there, shown at 2:1 at (300, 100).
+        string detail = d.DetailView(front, new SheetPoint(90, 150), 8, new SheetPoint(300, 100), new ScaleRatio(2, 1), "B")!;
+        var t = d.Transform(detail)!;
+        Assert.Equal(2, t.Scale);
+        Assert.Null(ViewCutGeometry.DetailTurnMismatch(d.Transform(front)!, t));
+        var centre = ViewGeometry.ToSheet(t, new Point3(20, 20, 0));
+        Assert.Equal(300, centre.X, 9);
+        Assert.Equal(100, centre.Y, 9);
+        var points = ViewGeometry.DrawnPoints(d.Polylines(detail), d.ReadView(detail)!.Position, t.Scale);
+        Assert.Null(ViewCutGeometry.OutsideCircle(points, centre, 16));
+        Assert.Equal("B", d.ReadDetail(detail)!.Label);
+        Assert.Equal("circle (90, 150) 8", d.Sketched.Single());
+    }
+
+    [Fact]
+    public void A_flat_pattern_view_is_made_only_of_an_open_part_and_draws_its_flat_size()
+    {
+        var (drawing, _) = Scene();
+        var d = drawing.Drw!;
+        var sw = new FakeSolidWorks();
+        d.Sw = sw;
+        var tab = FakeDocument.Part("tab.SLDPRT", @"C:\d\tab.SLDPRT");
+        tab.Sheet = new SheetDefaults { ThicknessMm = 2, BendRadiusMm = 3 };
+        tab.FlatStraightMm = 77;
+        tab.FlatWidthMm = 100;
+        tab.FakeBends.Add(new FakeBend { Feature = tab.AddFeature("EdgeBend1", "OneBend"), Owner = "Edge-Flange1", AngleDeg = 90, RadiusMm = 3 });
+        Assert.Null(d.FlatPatternView(tab.Document.Path!, "Default", new SheetPoint(200, 150)));
+        sw.Track(tab);
+        string flat = d.FlatPatternView(tab.Document.Path!, "Default", new SheetPoint(200, 150))!;
+        Assert.Equal(ViewType.FlatPattern, d.ReadView(flat)!.Type);
+        Assert.Equal(1, d.BendLines(flat));
+        var drawn = ViewGeometry.DrawnExtents(d.Polylines(flat), new SheetPoint(200, 150), 1)!;
+        Assert.Equal(100, ViewGeometry.Width(drawn), 4);
+        Assert.Equal(83.2832, ViewGeometry.Height(drawn), 4);
+        d.SetBendNotes(flat, true);
+        Assert.True(d.BendNotes(flat));
+    }
 }

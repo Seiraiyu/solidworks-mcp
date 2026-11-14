@@ -12,7 +12,7 @@ public class DrawingContractTests
     [Fact]
     public void Protocol_13_speaks_drawings()
     {
-        Assert.Equal(13, Protocol.Version);
+        Assert.True(Protocol.Version >= 13, $"protocol {Protocol.Version} speaks drawings from 13 on");
     }
 
     [Theory]
@@ -103,6 +103,9 @@ public class DrawingContractTests
     [InlineData("view.set", "view", false)]
     [InlineData("view.delete", "view", false)]
     [InlineData("view.entities", "view", true)]
+    [InlineData("view.section", "view", false)]
+    [InlineData("view.detail", "view", false)]
+    [InlineData("view.flat_pattern", "view", false)]
     public void The_operations_are_catalogued_in_their_families(string method, string family, bool readOnly)
     {
         var op = OperationCatalog.Find(method);

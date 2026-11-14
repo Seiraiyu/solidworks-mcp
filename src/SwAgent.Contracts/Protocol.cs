@@ -15,7 +15,8 @@ public static class Protocol
     /// 11: component patterns and interference: component.linear_pattern, component.circular_pattern, component.feature_pattern, assembly.interference; component.delete deletes patterns.
     /// 12: exploded views and assembly export: explode.create, explode.list, explode.show, explode.delete, export.assembly; diag.arm_dialog stops assembly changes too.
     /// 13: drawings: document.new makes drawings; the drawing, sheet and view families; sheet and view references.
-    public const int Version = 13;
+    /// 14: sections, details and flat patterns: view.section, view.detail, view.flat_pattern.
+    public const int Version = 14;
 
     public const string PipeNamePrefix = "solidworks-mcp-";
 

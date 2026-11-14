@@ -1,0 +1,108 @@
+{
+  "type": "object",
+  "description": "Cuts a full section view from a model or projected view (IDrawingDoc.CreateSectionViewAt5). The add-in draws the section line itself in the parent view's sketch, horizontal or vertical on the sheet through cut.through (a point in the parent's model, model mm, or an entity whose position is taken: a hole's axis or circular edge, a vertex, a straight edge's midpoint), from 5 mm before what the parent draws to 5 mm after it; a place drawn on or outside the parent's drawn edges is refused, since that line would cut nothing. The section is aligned with its parent (SOLIDWORKS aligns section views): below it for a horizontal line and to its right for a vertical one, 20 mm from its drawn edges, when at is absent; at (sheet mm) must be on the parent's vertical centre line (its x) for a horizontal line, its horizontal one (its y) for a vertical line. label is the next free letter (A, B, …, without I, O and Q) when absent; reversed looks the other way. Checked by measuring: a section view of the parent with that label and direction, at the parent's scale, centred along its free axis where asked within 0.01 mm, facing along the parent's up (horizontal) or right (vertical) and sharing its centre line (from both views' transforms); the faces it hatches lie in the plane through cut.through within 0.01 mm (a view that hatches nothing cut nothing and is refused); what it draws lies within the model's box projected through its transform; and the model is unchanged. Otherwise the view and its section line are deleted again (rolled back).",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "parent": {
+      "type": "string",
+      "description": "The view to cut: a reference (r1.view.…) or its name (Drawing View1). A model or projected view."
+    },
+    "cut": {
+      "type": "object",
+      "properties": {
+        "through": {
+          "type": "object",
+          "properties": {
+            "point": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "description": "X, mm."
+                },
+                "y": {
+                  "type": "number",
+                  "description": "Y, mm."
+                },
+                "z": {
+                  "type": "number",
+                  "description": "Z, mm."
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "additionalProperties": false,
+              "description": "A point in the view's model, model mm (the model's own coordinates, not the sheet's). One of point, reference or entity."
+            },
+            "reference": {
+              "type": "string",
+              "description": "A reference issued in the view's model (model.find, view.entities), alone. One of point, reference or entity."
+            },
+            "component": {
+              "type": "string",
+              "description": "With entity in an assembly view: the component, by reference or name; entity is then a reference issued in the component's own part, or a name there."
+            },
+            "entity": {
+              "type": "string",
+              "description": "A name in the view's model (Axis1, Point1, or with component an entity of that component). One of point, reference or entity."
+            }
+          },
+          "additionalProperties": false,
+          "description": "The place the line passes through: a point in the parent's model (model mm) or an entity whose position is taken (a hole's axis or circular edge, a vertex, a straight edge's midpoint)."
+        },
+        "orientation": {
+          "type": "string",
+          "enum": [
+            "horizontal",
+            "vertical"
+          ],
+          "description": "horizontal (straight across the sheet) or vertical (straight up and down it)."
+        }
+      },
+      "required": [
+        "through",
+        "orientation"
+      ],
+      "additionalProperties": false,
+      "description": "Where the section line crosses the parent."
+    },
+    "label": {
+      "type": "string",
+      "description": "The section's label (letters and digits, up to 4): A-A is labelled A. The next free letter when absent; one another section or detail of the drawing has is refused."
+    },
+    "at": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "Mm to the right of the sheet's lower-left corner."
+        },
+        "y": {
+          "type": "number",
+          "description": "Mm above the sheet's lower-left corner."
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false,
+      "description": "Where the section view's centre goes, sheet mm, on the parent's centre line. Beside the parent when absent."
+    },
+    "reversed": {
+      "type": "boolean",
+      "description": "True to look the other way along the cut (SOLIDWORKS' flip direction)."
+    }
+  },
+  "required": [
+    "parent",
+    "cut"
+  ],
+  "additionalProperties": false
+}

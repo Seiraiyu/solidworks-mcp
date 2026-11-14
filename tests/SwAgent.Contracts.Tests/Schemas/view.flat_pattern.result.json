@@ -1,0 +1,438 @@
+{
+  "type": "object",
+  "description": "The flat-pattern view made.",
+  "properties": {
+    "view": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Its name, for example Drawing View1."
+        },
+        "reference": {
+          "type": "string",
+          "description": "Its reference (r1.view.…). It names the view by its name: a view renamed or deleted no longer resolves. References are opaque: pass one back exactly as it was given, and never build or change one."
+        },
+        "sheet": {
+          "type": "string",
+          "description": "The sheet it is on."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "model",
+            "projected",
+            "section",
+            "detail",
+            "flat_pattern",
+            "other"
+          ],
+          "description": "model, projected, section, detail, flat_pattern or other."
+        },
+        "model": {
+          "type": "string",
+          "description": "Full path of the model it shows; absent when it shows none."
+        },
+        "configuration": {
+          "type": "string",
+          "description": "The model's configuration it shows."
+        },
+        "orientation": {
+          "type": "string",
+          "description": "Its orientation: front, back, left, right, top, bottom, isometric, dimetric, trimetric, or the model's named view; absent for a view whose orientation follows another (projected) unless SOLIDWORKS names one."
+        },
+        "parent": {
+          "type": "string",
+          "description": "The view it was projected (or cut, or detailed) from; absent for a model view."
+        },
+        "position": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number",
+              "description": "Mm to the right of the sheet's lower-left corner."
+            },
+            "y": {
+              "type": "number",
+              "description": "Mm above the sheet's lower-left corner."
+            }
+          },
+          "required": [
+            "x",
+            "y"
+          ],
+          "additionalProperties": false,
+          "description": "Its centre on the sheet; for a detail, the centre of what its circle shows (where the detail draws the circle's centre), as view.detail and view.set take it."
+        },
+        "scale": {
+          "type": "object",
+          "properties": {
+            "numerator": {
+              "type": "number",
+              "description": "The first number of the ratio, more than 0."
+            },
+            "denominator": {
+              "type": "number",
+              "description": "The second number of the ratio, more than 0."
+            }
+          },
+          "required": [
+            "numerator",
+            "denominator"
+          ],
+          "additionalProperties": false,
+          "description": "The scale it is drawn at."
+        },
+        "sheet_scale": {
+          "type": "boolean",
+          "description": "True when it follows the sheet's scale."
+        },
+        "display": {
+          "type": "string",
+          "enum": [
+            "hidden_lines_visible",
+            "hidden_lines_removed",
+            "wireframe",
+            "shaded",
+            "shaded_with_edges"
+          ],
+          "description": "How it draws its model; absent when SOLIDWORKS reports a mode the add-in does not name."
+        },
+        "exploded": {
+          "type": "boolean",
+          "description": "True when it shows its assembly exploded."
+        },
+        "extents": {
+          "type": "object",
+          "properties": {
+            "min": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "description": "Mm to the right of the sheet's lower-left corner."
+                },
+                "y": {
+                  "type": "number",
+                  "description": "Mm above the sheet's lower-left corner."
+                }
+              },
+              "required": [
+                "x",
+                "y"
+              ],
+              "additionalProperties": false,
+              "description": "The lower-left corner."
+            },
+            "max": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "description": "Mm to the right of the sheet's lower-left corner."
+                },
+                "y": {
+                  "type": "number",
+                  "description": "Mm above the sheet's lower-left corner."
+                }
+              },
+              "required": [
+                "x",
+                "y"
+              ],
+              "additionalProperties": false,
+              "description": "The upper-right corner."
+            }
+          },
+          "required": [
+            "min",
+            "max"
+          ],
+          "additionalProperties": false,
+          "description": "The box around what it draws (its edges as drawn, not its border), sheet mm; absent when it draws nothing."
+        },
+        "annotations": {
+          "type": "integer",
+          "description": "How many annotations it holds."
+        },
+        "tables": {
+          "type": "integer",
+          "description": "How many tables are anchored to it."
+        }
+      },
+      "required": [
+        "name",
+        "sheet",
+        "type",
+        "position",
+        "scale",
+        "sheet_scale",
+        "exploded",
+        "annotations",
+        "tables"
+      ],
+      "additionalProperties": false,
+      "description": "The flat-pattern view, as read back."
+    },
+    "flat": {
+      "type": "object",
+      "properties": {
+        "length_mm": {
+          "type": "number",
+          "description": "The rectangle's length (its longer side), mm."
+        },
+        "width_mm": {
+          "type": "number",
+          "description": "The rectangle's width, mm."
+        },
+        "bends": {
+          "type": "integer",
+          "description": "How many bends the cut list counts."
+        }
+      },
+      "required": [
+        "length_mm",
+        "width_mm",
+        "bends"
+      ],
+      "additionalProperties": false,
+      "description": "The part's flat size by its cut list, model mm, which the view's drawn extents were measured against."
+    },
+    "bend_lines": {
+      "type": "integer",
+      "description": "The bend lines the view draws, as read back: one per bend."
+    },
+    "bend_notes": {
+      "type": "boolean",
+      "description": "True when the view shows its bend notes, as read back."
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "folded",
+        "flattened"
+      ],
+      "description": "folded or flattened: the part's state, the same before and after."
+    },
+    "opened": {
+      "type": "boolean",
+      "description": "True when the part was not open and was opened for the view (SOLIDWORKS makes none of a part that is not open); it stays open."
+    },
+    "configurations_added": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Configurations SOLIDWORKS added to the part to draw its flat pattern (…SM-FLAT-PATTERN)."
+    },
+    "marked_dirty": {
+      "type": "boolean",
+      "description": "True when SOLIDWORKS marked the saved part as having unsaved changes in making the view; its volume, bends and flat size were measured unchanged, and it was not saved."
+    },
+    "model_unsaved": {
+      "type": "boolean",
+      "description": "True when the part has unsaved changes: the view draws it as it is in memory."
+    },
+    "change": {
+      "type": "object",
+      "properties": {
+        "document": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "The document's title as SOLIDWORKS shows it."
+            },
+            "path": {
+              "type": "string",
+              "description": "The full path, absent while the document has never been saved."
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "part",
+                "assembly",
+                "drawing"
+              ],
+              "description": "Part, assembly or drawing."
+            },
+            "dirty": {
+              "type": "boolean",
+              "description": "True when the document has unsaved changes."
+            },
+            "visible": {
+              "type": "boolean",
+              "description": "False for a document SOLIDWORKS loaded only because an open assembly uses it: it has no window of its own."
+            }
+          },
+          "required": [
+            "title",
+            "type",
+            "dirty",
+            "visible"
+          ],
+          "additionalProperties": false,
+          "description": "The drawing it acted on."
+        },
+        "created": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "Something a model-changing operation made.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Its name, for example Sketch3 or Line2."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "face",
+                  "edge",
+                  "vertex",
+                  "feature",
+                  "sketch",
+                  "sketch_entity",
+                  "sketch_point",
+                  "plane",
+                  "axis",
+                  "point",
+                  "dimension",
+                  "component",
+                  "mate",
+                  "sheet",
+                  "view",
+                  "annotation",
+                  "table"
+                ],
+                "description": "What it is: feature, sketch, sketch_entity, sketch_point, dimension, plane, axis or point; component or mate in an assembly; sheet or view on a drawing."
+              },
+              "reference": {
+                "type": "string",
+                "description": "Its persistent reference; absent when SOLIDWORKS gives none. References are opaque: pass one back exactly as it was given, and never build or change one."
+              }
+            },
+            "required": [
+              "name",
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          "description": "What it made (sheets, views), in the order it made them."
+        },
+        "changed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A value a model-changing operation edited.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "What was edited, for example D1@Sketch1."
+              },
+              "property": {
+                "type": "string",
+                "description": "Which of its properties: value, or suppressed."
+              },
+              "before": {
+                "type": "string",
+                "description": "Its value before, with its unit, for example 40 mm."
+              },
+              "after": {
+                "type": "string",
+                "description": "Its value after, with its unit."
+              }
+            },
+            "required": [
+              "name",
+              "property",
+              "before",
+              "after"
+            ],
+            "additionalProperties": false
+          },
+          "description": "What it edited, each with its value before and after."
+        },
+        "sheets_before": {
+          "type": "integer",
+          "description": "Sheets before the change."
+        },
+        "sheets_after": {
+          "type": "integer",
+          "description": "Sheets after the change."
+        },
+        "views_before": {
+          "type": "integer",
+          "description": "Views before the change, on every sheet."
+        },
+        "views_after": {
+          "type": "integer",
+          "description": "Views after the change, on every sheet."
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "A model a drawing shows, as it is in memory.",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "Full path of the model."
+              },
+              "dirty_before": {
+                "type": "boolean",
+                "description": "True when it had unsaved changes before the change."
+              },
+              "dirty_after": {
+                "type": "boolean",
+                "description": "True when it has unsaved changes after the change."
+              },
+              "rebuild_errors_before": {
+                "type": "integer",
+                "description": "How many of its features had a rebuild error before the change."
+              },
+              "rebuild_errors_after": {
+                "type": "integer",
+                "description": "How many of its features have a rebuild error after the change."
+              }
+            },
+            "required": [
+              "path",
+              "dirty_before",
+              "dirty_after",
+              "rebuild_errors_before",
+              "rebuild_errors_after"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Each model the drawing shows, before and after: unsaved changes and rebuild errors, which must not have changed."
+        }
+      },
+      "required": [
+        "document",
+        "created",
+        "changed",
+        "sheets_before",
+        "sheets_after",
+        "views_before",
+        "views_after",
+        "models"
+      ],
+      "additionalProperties": false,
+      "description": "What changed in the drawing: created holds the view; changed the part opened and the configurations added; models each model shown."
+    }
+  },
+  "required": [
+    "view",
+    "flat",
+    "bend_lines",
+    "bend_notes",
+    "state",
+    "opened",
+    "configurations_added",
+    "marked_dirty",
+    "model_unsaved",
+    "change"
+  ],
+  "additionalProperties": false
+}

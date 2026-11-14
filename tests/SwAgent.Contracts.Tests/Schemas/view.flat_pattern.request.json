@@ -1,0 +1,69 @@
+{
+  "type": "object",
+  "description": "Places a sheet-metal part's flat pattern on a drawing sheet as a view (IDrawingDoc.CreateFlatPatternViewFromModelView3), centred at a point in sheet mm, at the sheet's scale or its own, with its bend lines and, unless bend_notes is false, each bend's direction and angle as bend notes. The model must be a saved sheet-metal part (a part that is not sheet metal is wrong_document_type with needs sheet_metal; a never-saved one is refused before SOLIDWORKS is called: save it with sw_document_save_as first); it is opened (opened says so) when it is not, since SOLIDWORKS makes no flat-pattern view of a part that is not open. Checked by measuring: a flat_pattern view of the part where asked within 0.01 mm, at the scale asked exactly, whose drawn extents equal the flat size sheetmetal.read gives (the cut list's Bounding Box Length × Width, model mm) × scale within 0.01 mm beyond the cut list's own rounding (either way round), with one bend line per bend and the bend notes as asked; and the part is still folded or flattened as it was. SOLIDWORKS adds a derived configuration (…SM-FLAT-PATTERN) to the part to draw it: that is reported in configurations_added, and when it marks a saved part as changed the result says marked_dirty and the part's volume, bends and flat size are measured unchanged (nothing is saved behind the user). Otherwise the view, the configuration it added and a part it opened are removed again (rolled back).",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "sheet": {
+      "type": "string",
+      "description": "The sheet to put it on: a reference (r1.sheet.…) or a name. The sheet shown when absent; another is shown first."
+    },
+    "model": {
+      "type": "string",
+      "description": "The sheet-metal part: the full path of a saved .SLDPRT, or the title of an open part that has been saved."
+    },
+    "configuration": {
+      "type": "string",
+      "description": "The part's configuration to flatten; its active one when absent."
+    },
+    "at": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "Mm to the right of the sheet's lower-left corner."
+        },
+        "y": {
+          "type": "number",
+          "description": "Mm above the sheet's lower-left corner."
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false,
+      "description": "Where its centre goes on the sheet, sheet mm from the lower-left corner."
+    },
+    "scale": {
+      "type": "object",
+      "properties": {
+        "numerator": {
+          "type": "number",
+          "description": "The first number of the ratio, more than 0."
+        },
+        "denominator": {
+          "type": "number",
+          "description": "The second number of the ratio, more than 0."
+        }
+      },
+      "required": [
+        "numerator",
+        "denominator"
+      ],
+      "additionalProperties": false,
+      "description": "Its own scale; it follows the sheet's scale when absent."
+    },
+    "bend_notes": {
+      "type": "boolean",
+      "description": "False to hide the bend notes (each bend's direction and angle). Shown when absent."
+    }
+  },
+  "required": [
+    "model",
+    "at"
+  ],
+  "additionalProperties": false
+}

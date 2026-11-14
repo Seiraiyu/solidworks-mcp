@@ -11,10 +11,12 @@ public class DrawingErrorCodeTests : DrawingTestBase
 {
     readonly FakeView _front;
     readonly string _right;
+    readonly FakeDocument _tab;
 
     public DrawingErrorCodeTests()
     {
         _front = Drw.AddView("Sheet1", Block, "front", new SheetPoint(100, 150));
+        _tab = Tab();
         _right = Drw.ProjectView(_front.Facts.Name, new SheetPoint(160, 150))!;
         Drw.AddSheet(new SheetFacts { Name = "Sheet2", WidthMm = 420, HeightMm = 297 });
         Drw.Active = "Sheet1";
@@ -34,7 +36,12 @@ public class DrawingErrorCodeTests : DrawingTestBase
         ("view.set", () => Run(new ViewSetOperation(Services), new ViewSetRequest { Document = document, View = _front.Facts.Name, Display = ViewDisplay.Shaded })),
         ("view.delete", () => Run(new ViewDeleteOperation(Services), new ViewDeleteRequest { Document = document, Views = { _right } })),
         ("view.entities", () => Run(new ViewEntitiesOperation(Services), new ViewEntitiesRequest { Document = document, View = _front.Facts.Name })),
+        ("view.section", () => Run(new ViewSectionOperation(Services), new ViewSectionRequest { Document = document, Parent = _front.Facts.Name, Cut = new SectionCut { Through = Hole } })),
+        ("view.detail", () => Run(new ViewDetailOperation(Services), new ViewDetailRequest { Document = document, Parent = _front.Facts.Name, Centre = Hole, RadiusMm = 8, Scale = new ScaleRatio(2, 1), At = new SheetPoint(300, 100) })),
+        ("view.flat_pattern", () => Run(new ViewFlatPatternOperation(Services), new ViewFlatPatternRequest { Document = document, Model = _tab.Document.Path!, At = new SheetPoint(300, 230) })),
     };
+
+    static ModelPlace Hole => new ModelPlace { Point = new Point3(20, 20, 10) };
 
     [Fact]
     public void Wrong_document_type_for_every_drawing_operation_on_a_part_naming_the_drawing_tools()
@@ -81,6 +88,12 @@ public class DrawingErrorCodeTests : DrawingTestBase
         Assert.Equal(ErrorCode.ReferenceUnresolved, Fails(() => Run(new ViewSetOperation(Services), new ViewSetRequest { View = view, Display = ViewDisplay.Shaded })).Code);
         Assert.Equal(ErrorCode.ReferenceUnresolved, Fails(() => Run(new ViewEntitiesOperation(Services), new ViewEntitiesRequest { View = view })).Code);
         Assert.Equal(ErrorCode.ReferenceUnresolved, Fails(() => Run(new ViewProjectOperation(Services), new ViewProjectRequest { Parent = view, Direction = ProjectDirection.Right })).Code);
+        Assert.Equal(ErrorCode.ReferenceUnresolved, Fails(() => Run(new ViewSectionOperation(Services), new ViewSectionRequest { Parent = view, Cut = new SectionCut { Through = Hole } })).Code);
+        Assert.Equal(ErrorCode.ReferenceUnresolved, Fails(() => Run(new ViewDetailOperation(Services), new ViewDetailRequest { Parent = view, Centre = Hole, RadiusMm = 8, Scale = new ScaleRatio(2, 1) })).Code);
+        var hole = Block.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Circle, Origin = new Point3(20, 20, 20), RadiusMm = 5 });
+        string reference = Services.References.Describe(Block, hole).Reference!;
+        Block.Entities.Remove(hole);
+        Assert.Equal(ErrorCode.ReferenceUnresolved, Fails(() => Run(new ViewSectionOperation(Services), new ViewSectionRequest { Parent = _front.Facts.Name, Cut = new SectionCut { Through = new ModelPlace { Reference = reference } } })).Code);
     }
 
     [Fact]
@@ -107,6 +120,31 @@ public class DrawingErrorCodeTests : DrawingTestBase
             var e = Fails(call);
             Assert.True(e.Code == ErrorCode.VerificationFailed, $"{name}: {e.Code}");
         }
+    }
+
+    [Fact]
+    public void Verification_failed_when_a_section_detail_or_flat_pattern_is_not_what_was_asked()
+    {
+        Drw.CutOffByMm = 1;
+        Drw.DetailEmpty = true;
+        Drw.BendLinesDrawn = 3;
+        foreach (var name in new[] { "view.section", "view.detail", "view.flat_pattern" })
+        {
+            var call = System.Linq.Enumerable.Single(Every(null), c => c.Name == name).Call;
+            var e = Fails(call);
+            Assert.True(e.Code == ErrorCode.VerificationFailed, $"{name}: {e.Code}");
+        }
+    }
+
+    [Fact]
+    public void Invalid_argument_for_a_place_the_parent_does_not_draw_and_wrong_document_type_for_a_part_not_sheet_metal()
+    {
+        var off = new ModelPlace { Point = new Point3(20, 80, 10) };
+        Assert.Equal("/cut/through", Fails(() => Run(new ViewSectionOperation(Services), new ViewSectionRequest { Parent = _front.Facts.Name, Cut = new SectionCut { Through = off } })).Error.Details!["field"]);
+        Assert.Equal("/centre", Fails(() => Run(new ViewDetailOperation(Services), new ViewDetailRequest { Parent = _front.Facts.Name, Centre = off, RadiusMm = 8, Scale = new ScaleRatio(2, 1) })).Error.Details!["field"]);
+        var e = Fails(() => Run(new ViewFlatPatternOperation(Services), new ViewFlatPatternRequest { Model = Block.Document.Path!, At = new SheetPoint(300, 230) }));
+        Assert.Equal(ErrorCode.WrongDocumentType, e.Code);
+        Assert.Equal("sheet_metal", e.Error.Details!["needs"]);
     }
 
     [Fact]

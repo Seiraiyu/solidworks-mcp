@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "Deletes drawing views by selecting each (SelectByID2 \"DRAWINGVIEW\") and deleting the selection. A view other views were made from (projected, section, detail) is refused unless they are deleted in the same request. Checked: each view is gone and every other view is still there. Not rolled back (a deleted view's annotations cannot be made again as they were): a failed check says what is left. A reference to a deleted view no longer resolves.",
+  "description": "Deletes drawing views by selecting each (SelectByID2 \"DRAWINGVIEW\") and deleting the selection, a sheet at a time with that sheet shown. A view other views were made from (projected, section, detail) is refused unless they are deleted in the same request. A section or detail view takes its section line or detail circle with it from a parent that is kept. Checked: each view is gone (with its section line or detail circle) and every other view is still there. Not rolled back (a deleted view's annotations cannot be made again as they were): a failed check says what is left, and when SOLIDWORKS refuses one sheet's views after deleting another's, operation_failed gives the views deleted and remaining (rollback_failed). A reference to a deleted view no longer resolves.",
   "properties": {
     "document": {
       "type": "string",

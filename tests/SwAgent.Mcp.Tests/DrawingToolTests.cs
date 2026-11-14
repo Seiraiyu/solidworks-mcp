@@ -17,6 +17,9 @@ public class DrawingToolTests
     [InlineData("sw_view_set", false)]
     [InlineData("sw_view_delete", false)]
     [InlineData("sw_view_entities", true)]
+    [InlineData("sw_view_section", false)]
+    [InlineData("sw_view_detail", false)]
+    [InlineData("sw_view_flat_pattern", false)]
     public void Each_operation_is_one_tool(string name, bool readOnly)
     {
         var tool = Assert.Single(ToolCatalog.All, t => t.Name == name);
@@ -31,9 +34,34 @@ public class DrawingToolTests
     [InlineData("view.project")]
     [InlineData("view.set")]
     [InlineData("view.entities")]
+    [InlineData("view.section")]
+    [InlineData("view.detail")]
+    [InlineData("view.flat_pattern")]
     public void Positions_and_sizes_are_said_to_be_sheet_mm(string operation)
     {
         Assert.Contains("sheet mm", OperationCatalog.Find(operation)!.Description);
+    }
+
+    [Theory]
+    [InlineData("view.section", "cut nothing")]
+    [InlineData("view.detail", "draws nothing")]
+    [InlineData("view.flat_pattern", "sheetmetal.read")]
+    public void Sections_details_and_flat_patterns_say_model_mm_what_they_check_and_the_rollback(string operation, string check)
+    {
+        string d = OperationCatalog.Find(operation)!.Description;
+        Assert.Contains("model mm", d);
+        Assert.Contains("within 0.01 mm", d);
+        Assert.Contains("rolled back", d);
+        Assert.Contains(check, d);
+    }
+
+    [Fact]
+    public void View_flat_pattern_states_the_saved_model_rule_and_the_sheet_metal_rule()
+    {
+        string d = OperationCatalog.Find("view.flat_pattern")!.Description;
+        Assert.Contains("sw_document_save_as", d);
+        Assert.Contains("needs sheet_metal", d);
+        Assert.Contains("marked_dirty", d);
     }
 
     [Fact]

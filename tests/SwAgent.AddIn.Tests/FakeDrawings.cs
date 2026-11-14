@@ -62,6 +62,26 @@ sealed class FakeView
 
     /// <summary>The model's entities the view shows (VisibleEntities), with whether each is a vertex or a silhouette.</summary>
     public List<VisibleEntity> Visible { get; } = new List<VisibleEntity>();
+
+    /// <summary>A section view's section, or null.</summary>
+    public SectionFacts? Section { get; set; }
+
+    /// <summary>A section view's cutting plane: the model direction square to it and its level along that direction, model mm.</summary>
+    public (Vector3 Normal, double Level)? Plane { get; set; }
+
+    /// <summary>A detail view's detail, or null.</summary>
+    public DetailFacts? Detail { get; set; }
+
+    /// <summary>A detail view's circle in its parent's own sketch (model mm about the parent's position), as SOLIDWORKS keeps it: it moves with the parent.</summary>
+    public Point2? Circle { get; set; }
+
+    /// <summary>The section lines and detail circles it holds, by label: the views cut or detailed from it.</summary>
+    public List<string> Cuts { get; } = new List<string>();
+
+    /// <summary>A flat-pattern view's bend lines and whether it shows its bend notes.</summary>
+    public int BendLines { get; set; }
+
+    public bool BendNotes { get; set; }
 }
 
 /// <summary>
@@ -302,16 +322,16 @@ sealed class FakeDrawing : ISwDrawing
         var v = View(view);
         double dx = at.X - v.Facts.Position.X, dy = at.Y - v.Facts.Position.Y;
         // SOLIDWORKS keeps an aligned view on its parent's centre line (CADapter measured).
-        if (v.Facts.Type == ViewType.Projected && v.Facts.Parent != null)
+        if ((v.Facts.Type == ViewType.Projected || v.Facts.Type == ViewType.Section) && v.Facts.Parent != null)
         {
             var parent = View(v.Facts.Parent);
             var origin = new Point3(0, 0, 0);
             if (Math.Abs(ViewGeometry.ToSheet(v.Transform!, origin).Y - ViewGeometry.ToSheet(parent.Transform!, origin).Y) < 1e-9) dy = 0;
             else dx = 0;
         }
-        // Views projected from it move with it the whole way, as SOLIDWORKS drags them (5.A live run: the front moved
+        // Views projected or cut from it move with it the whole way, as SOLIDWORKS drags them (5.A live run: the front moved
         // 10 mm along x and its right view moved 10 mm along x too), so they stay aligned.
-        foreach (var child in AllViews.Where(c => c.Facts.Parent == view && c.Facts.Type == ViewType.Projected && c.Transform != null && v.Transform != null).ToList())
+        foreach (var child in AllViews.Where(c => c.Facts.Parent == view && (c.Facts.Type == ViewType.Projected || c.Facts.Type == ViewType.Section) && c.Transform != null && v.Transform != null).ToList())
             Shift(child, dx, dy);
         Shift(v, dx, dy);
         AfterMove?.Invoke(view);
@@ -329,8 +349,8 @@ sealed class FakeDrawing : ISwDrawing
         var sheet = Sheets.Single(s => s.Views.Contains(v));
         var to = scale ?? new ScaleRatio(sheet.Facts.Scale.Numerator, sheet.Facts.Scale.Denominator);
         Rescale(v, to);
-        // Views projected from it are drawn at its scale, and stay on its centre lines.
-        foreach (var child in AllViews.Where(c => c.Facts.Parent == view && c.Facts.Type == ViewType.Projected && c.Transform != null).ToList())
+        // Views projected or cut from it are drawn at its scale, and stay on its centre lines.
+        foreach (var child in AllViews.Where(c => c.Facts.Parent == view && (c.Facts.Type == ViewType.Projected || c.Facts.Type == ViewType.Section) && c.Transform != null).ToList())
         {
             var origin = new Point3(0, 0, 0);
             var before = (Parent: ViewGeometry.ToSheet(v.Transform!, origin), Child: ViewGeometry.ToSheet(child.Transform!, origin));
@@ -359,21 +379,244 @@ sealed class FakeDrawing : ISwDrawing
         if (Configurations.TryGetValue(v.Facts.Model, out var names) && names.Contains(configuration)) v.Facts.Configuration = configuration;
     }
 
+    /// <summary>When true, DeleteViews deletes the first sheet's views and then refuses the second sheet's, as SOLIDWORKS may part-way.</summary>
+    public bool SecondSheetDeleteFails { get; set; }
+
     public bool DeleteViews(IReadOnlyList<string> views)
     {
         Calls.Add($"delete {string.Join(", ", views)}");
         if (DeleteFails) return false;
-        foreach (var name in views)
+        // A sheet's views at a time, as SolidWorksDrawing deletes them.
+        var groups = views.GroupBy(n => AllViews.FirstOrDefault(v => v.Facts.Name == n)?.Facts.Sheet).ToList();
+        for (int g = 0; g < groups.Count; g++)
         {
-            foreach (var s in Sheets) s.Views.RemoveAll(v => v.Facts.Name == name);
+            if (g == 1 && SecondSheetDeleteFails) return false;
+            DeleteGroup(groups[g]);
         }
         return true;
+    }
+
+    void DeleteGroup(IEnumerable<string> views)
+    {
+        foreach (var name in views)
+        {
+            var gone = AllViews.FirstOrDefault(v => v.Facts.Name == name);
+            string? label = gone?.Section?.Label ?? gone?.Detail?.Label;
+            if (DeleteTakesCuts && label != null && gone!.Facts.Parent != null) AllViews.FirstOrDefault(v => v.Facts.Name == gone.Facts.Parent)?.Cuts.Remove(label);
+            foreach (var s in Sheets) s.Views.RemoveAll(v => v.Facts.Name == name);
+        }
     }
 
     public ISwDocument? ModelOf(string view) => AllViews.FirstOrDefault(v => v.Facts.Name == view)?.Model;
 
     public IReadOnlyList<VisibleEntity> VisibleEntities(string view, bool edges, bool vertices) =>
         View(view).Visible.Where(e => e.Vertex ? vertices : edges).ToList();
+
+    /// <summary>Each line and circle drawn in a view's sketch, sheet mm: "line (x1, y1) (x2, y2)" or "circle (x, y) r".</summary>
+    public List<string> Sketched { get; } = new List<string>();
+
+    /// <summary>When true, a section's hatches come with no face (SOLIDWORKS giving IFaceHatch.Face nothing).</summary>
+    public bool HatchesWithoutFaces { get; set; }
+
+    /// <summary>When set, a section is cut this far (model mm) along its normal from where its line was drawn.</summary>
+    public double CutOffByMm { get; set; }
+
+    /// <summary>When true, deleting a section or detail view deletes its line or circle too; otherwise the parent keeps it.</summary>
+    public bool DeleteTakesCuts { get; set; }
+
+    /// <summary>When true, DeleteSectionLine and DeleteDetailCircle delete nothing and say so.</summary>
+    public bool CutDeleteFails { get; set; }
+
+    /// <summary>When true, DeleteSectionLine and DeleteDetailCircle answer success but leave the line or circle in the parent (5.B live run: the circle stayed).</summary>
+    public bool CutDeleteLeaves { get; set; }
+
+    public string? CutSection(string parent, SheetPoint from, SheetPoint to, SheetPoint at, string label, bool reversed)
+    {
+        Calls.Add($"section {parent} {label}");
+        Sketched.Add($"line {from} {to}");
+        if (CreateFails) return null;
+        var p = View(parent);
+        var sheet = Sheets.Single(s => s.Views.Contains(p));
+        if (p.Transform == null) return null;
+        bool horizontal = Math.Abs(from.Y - to.Y) < 1e-9;
+        // The plane through the line: its level along the parent's up (a horizontal line) or right (a vertical one).
+        var axis = horizontal ? ViewGeometry.Up(p.Transform) : ViewGeometry.Right(p.Transform);
+        double level = horizontal ? (from.Y - p.Transform.TyMm) / p.Transform.Scale : (from.X - p.Transform.TxMm) / p.Transform.Scale;
+        var facing = reversed ? new Vector3(-axis.X, -axis.Y, -axis.Z) : axis;
+        Vector3 right, up;
+        if (horizontal)
+        {
+            right = ViewGeometry.Right(p.Transform);
+            up = Cross(facing, right);
+        }
+        else
+        {
+            up = ViewGeometry.Up(p.Transform);
+            right = Cross(up, facing);
+        }
+        var facts = new ViewFacts
+        {
+            Name = "Section View " + label + "-" + label, Sheet = sheet.Facts.Name, Type = ViewType.Section, Model = p.Facts.Model, Configuration = p.Facts.Configuration,
+            Parent = parent, Scale = new ScaleRatio(p.Facts.Scale.Numerator, p.Facts.Scale.Denominator), SheetScale = p.Facts.SheetScale, Display = p.Facts.Display,
+        };
+        var view = new FakeView(facts, p.Model, null)
+        {
+            Section = new SectionFacts { Label = label, Reversed = reversed, Line = "Section Line" + (_views + 1) },
+            Plane = (axis, level + CutOffByMm),
+        };
+        _views++;
+        Place(view, right, up, facing, new SheetPoint(at.X + LandsOffByMm, at.Y), p.Transform.Scale);
+        var origin = ViewGeometry.ToSheet(p.Transform, new Point3(0, 0, 0));
+        var mine = ViewGeometry.ToSheet(view.Transform!, new Point3(0, 0, 0));
+        Shift(view, horizontal ? origin.X - mine.X : 0, horizontal ? 0 : origin.Y - mine.Y);
+        p.Cuts.Add(label);
+        sheet.Views.Add(view);
+        AfterCreate?.Invoke(view);
+        return facts.Name;
+    }
+
+    public SectionFacts? ReadSection(string view) => AllViews.FirstOrDefault(v => v.Facts.Name == view)?.Section;
+
+    /// <summary>The faces the section cuts from its model's box: one, square to its plane, when the plane passes inside the box.</summary>
+    public IReadOnlyList<CutFace> CutFaces(string view)
+    {
+        var v = View(view);
+        var box = v.Model?.ExactBox;
+        if (v.Plane == null || box == null) return new List<CutFace>();
+        var (n, level) = v.Plane.Value;
+        double Along(Point3 p) => p.X * n.X + p.Y * n.Y + p.Z * n.Z;
+        double lo = Math.Min(Along(box.Min), Along(box.Max)), hi = Math.Max(Along(box.Min), Along(box.Max));
+        if (level <= lo || level >= hi) return new List<CutFace>();
+        if (HatchesWithoutFaces) return new List<CutFace> { new CutFace(null, null, 0) };
+        var point = new Point3(
+            Math.Abs(n.X) > 0.5 ? level * n.X : box.Min.X,
+            Math.Abs(n.Y) > 0.5 ? level * n.Y : box.Min.Y,
+            Math.Abs(n.Z) > 0.5 ? level * n.Z : box.Min.Z);
+        return new List<CutFace> { new CutFace(n, point, 100) };
+    }
+
+    public IReadOnlyList<string> CutLabels(string view) => AllViews.FirstOrDefault(v => v.Facts.Name == view)?.Cuts.ToList() ?? new List<string>();
+
+    public bool DeleteSectionLine(string parent, string label)
+    {
+        Calls.Add($"delete section line {label}");
+        if (CutDeleteFails) return false;
+        if (CutDeleteLeaves) return true;
+        AllViews.FirstOrDefault(v => v.Facts.Name == parent)?.Cuts.Remove(label);
+        return true;
+    }
+
+    /// <summary>When true, a detail view draws nothing (the empty detail CADapter saw).</summary>
+    public bool DetailEmpty { get; set; }
+
+    public string? DetailView(string parent, SheetPoint centre, double radiusMm, SheetPoint at, ScaleRatio scale, string label)
+    {
+        Calls.Add($"detail {parent} {label}");
+        Sketched.Add(FormattableString.Invariant($"circle {centre} {radiusMm:0.###}"));
+        if (CreateFails) return null;
+        var p = View(parent);
+        var sheet = Sheets.Single(s => s.Views.Contains(p));
+        if (p.Transform == null) return null;
+        double k = Ratio(scale) / p.Transform.Scale;
+        // The circle's centre lands at at (and LandsOffByMm along x); its Position is its own origin, as SOLIDWORKS 2026
+        // SP4 gives it (5.B live run): where it draws what the parent draws at the parent's position, off the centre.
+        var drawnAt = new SheetPoint(at.X + LandsOffByMm, at.Y);
+        var facts = new ViewFacts
+        {
+            Name = "Detail View " + label + " (" + scale + ")", Sheet = sheet.Facts.Name, Type = ViewType.Detail, Model = p.Facts.Model, Configuration = p.Facts.Configuration,
+            Parent = parent, Scale = new ScaleRatio(scale.Numerator, scale.Denominator), Display = p.Facts.Display,
+            Position = new SheetPoint(drawnAt.X + (p.Facts.Position.X - centre.X) * k, drawnAt.Y + (p.Facts.Position.Y - centre.Y) * k),
+        };
+        var t = p.Transform;
+        var view = new FakeView(facts, p.Model, new ViewTransform(t.Rotation, drawnAt.X + (t.TxMm - centre.X) * k, drawnAt.Y + (t.TyMm - centre.Y) * k, t.TzMm, Ratio(scale)))
+        {
+            Detail = new DetailFacts { Label = label, Circle = "Detail Circle" + (_views + 1) },
+            Circle = ViewCutGeometry.ToViewSketch(p.Facts.Position, p.Transform.Scale, centre),
+        };
+        _views++;
+        // What it draws: a square inside its circle about the circle's centre, in metres about its position at its scale, or nothing.
+        double half = radiusMm / p.Transform.Scale * 0.7 / 1000;
+        double cx = (drawnAt.X - facts.Position.X) / Ratio(scale) / 1000, cy = (drawnAt.Y - facts.Position.Y) / Ratio(scale) / 1000;
+        view.Drawn = DetailEmpty ? new List<double>() : new List<double> { 1, 0, 0, 1, 2, 3, 4, 5, 5, cx - half, cy - half, 0, cx + half, cy - half, 0, cx + half, cy + half, 0, cx - half, cy + half, 0, cx - half, cy - half, 0 };
+        p.Cuts.Add(label);
+        sheet.Views.Add(view);
+        AfterCreate?.Invoke(view);
+        return facts.Name;
+    }
+
+    public DetailFacts? ReadDetail(string view)
+    {
+        var v = AllViews.FirstOrDefault(x => x.Facts.Name == view);
+        if (v?.Detail == null) return null;
+        var parent = v.Facts.Parent == null ? null : AllViews.FirstOrDefault(x => x.Facts.Name == v.Facts.Parent);
+        return new DetailFacts
+        {
+            Label = v.Detail.Label, Circle = v.Detail.Circle,
+            Centre = v.Circle == null || parent?.Transform == null ? null : ViewCutGeometry.FromViewSketch(parent.Facts.Position, parent.Transform.Scale, v.Circle),
+        };
+    }
+
+    public bool DeleteDetailCircle(string parent, string label)
+    {
+        Calls.Add($"delete detail circle {label}");
+        if (CutDeleteFails) return false;
+        if (CutDeleteLeaves) return true;
+        AllViews.FirstOrDefault(v => v.Facts.Name == parent)?.Cuts.Remove(label);
+        return true;
+    }
+
+    /// <summary>When true, making a flat-pattern view adds its derived configuration (…SM-FLAT-PATTERN) to the part and marks it as changed.</summary>
+    public bool FlatPatternChangesPart { get; set; }
+
+    /// <summary>When set, a flat-pattern view draws this many bend lines rather than one per bend.</summary>
+    public int? BendLinesDrawn { get; set; }
+
+    public string? FlatPatternView(string modelPath, string configuration, SheetPoint at)
+    {
+        Calls.Add($"flat pattern {System.IO.Path.GetFileName(modelPath)} {configuration}");
+        if (CreateFails || Active == null) return null;
+        // CADapter: SOLIDWORKS makes no flat-pattern view of a part that is not open.
+        var model = Sw?.Docs.FirstOrDefault(d => string.Equals(d.Document.Path, modelPath, StringComparison.OrdinalIgnoreCase));
+        if (model == null) return null;
+        Use(model);
+        var sheet = Sheet(Active);
+        string derived = configuration + "SM-FLAT-PATTERN";
+        if (FlatPatternChangesPart && !model.Configurations.Contains(derived))
+        {
+            model.Configurations.Add(derived);
+            model.Document.Dirty = true;
+        }
+        var scale = new ScaleRatio(sheet.Facts.Scale.Numerator, sheet.Facts.Scale.Denominator);
+        var facts = new ViewFacts
+        {
+            Name = "Drawing View" + ++_views, Sheet = sheet.Facts.Name, Type = ViewType.FlatPattern, Model = model.Document.Path, Configuration = model.Configurations.Contains(derived) ? derived : configuration,
+            Scale = scale, SheetScale = true, Display = ViewDisplay.HiddenLinesRemoved, Position = new SheetPoint(at.X + LandsOffByMm, at.Y),
+        };
+        var view = new FakeView(facts, model, new ViewTransform(new double[] { 1, 0, 0, 0, 1, 0, 0, 0, 1 }, at.X, at.Y, 0, Ratio(scale)))
+        {
+            BendLines = BendLinesDrawn ?? model.FakeBends.Count,
+        };
+        // What it draws: the cut list's flat size, centred on its position, in metres at its scale.
+        var size = SheetMetalParts.FlatSize(model.CutList(), model.MmPerUnit()) ?? (0.0, 0.0);
+        double l = size.LengthMm / 2000, w = size.WidthMm / 2000;
+        view.Drawn = new List<double> { 1, 0, 0, 1, 2, 3, 4, 5, 5, -l, -w, 0, l, -w, 0, l, w, 0, -l, w, 0, -l, -w, 0 };
+        sheet.Views.Add(view);
+        AfterCreate?.Invoke(view);
+        return facts.Name;
+    }
+
+    public int BendLines(string view) => View(view).BendLines;
+
+    public bool BendNotes(string view) => View(view).BendNotes;
+
+    /// <summary>When true, SetBendNotes changes nothing.</summary>
+    public bool BendNotesIgnored { get; set; }
+
+    public void SetBendNotes(string view, bool show)
+    {
+        Calls.Add($"bend notes {view} {show}");
+        if (!BendNotesIgnored) View(view).BendNotes = show;
+    }
 
     /// <summary>The drawing's own document settings; a name listed in <see cref="SettingsIgnored"/> keeps its value.</summary>
     public Dictionary<string, bool> Toggles { get; } = DrawingSettings.All.ToDictionary(n => n, _ => true);

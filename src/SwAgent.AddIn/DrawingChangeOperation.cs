@@ -41,6 +41,13 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
     /// <summary>The operation's own exact checks, re-reading SOLIDWORKS rather than trusting what Change returned; throws when one fails.</summary>
     protected abstract void Check(ISwDocument doc, ISwDrawing drawing, TRequest request, TResult result);
 
+    /// <summary>
+    /// True for a model (by full path) SOLIDWORKS may mark as changed in making this change, because the operation's own
+    /// Check measured it unchanged otherwise and the result reports it (view.flat_pattern's derived configuration, as
+    /// 6.D's exports report marked_dirty). None by default: a drawing operation never changes a model.
+    /// </summary>
+    protected virtual bool MayBeMarked(string path) => false;
+
     /// <summary>The sheet <paramref name="text"/> names, by reference or name.</summary>
     protected string Sheet(ISwDocument doc, ISwDrawing drawing, string text, string field) => Services.References.ResolveSheet(doc, drawing, text, field);
 
@@ -63,6 +70,25 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         {
             if (!drawing.DeleteViews(new[] { name }) || drawing.ReadView(name) != null)
                 throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not delete the view {name}");
+        });
+    }
+
+    /// <summary>
+    /// Records a section or detail view the change made, with its reference; a rollback deletes the view, then the section
+    /// line or detail circle <paramref name="label"/> it left in <paramref name="parent"/> (by selection), and checks both
+    /// are gone.
+    /// </summary>
+    protected void MadeCut(ISwDocument doc, ISwDrawing drawing, ModelTransaction tx, string name, string parent, string label, bool section)
+    {
+        var facts = drawing.ReadView(name);
+        tx.Made(new CreatedItem { Name = name, Kind = ReferenceKind.View, Reference = facts == null ? null : Services.References.IssueView(doc, facts) }, () =>
+        {
+            if (!drawing.DeleteViews(new[] { name }) || drawing.ReadView(name) != null)
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not delete the view {name}");
+            if (!drawing.CutLabels(parent).Contains(label, StringComparer.OrdinalIgnoreCase)) return;
+            bool deleted = section ? drawing.DeleteSectionLine(parent, label) : drawing.DeleteDetailCircle(parent, label);
+            if (!deleted || drawing.CutLabels(parent).Contains(label, StringComparer.OrdinalIgnoreCase))
+                throw new SwAgentException(ErrorCode.OperationFailed, $"SOLIDWORKS did not delete the {(section ? "section line" : "detail circle")} {label} from {parent}");
         });
     }
 
@@ -114,7 +140,7 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         _pending = null;
         try
         {
-            var changed = pending.Models.Changed(Services.SolidWorks, pending.Doc);
+            var changed = pending.Models.Changed(Services.SolidWorks, pending.Doc, MayBeMarked);
             if (changed.Count > 0)
             {
                 throw new SwAgentException(ErrorCode.VerificationFailed,
@@ -189,16 +215,18 @@ public sealed class ModelStates
 
     /// <summary>
     /// What changed in a model since this was taken: one that was open and clean and is now marked as changed, or that
-    /// has more rebuild errors; and one loaded by the change that is marked as changed. Each as "path: what".
+    /// has more rebuild errors; and one loaded by the change that is marked as changed. Each as "path: what". A model
+    /// <paramref name="mayBeMarked"/> names (by full path) may be marked as changed; its rebuild errors still count.
     /// </summary>
-    public List<string> Changed(ISolidWorksApplication sw, ISwDocument drawing)
+    public List<string> Changed(ISolidWorksApplication sw, ISwDocument drawing, Func<string, bool>? mayBeMarked = null)
     {
         var now = Take(sw, drawing);
         var changed = new List<string>();
         foreach (var pair in now.States)
         {
             bool known = States.TryGetValue(pair.Key, out var was);
-            if (pair.Value.Dirty && !(known && was.Dirty)) changed.Add($"{pair.Key}: marked as having unsaved changes");
+            bool marked = pair.Value.Dirty && !(known && was.Dirty);
+            if (marked && mayBeMarked?.Invoke(pair.Key) != true) changed.Add($"{pair.Key}: marked as having unsaved changes");
             else if (known && pair.Value.Errors > was.Errors) changed.Add($"{pair.Key}: {pair.Value.Errors - was.Errors} more rebuild errors");
         }
         return changed;

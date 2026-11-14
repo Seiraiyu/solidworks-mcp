@@ -285,8 +285,23 @@ public static class ViewGeometry
     /// </summary>
     public static SheetBox? DrawnExtents(IReadOnlyList<double> polylines, SheetPoint position, double scale)
     {
-        double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
-        bool any = false;
+        var points = DrawnPoints(polylines, position, scale);
+        if (points.Count == 0) return null;
+        return new SheetBox
+        {
+            Min = new SheetPoint(points.Min(p => p.X), points.Min(p => p.Y)),
+            Max = new SheetPoint(points.Max(p => p.X), points.Max(p => p.Y)),
+        };
+    }
+
+    /// <summary>
+    /// Every point of every edge a view draws, sheet mm, read from IView.GetPolylines5's numbers as
+    /// <see cref="DrawnExtents"/> reads them (an arc's points lie on it, so a detail view's drawn edges can be held to
+    /// its circle). Empty when the view draws no point. FormatException when the numbers run short.
+    /// </summary>
+    public static List<SheetPoint> DrawnPoints(IReadOnlyList<double> polylines, SheetPoint position, double scale)
+    {
+        var drawn = new List<SheetPoint>();
         int i = 0;
         while (i < polylines.Count)
         {
@@ -296,17 +311,9 @@ public static class ViewGeometry
             i++;
             if (i + 3 * points > polylines.Count) throw new FormatException($"the polylines end inside an edge's {points} points (at number {i})");
             for (int p = 0; p < points; p++, i += 3)
-            {
-                double x = position.X + polylines[i] * 1000 * scale;
-                double y = position.Y + polylines[i + 1] * 1000 * scale;
-                minX = Math.Min(minX, x);
-                minY = Math.Min(minY, y);
-                maxX = Math.Max(maxX, x);
-                maxY = Math.Max(maxY, y);
-                any = true;
-            }
+                drawn.Add(new SheetPoint(position.X + polylines[i] * 1000 * scale, position.Y + polylines[i + 1] * 1000 * scale));
         }
-        return any ? new SheetBox { Min = new SheetPoint(minX, minY), Max = new SheetPoint(maxX, maxY) } : null;
+        return drawn;
     }
 
     static int Count(IReadOnlyList<double> numbers, int at, string what)

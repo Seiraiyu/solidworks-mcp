@@ -159,8 +159,12 @@ internal sealed class SolidWorksDrawing : ISwDrawing
     public ViewTransform? Transform(string view) =>
         ViewTransform.FromArrayData((View(view).ModelToViewTransform?.ArrayData as double[])?.ToList());
 
+    /// <summary>
+    /// The view's edges without its crosshatch (GetPolylines5's option 0): a section view's hatch lines did not read as
+    /// edges in the 5.B live run, and lie inside the faces they fill, so they add nothing to what a view draws.
+    /// </summary>
     public IReadOnlyList<double> Polylines(string view) =>
-        View(view).GetPolylines5(1) is double[] numbers ? numbers : new double[0];
+        View(view).GetPolylines5(0) is double[] numbers ? numbers : new double[0];
 
     public string? CreateModelView(string modelPath, string orientation, SheetPoint at)
     {
@@ -219,19 +223,35 @@ internal sealed class SolidWorksDrawing : ISwDrawing
 
     public bool DeleteViews(IReadOnlyList<string> views)
     {
-        _doc.ClearSelection2(true);
-        try
+        // SOLIDWORKS selects a view by name only on the sheet it shows (5.B live run: a detail on Sheet1 was not
+        // selected while Details was shown), so each sheet's views are deleted with that sheet shown. Showing a sheet is
+        // not put back, as view.create does not.
+        foreach (var onSheet in views.GroupBy(v => Find(v)?.Sheet?.GetName()))
         {
-            for (int i = 0; i < views.Count; i++)
-            {
-                if (!_doc.Extension.SelectByID2(views[i], "DRAWINGVIEW", 0, 0, 0, i > 0, 0, null, 0)) return false;
-            }
-            return _doc.Extension.DeleteSelection2(0);
-        }
-        finally
-        {
+            if (onSheet.Key != null) ShowSheet(onSheet.Key);
             _doc.ClearSelection2(true);
+            try
+            {
+                bool first = true;
+                foreach (string view in onSheet)
+                {
+                    if (!_doc.Extension.SelectByID2(view, "DRAWINGVIEW", 0, 0, 0, !first, 0, null, 0)) return false;
+                    first = false;
+                }
+                if (!_doc.Extension.DeleteSelection2(0)) return false;
+            }
+            finally
+            {
+                _doc.ClearSelection2(true);
+            }
         }
+        return true;
+    }
+
+    /// <summary>Shows a sheet when another is shown: SOLIDWORKS selects a sheet's views and what they hold only while it is shown.</summary>
+    void ShowSheet(string sheet)
+    {
+        if (ActiveSheet() != sheet) _drawing.ActivateSheet(sheet);
     }
 
     public ISwDocument? ModelOf(string view) =>
@@ -256,6 +276,203 @@ internal sealed class SolidWorksDrawing : ISwDrawing
         }
         if (vertices) Add(swViewEntityType_e.swViewEntityType_Vertex, true, false);
         return list;
+    }
+
+    public string? CutSection(string parent, SheetPoint from, SheetPoint to, SheetPoint at, string label, bool reversed)
+    {
+        var line = DrawInView(parent, (sketch, position, scale) =>
+        {
+            var a = ViewCutGeometry.ToViewSketch(position, scale, from);
+            var b = ViewCutGeometry.ToViewSketch(position, scale, to);
+            return sketch.CreateLine(a.X / Mm, a.Y / Mm, 0, b.X / Mm, b.Y / Mm, 0);
+        });
+        if (line == null) return null;
+        int options = reversed ? (int)swCreateSectionViewAtOptions_e.swCreateSectionView_ChangeDirection : 0;
+        return MadeFrom(line, () => _drawing.CreateSectionViewAt5(at.X / Mm, at.Y / Mm, 0, label, options, null, 0));
+    }
+
+    public SectionFacts? ReadSection(string view) =>
+        Find(view)?.GetSection() is IDrSection section
+            ? new SectionFacts { Label = section.GetLabel() ?? "", Reversed = section.GetReversedCutDirection(), Line = section.GetName() ?? "" }
+            : null;
+
+    public IReadOnlyList<CutFace> CutFaces(string view)
+    {
+        var faces = new List<CutFace>();
+        if (!(View(view).GetFaceHatches() is object[] hatches)) return faces;
+        foreach (var hatch in hatches.OfType<IFaceHatch>())
+        {
+            if (!(hatch.Face is IFace2 face))
+            {
+                faces.Add(new CutFace(null, null, 0));
+                continue;
+            }
+            bool planar = face.GetSurface() is ISurface surface && surface.IsPlane();
+            var n = face.Normal as double[];
+            var p = face.GetClosestPointOn(0, 0, 0) as double[];
+            faces.Add(new CutFace(
+                planar && n != null && n.Length >= 3 ? new Vector3(n[0], n[1], n[2]) : null,
+                p != null && p.Length >= 3 ? new Point3(p[0] * Mm, p[1] * Mm, p[2] * Mm) : null,
+                face.GetArea() * Mm * Mm));
+        }
+        return faces;
+    }
+
+    public IReadOnlyList<string> CutLabels(string view)
+    {
+        var v = Find(view);
+        if (v == null) return new List<string>();
+        var labels = Sections(v).Select(s => s.GetLabel() ?? "").ToList();
+        labels.AddRange(Details(v).Select(d => d.GetLabel() ?? ""));
+        return labels;
+    }
+
+    public bool DeleteSectionLine(string parent, string label)
+    {
+        var v = Find(parent);
+        var line = v == null ? null : Sections(v).FirstOrDefault(s => string.Equals(s.GetLabel(), label, StringComparison.OrdinalIgnoreCase));
+        if (line == null) return true;
+        if (v!.Sheet?.GetName() is string sheet) ShowSheet(sheet);
+        _doc.ClearSelection2(true);
+        try
+        {
+            return DeleteNamed(line.GetName(), "SECTIONLINE", parent);
+        }
+        finally
+        {
+            _doc.ClearSelection2(true);
+        }
+    }
+
+    /// <summary>
+    /// Selects a drawing item by its name and type (SelectByID2), as SOLIDWORKS names it and then qualified by its view
+    /// (name@view), and deletes the selection. False when neither selects or the delete is refused.
+    /// </summary>
+    bool DeleteNamed(string? name, string type, string view)
+    {
+        if (string.IsNullOrEmpty(name)) return false;
+        foreach (string id in name!.Contains("@") ? new[] { name } : new[] { name, name + "@" + view })
+        {
+            _doc.ClearSelection2(true);
+            if (_doc.Extension.SelectByID2(id, type, 0, 0, 0, false, 0, null, 0)) return _doc.Extension.DeleteSelection2(0);
+        }
+        return false;
+    }
+
+    public string? DetailView(string parent, SheetPoint centre, double radiusMm, SheetPoint at, ScaleRatio scale, string label)
+    {
+        var circle = DrawInView(parent, (sketch, position, viewScale) =>
+        {
+            var c = ViewCutGeometry.ToViewSketch(position, viewScale, centre);
+            return sketch.CreateCircleByRadius(c.X / Mm, c.Y / Mm, 0, radiusMm / viewScale / Mm);
+        });
+        if (circle == null) return null;
+        return MadeFrom(circle, () => _drawing.CreateDetailViewAt4(at.X / Mm, at.Y / Mm, 0, (int)swDetViewStyle_e.swDetViewSTANDARD, scale.Numerator, scale.Denominator, label,
+            (int)swDetCircleShowType_e.swDetCircleCIRCLE, true, false, false, 3) as IView);
+    }
+
+    public DetailFacts? ReadDetail(string view) =>
+        Find(view)?.GetDetail() is IDetailCircle circle ? new DetailFacts { Label = circle.GetLabel() ?? "", Circle = circle.GetName() ?? "", Centre = CircleCentre(circle) } : null;
+
+    /// <summary>
+    /// Where the parent draws a detail circle's centre, sheet mm: the centre of the arc its profile is (the circle the
+    /// add-in drew in the parent's own sketch), from the parent's sketch frame (ViewCutGeometry.FromViewSketch, as it was
+    /// drawn). Null when SOLIDWORKS gives no arc or no parent.
+    /// </summary>
+    static SheetPoint? CircleCentre(IDetailCircle circle)
+    {
+        var arc = circle.GetProfileItems() is object[] items ? items.OfType<ISketchArc>().FirstOrDefault() : null;
+        var parent = circle.GetView();
+        if (arc == null || parent == null || !(arc.GetCenterPoint2() is ISketchPoint c) || !(parent.Position is double[] position) || position.Length < 2) return null;
+        var ratio = parent.ScaleRatio as double[];
+        double scale = ratio != null && ratio.Length >= 2 && ratio[1] != 0 ? ratio[0] / ratio[1] : parent.ScaleDecimal;
+        return ViewCutGeometry.FromViewSketch(new SheetPoint(position[0] * Mm, position[1] * Mm), scale, new Point2(c.X * Mm, c.Y * Mm));
+    }
+
+    public bool DeleteDetailCircle(string parent, string label)
+    {
+        var v = Find(parent);
+        var circle = v == null ? null : Details(v).FirstOrDefault(d => string.Equals(d.GetLabel(), label, StringComparison.OrdinalIgnoreCase));
+        if (circle == null) return true;
+        if (v!.Sheet?.GetName() is string sheet) ShowSheet(sheet);
+        _doc.ClearSelection2(true);
+        try
+        {
+            // IDetailCircle.Select, then by its name (5.B live run: the first left the circle in the parent).
+            if (circle.Select(false, null) && _doc.Extension.DeleteSelection2(0) && !Details(v!).Any(d => string.Equals(d.GetLabel(), label, StringComparison.OrdinalIgnoreCase)))
+                return true;
+            return DeleteNamed(circle.GetName(), "DETAILCIRCLE", parent);
+        }
+        finally
+        {
+            _doc.ClearSelection2(true);
+        }
+    }
+
+    public string? FlatPatternView(string modelPath, string configuration, SheetPoint at)
+    {
+        var view = _drawing.CreateFlatPatternViewFromModelView3(modelPath, configuration, at.X / Mm, at.Y / Mm, 0, false, false);
+        _doc.ClearSelection2(true);
+        return view?.GetName2();
+    }
+
+    public int BendLines(string view) => View(view).GetBendLineCount();
+
+    public bool BendNotes(string view) => View(view).ShowSheetMetalBendNotes;
+
+    public void SetBendNotes(string view, bool show)
+    {
+        View(view).ShowSheetMetalBendNotes = show;
+        _doc.GraphicsRedraw2();
+    }
+
+    static IEnumerable<IDrSection> Sections(IView view) => view.GetSectionLines() is object[] lines ? lines.OfType<IDrSection>() : Enumerable.Empty<IDrSection>();
+
+    static IEnumerable<IDetailCircle> Details(IView view) => view.GetDetailCircles() is object[] circles ? circles.OfType<IDetailCircle>() : Enumerable.Empty<IDetailCircle>();
+
+    /// <summary>
+    /// Draws one sketch segment in a view's own sketch: the view activated, its position (sheet mm) and scale given to
+    /// <paramref name="draw"/>, with AddToDB on so the segment lands exactly where it is put rather than snapping to what
+    /// the view shows, and AddToDB put back. Null when the view could not be activated or nothing was drawn.
+    /// </summary>
+    ISketchSegment? DrawInView(string view, Func<ISketchManager, SheetPoint, double, SketchSegment?> draw)
+    {
+        var v = View(view);
+        if (!_drawing.ActivateView(view)) return null;
+        var position = v.Position as double[];
+        var ratio = v.ScaleRatio as double[];
+        if (position == null || position.Length < 2) return null;
+        double scale = ratio != null && ratio.Length >= 2 && ratio[1] != 0 ? ratio[0] / ratio[1] : v.ScaleDecimal;
+        var sketch = _doc.SketchManager;
+        bool addToDb = sketch.AddToDB;
+        sketch.AddToDB = true;
+        try
+        {
+            _doc.ClearSelection2(true);
+            return draw(sketch, new SheetPoint(position[0] * Mm, position[1] * Mm), scale);
+        }
+        finally
+        {
+            sketch.AddToDB = addToDb;
+        }
+    }
+
+    /// <summary>Selects the segment just drawn and makes a view from it; when SOLIDWORKS makes none, the segment is deleted again.</summary>
+    string? MadeFrom(ISketchSegment segment, Func<IView?> make)
+    {
+        try
+        {
+            _doc.ClearSelection2(true);
+            var made = segment.Select4(false, null) ? make() : null;
+            if (made != null) return made.GetName2();
+            _doc.ClearSelection2(true);
+            if (segment.Select4(false, null)) _doc.Extension.DeleteSelection2(0);
+            return null;
+        }
+        finally
+        {
+            _doc.ClearSelection2(true);
+        }
     }
 
     public IReadOnlyDictionary<string, bool> Settings() =>

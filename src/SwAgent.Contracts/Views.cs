@@ -54,7 +54,7 @@ public sealed class ViewProjectRequest
 }
 
 [Operation("view.set", typeof(ViewResult))]
-[Description("Moves, rescales, restyles or reconfigures a drawing view in place: at (its centre, sheet mm), scale (its own) or sheet_scale (follow the sheet's), display, configuration (a model view's). Values not given stay; moved without at, a view keeps its centre. A projected view is drawn at its parent's scale and moves only along its parent's centre line (SOLIDWORKS silently keeps the aligned coordinate): moving it off that line is refused naming the parent. Each value is recorded before and put back on failure. Checked by measuring: every value reads back (the centre within 0.01 mm, the scale exactly), what it draws equals the model's box projected at its scale within 0.01 mm (orthographic views; inside it for others), the views projected from it are still on its centre lines, and the model is unchanged.")]
+[Description("Moves, rescales, restyles or reconfigures a drawing view in place: at (its centre, sheet mm; for a detail, the centre of what its circle shows), scale (its own) or sheet_scale (follow the sheet's), display, configuration (a model view's). Values not given stay; moved without at, a view keeps its centre. A projected or section view is drawn at its parent's scale and moves only along its parent's centre line (SOLIDWORKS silently keeps the aligned coordinate): moving it off that line is refused naming the parent. Each value is recorded before and put back on failure. Checked by measuring: every value reads back (the centre within 0.01 mm, the scale exactly), what it draws equals the model's box projected at its scale within 0.01 mm (orthographic model and projected views; inside it for others; a section, detail or flat pattern draws what it drew, moved and rescaled about its centre; a detail's centre is where it draws its circle's centre), the views projected or cut from it are still on its centre lines, and the model is unchanged.")]
 public sealed class ViewSetRequest
 {
     [Description("The drawing: its title or full path. The active document when absent.")]
@@ -64,7 +64,7 @@ public sealed class ViewSetRequest
     [Description("The view: a reference (r1.view.…) or its name (Drawing View1).")]
     public string View { get; set; } = "";
 
-    [Description("Where its centre goes, sheet mm from the sheet's lower-left corner.")]
+    [Description("Where its centre goes, sheet mm from the sheet's lower-left corner; for a detail, the centre of what its circle shows (where the detail draws the circle's centre).")]
     public SheetPoint? At { get; set; }
 
     [Description("Its own scale (a model view's). Not with sheet_scale.")]
@@ -81,7 +81,7 @@ public sealed class ViewSetRequest
 }
 
 [Operation("view.delete", typeof(ViewDeleteResult))]
-[Description("Deletes drawing views by selecting each (SelectByID2 \"DRAWINGVIEW\") and deleting the selection. A view other views were made from (projected, section, detail) is refused unless they are deleted in the same request. Checked: each view is gone and every other view is still there. Not rolled back (a deleted view's annotations cannot be made again as they were): a failed check says what is left. A reference to a deleted view no longer resolves.")]
+[Description("Deletes drawing views by selecting each (SelectByID2 \"DRAWINGVIEW\") and deleting the selection, a sheet at a time with that sheet shown. A view other views were made from (projected, section, detail) is refused unless they are deleted in the same request. A section or detail view takes its section line or detail circle with it from a parent that is kept. Checked: each view is gone (with its section line or detail circle) and every other view is still there. Not rolled back (a deleted view's annotations cannot be made again as they were): a failed check says what is left, and when SOLIDWORKS refuses one sheet's views after deleting another's, operation_failed gives the views deleted and remaining (rollback_failed). A reference to a deleted view no longer resolves.")]
 public sealed class ViewDeleteRequest
 {
     [Description("The drawing: its title or full path. The active document when absent.")]
