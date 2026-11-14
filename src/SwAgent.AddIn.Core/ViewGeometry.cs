@@ -142,18 +142,27 @@ public static class ViewGeometry
         if (Orthographic.TryGetValue(orientation, out var expected))
             return Same(expected, facing) ? null : $"a {orientation} view faces the model's {Describe(expected)} toward the reader, but this one faces {Describe(facing)}";
         if (orientation == "isometric")
-            return Isometric(facing) ? null : $"an isometric view faces a direction whose three components are equal in size, but this one faces {Describe(facing)}";
+            return Isometric(facing) ? null : $"an isometric view faces a direction whose three components are equal in size, but this one faces {Precise(facing)}";
         return null;
     }
 
-    /// <summary>True when the facing direction's three components are equal in size (each 1/√3).</summary>
+    /// <summary>
+    /// How far each component of an isometric view's facing direction may be from 1/√3: SOLIDWORKS' isometric is not
+    /// 1/√3 to 1e-6 (5.A live run); 1e-4 is under a hundredth of a degree.
+    /// </summary>
+    public const double IsometricTolerance = 1e-4;
+
+    /// <summary>True when the facing direction's three components are equal in size (each 1/√3, within IsometricTolerance).</summary>
     public static bool Isometric(Vector3 facing)
     {
         double third = 1 / Math.Sqrt(3);
-        return Math.Abs(Math.Abs(facing.X) - third) <= DirectionTolerance
-            && Math.Abs(Math.Abs(facing.Y) - third) <= DirectionTolerance
-            && Math.Abs(Math.Abs(facing.Z) - third) <= DirectionTolerance;
+        return Math.Abs(Math.Abs(facing.X) - third) <= IsometricTolerance
+            && Math.Abs(Math.Abs(facing.Y) - third) <= IsometricTolerance
+            && Math.Abs(Math.Abs(facing.Z) - third) <= IsometricTolerance;
     }
+
+    static string Precise(Vector3 v) =>
+        string.Format(System.Globalization.CultureInfo.InvariantCulture, "({0:F6}, {1:F6}, {2:F6})", v.X, v.Y, v.Z);
 
     /// <summary>The same direction, component by component, within <see cref="DirectionTolerance"/>.</summary>
     public static bool Same(Vector3 a, Vector3 b) =>
