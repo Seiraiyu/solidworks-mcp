@@ -98,6 +98,7 @@ public class DrawingContractTests
     [InlineData("sheet.set", "sheet", false)]
     [InlineData("sheet.activate", "sheet", false)]
     [InlineData("sheet.delete", "sheet", false)]
+    [InlineData("view.create", "view", false)]
     public void The_operations_are_catalogued_in_their_families(string method, string family, bool readOnly)
     {
         var op = OperationCatalog.Find(method);

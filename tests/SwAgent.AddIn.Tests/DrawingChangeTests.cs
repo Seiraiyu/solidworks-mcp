@@ -39,7 +39,7 @@ sealed class TestDrawingChangeOperation : DrawingChangeOperation<TestDrawingChan
         if (request.FailIn == "early") throw new SwAgentException(ErrorCode.InvalidArgument, "no such sheet");
         drawing.AddSheet(new SheetFacts { Name = "Sheet2", WidthMm = 420, HeightMm = 297 });
         MadeSheet(doc, drawing, tx, "Sheet2");
-        string view = drawing.CreateModelView(@"C:\w\block.SLDPRT", "front", new SheetPoint(100, 100))!;
+        string view = drawing.CreateModelView(((FakeDrawing)drawing).Models.Keys.Single(), "front", new SheetPoint(100, 100))!;
         MadeView(doc, drawing, tx, view);
         if (request.Rescale)
         {
@@ -74,7 +74,8 @@ public abstract class DrawingTestBase : DocumentTestBase
         Doc = Sw.Track(FakeDocument.NewDrawing("block.SLDDRW", PathOf("block.SLDDRW")));
         Drw = Doc.Drw!;
         Drw.Sw = Sw;
-        Block = FakeDocument.Part("block.SLDPRT", @"C:\w\block.SLDPRT");
+        Block = FakeDocument.Part("block.SLDPRT", PathOf("block.SLDPRT"));
+        System.IO.File.WriteAllText(Block.Document.Path!, "part");
         Block.ExactBox = new Box3 { Min = new Point3(0, 0, 0), Max = new Point3(60, 40, 20) };
         Drw.Models[Block.Document.Path!] = Block;
         Sw.CurrentDoc = Doc;

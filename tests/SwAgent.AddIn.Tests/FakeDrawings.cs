@@ -204,6 +204,9 @@ sealed class FakeDrawing : ISwDrawing
     /// <summary>When set, a new model view faces this orientation whatever was asked.</summary>
     public string? FacesInstead { get; set; }
 
+    /// <summary>Called with each view CreateModelView or ProjectView makes (a test's way to make SOLIDWORKS draw it wrongly).</summary>
+    public Action<FakeView>? AfterCreate { get; set; }
+
     /// <summary>When true, making a view marks its model as having unsaved changes.</summary>
     public bool DirtiesModel { get; set; }
 
@@ -226,6 +229,7 @@ sealed class FakeDrawing : ISwDrawing
         Place(view, right, up, facing, new SheetPoint(at.X + LandsOffByMm, at.Y), Ratio(scale));
         sheet.Views.Add(view);
         if (DirtiesModel) model.Document.Dirty = true;
+        AfterCreate?.Invoke(view);
         return facts.Name;
     }
 
@@ -264,6 +268,7 @@ sealed class FakeDrawing : ISwDrawing
         var mine = ViewGeometry.ToSheet(view.Transform!, new Point3(0, 0, 0));
         Shift(view, horizontal ? 0 : origin.X - mine.X, horizontal ? origin.Y - mine.Y : 0);
         sheet.Views.Add(view);
+        AfterCreate?.Invoke(view);
         return facts.Name;
     }
 

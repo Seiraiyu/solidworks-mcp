@@ -1,0 +1,81 @@
+{
+  "type": "object",
+  "description": "Places a model view of a saved part or assembly on a drawing sheet (IDrawingDoc.CreateDrawViewFromModelView3): front, back, left, right, top, bottom, isometric, dimetric, trimetric, or a named view the model has, centred at a point in sheet mm (from the sheet's lower-left corner), at the sheet's scale or its own. The model must be a saved file: a never-saved model is refused before SOLIDWORKS is called (save it with sw_document_save_as first); a model with unsaved changes is drawn as it is in memory (model_unsaved says so). Checked by measuring: the view is on the sheet with the model, configuration and display asked; its centre reads back within 0.01 mm and its scale exactly; it faces the orientation asked (the model axis toward the reader from its model-to-sheet transform: +Z front, -Z back, +Y top, -Y bottom, +X right, -X left; equal components for isometric); what it draws (its edges) equals the model's bounding box projected and scaled within 0.01 mm for the six orthographic views, and lies inside it for the others; and the model is unchanged. Otherwise the view is deleted again (rolled back).",
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "The drawing: its title or full path. The active document when absent."
+    },
+    "sheet": {
+      "type": "string",
+      "description": "The sheet to put it on: a reference (r1.sheet.…) or a name. The sheet shown when absent; another is shown first."
+    },
+    "model": {
+      "type": "string",
+      "description": "The model: the full path of a saved .SLDPRT or .SLDASM, or the title of an open part or assembly that has been saved."
+    },
+    "configuration": {
+      "type": "string",
+      "description": "The model's configuration to show; the model's active one when absent."
+    },
+    "orientation": {
+      "type": "string",
+      "description": "front, back, left, right, top, bottom, isometric, dimetric, trimetric, or the name of a view the model has."
+    },
+    "at": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "description": "Mm to the right of the sheet's lower-left corner."
+        },
+        "y": {
+          "type": "number",
+          "description": "Mm above the sheet's lower-left corner."
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false,
+      "description": "Where its centre goes on the sheet, sheet mm from the lower-left corner."
+    },
+    "scale": {
+      "type": "object",
+      "properties": {
+        "numerator": {
+          "type": "number",
+          "description": "The first number of the ratio, more than 0."
+        },
+        "denominator": {
+          "type": "number",
+          "description": "The second number of the ratio, more than 0."
+        }
+      },
+      "required": [
+        "numerator",
+        "denominator"
+      ],
+      "additionalProperties": false,
+      "description": "Its own scale (1:2 draws at half size); it follows the sheet's scale when absent."
+    },
+    "display": {
+      "type": "string",
+      "enum": [
+        "hidden_lines_visible",
+        "hidden_lines_removed",
+        "wireframe",
+        "shaded",
+        "shaded_with_edges"
+      ],
+      "description": "hidden_lines_visible, hidden_lines_removed, wireframe, shaded or shaded_with_edges. Hidden lines visible for the six orthographic views of a part, hidden lines removed otherwise, when absent."
+    }
+  },
+  "required": [
+    "model",
+    "orientation",
+    "at"
+  ],
+  "additionalProperties": false
+}
