@@ -3,7 +3,7 @@
 Each release of solidworks-mcp. The version numbers follow semantic versioning; until 1.0.0 a minor version may change
 tools and their parameters.
 
-## 0.2.0
+## 0.2.0 (2026-11-13)
 
 The assemblies release: an agent can now mate, pattern, check, explode and export assemblies, and sheet metal goes
 from the base flange to flanges, hems, bends, flattening and flat-pattern export. The add-in and swmcp speak protocol
