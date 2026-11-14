@@ -43,6 +43,11 @@ sealed partial class FakeDrawing
     /// <summary>When set, an annotation made lands this far (sheet mm, x) from where it was put.</summary>
     public double AnnotationLandsOffByMm { get; set; }
 
+    /// <summary>How many times a drawing operation put the drawing back at rest when it ended (Settle).</summary>
+    public int Settled { get; private set; }
+
+    public void Settle() => Settled++;
+
     /// <summary>When set, what each annotation read back says of how its position was read (AnnotationFacts.PositionNote).</summary>
     public string? PositionNote { get; set; }
 
@@ -225,6 +230,35 @@ sealed partial class FakeDrawing
     public IReadOnlyList<object> VisibleFaces(string view) => View(view).Faces.ToList();
 
     public bool SameEntity(object a, object b) => ReferenceEquals(a, b);
+
+    /// <summary>Entities a view shows as SOLIDWORKS' proxies (ShowAsProxy), each with the model's own entity, or null for none.</summary>
+    public Dictionary<object, FakeEntity?> Proxies { get; } = new Dictionary<object, FakeEntity?>();
+
+    static readonly byte[] TwinId = { 7, 7, 7, 7 };
+
+    /// <summary>
+    /// Shows <paramref name="own"/> in <paramref name="view"/> as SP4 does (5.C live run, round 2): through a proxy whose
+    /// persistent id it shares with every other proxy and which the model does not find; the proxy corresponds to the
+    /// model's own entity unless <paramref name="corresponds"/> is false.
+    /// </summary>
+    public FakeEntity ShowAsProxy(FakeView view, FakeEntity own, bool corresponds = true)
+    {
+        var i = own.Info;
+        var proxy = new FakeEntity(own.Kind, new EntityInfo { Geometry = i.Geometry, Origin = i.Origin, Axis = i.Axis, RadiusMm = i.RadiusMm, LengthMm = i.LengthMm, Feature = i.Feature }) { Id = TwinId, State = PersistState.Invalid };
+        Proxies[proxy] = corresponds ? own : null;
+        view.Visible.Add(new VisibleEntity(proxy, own.Kind == ReferenceKind.Vertex, false));
+        return proxy;
+    }
+
+    public IReadOnlyList<object> ModelEntities(string view, object shown) =>
+        Proxies.TryGetValue(shown, out var own) ? (own == null ? new List<object>() : new List<object> { own }) : new List<object> { shown };
+
+    public object? InView(string view, object own)
+    {
+        var v = View(view);
+        var proxy = Proxies.Where(p => ReferenceEquals(p.Value, own) && Visible(v, p.Key)).Select(p => p.Key).FirstOrDefault();
+        return proxy ?? (Visible(v, own) ? own : null);
+    }
 
     public IReadOnlyList<PropertyFacts> Properties() => Props.Select(p => new PropertyFacts(p.Key, p.Value, Resolve(p.Value))).ToList();
 

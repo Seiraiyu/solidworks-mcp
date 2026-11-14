@@ -34,6 +34,29 @@ internal sealed partial class SolidWorksDrawing : ISwDrawing
 
     public string? ActiveSheet() => (_drawing.GetCurrentSheet() as ISheet)?.GetName();
 
+    /// <summary>Activates a view for the add-in's own use (a note in it, a line in its sketch), remembering that the add-in activated it (ViewActivations).</summary>
+    bool Activate(string view)
+    {
+        if (!_drawing.ActivateView(view)) return false;
+        ViewActivations.Record(_doc.GetTitle(), view);
+        return true;
+    }
+
+    public void Settle()
+    {
+        string title = _doc.GetTitle();
+        if (ViewActivations.ByAddIn(title) == null) return;
+        // Activating the current sheet's own view leaves no drawing view activated (as AddNote does for a note on the sheet).
+        if (_drawing.GetFirstView() is IView sheetView)
+        {
+            if (!(_drawing.ActiveDrawingView is IView active) || !string.Equals(active.GetName2(), sheetView.GetName2(), StringComparison.Ordinal))
+                _drawing.ActivateView(sheetView.GetName2());
+            bool atRest = !(_doc.GetActiveSketch2() is ISketch sketch) || ReferenceEquals(sketch, sheetView.GetSketch())
+                || string.Equals((sketch as IFeature)?.Name, (sheetView.GetSketch() as IFeature)?.Name, StringComparison.Ordinal);
+            if (atRest) ViewActivations.Clear(title);
+        }
+    }
+
     public SheetFacts? ReadSheet(string name)
     {
         if (!SheetNames().Contains(name, StringComparer.Ordinal)) return null;
@@ -438,7 +461,7 @@ internal sealed partial class SolidWorksDrawing : ISwDrawing
     ISketchSegment? DrawInView(string view, Func<ISketchManager, SheetPoint, double, SketchSegment?> draw)
     {
         var v = View(view);
-        if (!_drawing.ActivateView(view)) return null;
+        if (!Activate(view)) return null;
         var position = v.Position as double[];
         var ratio = v.ScaleRatio as double[];
         if (position == null || position.Length < 2) return null;

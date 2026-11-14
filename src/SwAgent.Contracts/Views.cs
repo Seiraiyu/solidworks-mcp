@@ -151,7 +151,7 @@ public sealed class ViewEntitiesRequest
 [Description("An entity of the model as a view shows it.")]
 public sealed class ViewEntityInfo
 {
-    [Description("Its model reference, issued in the part; absent when SOLIDWORKS gives none for it. References are opaque: pass one back exactly as it was given, and never build or change one.")]
+    [Description("Its model reference, issued in the part from the part's own entity and checked to name exactly this one; absent when SOLIDWORKS gives none that can be checked (a silhouette edge, or a view proxy SOLIDWORKS maps to no entity of the part), never one another entity shares. References are opaque: pass one back exactly as it was given, and never build or change one.")]
     public string? Reference { get; set; }
 
     [Description("edge or vertex.")]

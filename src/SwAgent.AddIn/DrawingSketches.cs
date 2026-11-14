@@ -36,4 +36,37 @@ public static class DrawingSketches
         }
         return a.Name ?? "a sketch";
     }
+
+    /// <summary>
+    /// As <see cref="UserEditing(Sketch?, IEnumerable{Sketch})"/>, with the sheet's own sketch at rest and the activated
+    /// view's own sketch at rest only when the add-in activated that view (<paramref name="activatedByAddIn"/>, from
+    /// <see cref="ViewActivations"/>). The 5.C live run (round 2) measured the user's Edit Sketch on a view's own sketch
+    /// (section line A, in Drawing View1) making that sketch active just as the add-in's ActivateView does, so who
+    /// activated the view is what tells them apart.
+    /// </summary>
+    public static string? UserEditing(Sketch? active, Sketch? sheet, string? activeView, Sketch? activeViewSketch, string? activatedByAddIn)
+    {
+        var atRest = new List<Sketch>();
+        if (sheet is Sketch s) atRest.Add(s);
+        if (activeViewSketch is Sketch v && activeView != null && string.Equals(activeView, activatedByAddIn, StringComparison.Ordinal)) atRest.Add(v);
+        return UserEditing(active, atRest);
+    }
+}
+
+/// <summary>
+/// The view the add-in itself activated in each drawing (IDrawingDoc.ActivateView, for a note in a view or a line drawn
+/// in its sketch), by the drawing's title, until the operation that activated it ends and the drawing is settled
+/// (ISwDrawing.Settle). Only that view's own sketch is the drawing at rest; a view the user activated, or whose sketch
+/// the user is editing, is the user editing (design 611, Drawing changes; the coxswain's decision in the 5.C live run).
+/// Read and written on SOLIDWORKS' UI thread only.
+/// </summary>
+public static class ViewActivations
+{
+    static readonly Dictionary<string, string> Views = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    public static void Record(string drawing, string view) => Views[drawing] = view;
+
+    public static string? ByAddIn(string drawing) => Views.TryGetValue(drawing, out var view) ? view : null;
+
+    public static void Clear(string drawing) => Views.Remove(drawing);
 }

@@ -49,10 +49,10 @@ internal sealed partial class SolidWorksDrawing
     public IReadOnlyList<AnnotationFacts> Annotations(string sheet, string? view)
     {
         var owner = Owner(sheet, view);
-        return owner == null ? NoAnnotations : AnnotationsOf(owner).Select(a => Read(a, sheet, view)).ToList();
+        return owner == null ? NoAnnotations : AnnotationsOf(owner).Select(a => Read(a, sheet, view, view == null ? null : owner)).ToList();
     }
 
-    static AnnotationFacts Read(IAnnotation a, string sheet, string? view)
+    static AnnotationFacts Read(IAnnotation a, string sheet, string? view, IView? inView)
     {
         var facts = new AnnotationFacts
         {
@@ -86,10 +86,18 @@ internal sealed partial class SolidWorksDrawing
                 facts.Gtol = FrameOf(gtol.GetFrameValues(1), gtol.GetFrameSymbols(1));
                 break;
             case ICenterMark mark:
-                // The 5.C live run: IAnnotation.GetPosition put the hole's mark at (117.226, 175.84) for a centre at
-                // (120, 180), so a centre mark is placed by its own position (ICenterMark.GetPosition), and both are kept.
-                var (index, own) = MarkPosition(mark);
-                facts.PositionNote = FormattableString.Invariant($"IAnnotation.GetPosition {facts.Position?.ToString() ?? "nothing"}; ICenterMark.GetPosition({index}) {own?.ToString() ?? "nothing"}");
+                // The 5.C live runs: IAnnotation.GetPosition put the hole's mark at (117.226, 175.84) for a centre at
+                // (120, 180), and ICenterMark.GetPosition(0) gave (-10, 0): the view's own frame (model mm about the view's
+                // position, as its sketch), so a centre mark in a view is placed by that, drawn onto the sheet; both are kept.
+                var (index, raw) = MarkPosition(mark);
+                var own = raw;
+                if (own != null && inView != null && inView.Position is double[] at && at.Length >= 2)
+                {
+                    var ratio = inView.ScaleRatio as double[];
+                    double scale = ratio != null && ratio.Length >= 2 && ratio[1] != 0 ? ratio[0] / ratio[1] : inView.ScaleDecimal;
+                    own = ViewCutGeometry.FromViewSketch(new SheetPoint(at[0] * Mm, at[1] * Mm), scale, new Point2(own.X, own.Y));
+                }
+                facts.PositionNote = FormattableString.Invariant($"IAnnotation.GetPosition {facts.Position?.ToString() ?? "nothing"}; ICenterMark.GetPosition({index}) {raw?.ToString() ?? "nothing"}{(inView == null || own == null ? "" : $", drawn at {own}")}");
                 if (own != null) facts.Position = own;
                 break;
         }
@@ -210,7 +218,7 @@ internal sealed partial class SolidWorksDrawing
             ShowSheet(view == null ? sheet : View(view).Sheet?.GetName() ?? sheet);
             _doc.ClearSelection2(true);
             // A note goes into the active view; one for the sheet itself needs no view active (the sheet's own view).
-            if (view != null) return _drawing.ActivateView(view);
+            if (view != null) return Activate(view);
             var own = Owner(sheet, null);
             return !(_drawing.ActiveDrawingView is IView active) || own == null || string.Equals(active.GetName2(), own.GetName2(), StringComparison.Ordinal) || _drawing.ActivateView(own.GetName2());
         }, () =>
@@ -311,6 +319,49 @@ internal sealed partial class SolidWorksDrawing
 
     public IReadOnlyList<object> VisibleFaces(string view) =>
         View(view).GetVisibleEntities2(null, (int)swViewEntityType_e.swViewEntityType_Face) is object[] found ? found.Where(o => o != null).ToList() : new List<object>();
+
+    public IReadOnlyList<object> ModelEntities(string view, object shown)
+    {
+        var v = View(view);
+        var found = new List<object>();
+        foreach (var map in new Func<object, object?>[] { o => v.GetCorresponding(o), o => v.GetCorrespondingEntity(o) })
+        {
+            object? own = Try(() => map(shown));
+            if (own != null && !ReferenceEquals(own, shown) && !found.Any(f => ReferenceEquals(f, own))) found.Add(own);
+        }
+        return found;
+    }
+
+    public object? InView(string view, object own)
+    {
+        var v = View(view);
+        var shown = new List<object>();
+        foreach (int type in new[] { (int)swViewEntityType_e.swViewEntityType_Edge, (int)swViewEntityType_e.swViewEntityType_SilhouetteEdge, (int)swViewEntityType_e.swViewEntityType_Vertex, (int)swViewEntityType_e.swViewEntityType_Face })
+        {
+            if (v.GetVisibleEntities2(null, type) is object[] found) shown.AddRange(found.Where(o => o != null));
+        }
+        foreach (var map in new Func<object, object?>[] { o => v.GetCorrespondingEntity(o), o => v.GetCorresponding(o) })
+        {
+            if (Try(() => map(own)) is object drawn && shown.FirstOrDefault(s => SameEntity(s, drawn)) is object match) return match;
+        }
+        return null;
+    }
+
+    static object? Try(Func<object?> call)
+    {
+        try
+        {
+            return call();
+        }
+        catch (COMException)
+        {
+            return null;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
 
     public bool SameEntity(object a, object b) => ReferenceEquals(a, b) || _sw.IsSame(a, b) == (int)swObjectEquality.swObjectSame;
 

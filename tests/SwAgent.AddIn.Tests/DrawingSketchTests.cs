@@ -59,4 +59,35 @@ public class DrawingSketchTests
     {
         Assert.Equal("Sketch1", DrawingSketches.UserEditing(new DrawingSketches.Sketch(SheetSketch, "Sketch1"), new List<DrawingSketches.Sketch>()));
     }
+
+    // The 5.C live run (round 2): the user's Edit Sketch on section line A (Drawing View1's own sketch) made that sketch
+    // active exactly as the add-in's ActivateView does, so the activated view's sketch is at rest only when the add-in
+    // activated that view.
+    static readonly DrawingSketches.Sketch Sheet = new DrawingSketches.Sketch(SheetSketch, "Sketch1"), View = new DrawingSketches.Sketch(ViewSketch, "Sketch3");
+
+    [Fact]
+    public void The_activated_views_sketch_is_at_rest_when_the_add_in_activated_the_view()
+    {
+        Assert.Null(DrawingSketches.UserEditing(View, Sheet, "Drawing View1", View, "Drawing View1"));
+        Assert.Null(DrawingSketches.UserEditing(Sheet, Sheet, "Drawing View1", View, null));
+    }
+
+    [Fact]
+    public void The_activated_views_sketch_is_the_user_editing_it_when_the_add_in_did_not_activate_the_view()
+    {
+        Assert.Equal("Sketch3", DrawingSketches.UserEditing(View, Sheet, "Drawing View1", View, null));
+        Assert.Equal("Sketch3", DrawingSketches.UserEditing(View, Sheet, "Drawing View1", View, "Drawing View2"));
+    }
+
+    [Fact]
+    public void The_add_in_remembers_the_view_it_activated_until_the_drawing_is_settled()
+    {
+        ViewActivations.Clear("block - Sheet1");
+        Assert.Null(ViewActivations.ByAddIn("block - Sheet1"));
+        ViewActivations.Record("block - Sheet1", "Drawing View1");
+        Assert.Equal("Drawing View1", ViewActivations.ByAddIn("block - Sheet1"));
+        Assert.Null(ViewActivations.ByAddIn("formats - Sheet1"));
+        ViewActivations.Clear("block - Sheet1");
+        Assert.Null(ViewActivations.ByAddIn("block - Sheet1"));
+    }
 }

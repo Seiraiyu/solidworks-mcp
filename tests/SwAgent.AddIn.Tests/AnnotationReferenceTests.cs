@@ -126,20 +126,12 @@ public class AnnotationReferenceTests : DrawingTestBase
     }
 
     [Fact]
-    public void A_reference_view_entities_issued_resolves_to_what_the_view_shows_when_the_model_no_longer_finds_its_id()
+    public void A_reference_the_model_no_longer_finds_is_unresolved_even_when_the_view_shows_an_entity_with_its_id()
     {
-        // The 5.C live run: SP4's part did not find again the persistent id view.entities issued for an edge the view
-        // showed (GetObjectByPersistReference3 answered nothing), so the id is matched among what the view shows.
+        // Never matched among what the view shows: SP4 gives the view's entities twin ids (5.C live run, round 2).
         string shown = Services.References.Describe(Block, _left).Reference!;
         _left.State = PersistState.Invalid;
-        var e = ViewEntities.ResolveShown(Services.References, Doc, Drw, new ViewEntity { View = "Drawing View1", Reference = shown }, "/attach_to", ReferenceKind.Edge);
-        Assert.Same(_left, e.Entity);
-        Assert.Equal(ReferenceKind.Edge, e.Kind);
-        var back = Block.Add(ReferenceKind.Edge, new EntityInfo { Geometry = GeometryType.Line, Origin = new Point3(0, 20, 0), Axis = new Vector3(0, 1, 0), LengthMm = 40 });
-        string hidden = Services.References.Describe(Block, back).Reference!;
-        back.State = PersistState.Invalid;
-        Assert.Equal(ErrorCode.ReferenceUnresolved, Fails(() => ViewEntities.ResolveShown(Services.References, Doc, Drw, new ViewEntity { View = "Drawing View1", Reference = hidden }, "/attach_to")).Code);
-        Assert.Equal(ErrorCode.InvalidArgument, Fails(() => ViewEntities.ResolveShown(Services.References, Doc, Drw, new ViewEntity { View = "Drawing View1", Reference = shown }, "/attach_to", ReferenceKind.Face)).Code);
+        Assert.Equal(ErrorCode.ReferenceUnresolved, Fails(() => ViewEntities.ResolveShown(Services.References, Doc, Drw, new ViewEntity { View = "Drawing View1", Reference = shown }, "/attach_to")).Code);
     }
 
     [Fact]

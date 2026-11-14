@@ -223,6 +223,24 @@ public interface ISwDrawing
     /// <summary>The model faces a view of a part shows (IView.GetVisibleEntities2, faces), as the part's own objects.</summary>
     IReadOnlyList<object> VisibleFaces(string view);
 
+    /// <summary>
+    /// Puts the drawing back at rest when a drawing operation ends: when the add-in activated a view during it
+    /// (ViewActivations), shows the current sheet again (IDrawingDoc.ActivateSheet) so that no view stays activated,
+    /// and forgets the view once its sketch is no longer the active one; when SOLIDWORKS keeps it active, the add-in
+    /// keeps it as its own, so the next operation is not refused for it.
+    /// </summary>
+    void Settle();
+
+    /// <summary>
+    /// The model's own entity for an entity the view shows, as candidates in the order to try (IView.GetCorresponding,
+    /// then IView.GetCorrespondingEntity): SP4 hands back proxies whose persistent ids are twins (5.C live run, round 2),
+    /// so a reference is issued from the model's own entity, and ShownEntities verifies which candidate is it.
+    /// </summary>
+    IReadOnlyList<object> ModelEntities(string view, object shown);
+
+    /// <summary>The entity the view shows for the model's own <paramref name="own"/> (IView.GetCorrespondingEntity, then IView.GetCorresponding), one of those IView.GetVisibleEntities2 gives; null when the view does not show it.</summary>
+    object? InView(string view, object own);
+
     /// <summary>True when two SOLIDWORKS objects are the same entity (ISldWorks.IsSame).</summary>
     bool SameEntity(object a, object b);
 

@@ -54,18 +54,21 @@ public static class DrawingAnnotations
             Gtol = a.Gtol,
         };
         var modelDoc = a.View == null ? null : drawing.ModelOf(a.View);
-        foreach (var e in a.Attached) info.Attached.Add(new ViewEntity { View = a.View ?? a.Sheet, Reference = modelDoc == null ? null : Reference(references, modelDoc, e) });
+        foreach (var e in a.Attached) info.Attached.Add(new ViewEntity { View = a.View ?? a.Sheet, Reference = modelDoc == null ? null : Reference(references, modelDoc, drawing, a.View!, e) });
         return info;
     }
 
-    /// <summary>The reference of an entity of a view's model, or null when it is not one, or SOLIDWORKS gives it no persistent id.</summary>
-    static string? Reference(ReferenceService references, ISwDocument model, object entity)
+    /// <summary>
+    /// The reference of an entity an annotation in a view is attached to, issued from the model's own entity and verified
+    /// (ShownEntities); null when it is not one, or it cannot be verified.
+    /// </summary>
+    static string? Reference(ReferenceService references, ISwDocument model, ISwDrawing drawing, string view, object entity)
     {
         try
         {
-            return model.KindOf(entity) == null ? null : references.Describe(model, entity).Reference;
+            return ShownEntities.Reference(references, model, drawing, view, entity);
         }
-        catch (Exception e) when (e is SwAgentException || e is System.Runtime.InteropServices.COMException)
+        catch (System.Runtime.InteropServices.COMException)
         {
             return null;
         }

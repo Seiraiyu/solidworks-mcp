@@ -125,6 +125,19 @@ public abstract class DrawingChangeOperation<TRequest, TResult> : Operation<TReq
         _pending = null;
         var (doc, drawing) = DocumentLocator.FindDrawing(Services.SolidWorks, DocumentOf(request), Name);
         DrawingChangeGuard.Require(Services.SolidWorks, doc, drawing, Name);
+        try
+        {
+            return RunChange(doc, drawing, request, context);
+        }
+        finally
+        {
+            // A view the add-in activated for this change is let go of when it ends, however it ends (ViewActivations).
+            drawing.Settle();
+        }
+    }
+
+    TResult RunChange(ISwDocument doc, ISwDrawing drawing, TRequest request, IOperationContext context)
+    {
         var models = ModelStates.Take(Services.SolidWorks, doc);
         int sheetsBefore = drawing.SheetNames().Count, viewsBefore = DrawingReader.ViewCount(drawing), annotationsBefore = DrawingAnnotations.Count(drawing);
         var tx = new ModelTransaction();

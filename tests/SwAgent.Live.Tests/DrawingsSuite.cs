@@ -857,8 +857,9 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
     public Task SOLIDWORKS_persistent_ids_for_an_annotation_are_probed() => _run.CaseAsync(27, "information only: whether GetPersistReference3 gives an annotation an id (api.call reports an object's reference when it can persist it); annotation references are name-based either way", async () =>
     {
         await _run.RequireOnlyOwnDocumentsAsync();
-        await Call<ApiCallRequest, ApiCallResult>(new ApiCallRequest { Document = Drawing, Target = "document", Member = "ActivateView", Args = new List<object?> { Views["front"] }, Rebuild = false });
-        var first = await Call<ApiCallRequest, ApiCallResult>(new ApiCallRequest { Document = Drawing, Target = "document", Member = "ActiveDrawingView.GetFirstAnnotation3", Rebuild = false });
+        // Reached through the sheet's views, not ActivateView: a view activated by anyone but the add-in's own operations
+        // is the user editing it (5.C live run, round 2), and would leave case 28 to find the drawing busy.
+        var first = await Call<ApiCallRequest, ApiCallResult>(new ApiCallRequest { Document = Drawing, Target = "document", Member = "GetFirstView.GetNextView.GetFirstAnnotation3", Rebuild = false });
         return $"annotation: {JsonCodec.Serialize(first.Result)} (a ref means GetPersistReference3 gave an id)";
     });
 
@@ -917,9 +918,9 @@ public sealed class DrawingsSuite : IClassFixture<DrawingsSuiteRun>
     public Task Editing_a_sketch_in_a_view_makes_drawing_changes_wait() => _run.CaseAsync(29, "busy with user_editing while the user edits a sketch in a view (by hand: Edit Sketch on section line A, or, where SOLIDWORKS offers none, the line tool started in the front view), nothing made; works again once it is closed", async () =>
     {
         await _run.RequireOnlyOwnDocumentsAsync();
-        var (busy, seen) = await BusyWhile("in SOLIDWORKS, on Sheet1, right-click section line A (across the front view) and choose Edit Sketch; if the menu has no Edit Sketch, double-click inside the front view and click Sketch > Line instead, drawing nothing", s => s.Sketch != null || s.Command != null)
+        var (busy, seen) = await BusyWhile("in SOLIDWORKS, in the FeatureManager tree under Sheet1 > Section View A-A, right-click Cutting Line A-A and choose Edit Sketch (right-clicking the line on the sheet opens its PropertyManager first, a command, not a sketch edit); if the menu has no Edit Sketch, double-click inside the front view and click Sketch > Line instead, drawing nothing", s => s.Sketch != null || s.Command != null)
             ?? throw new SkipException("no sketch or command was seen open within 3 min");
-        string what = seen.Sketch != null ? $"the sketch {seen.Sketch} (Edit Sketch)" : $"the command '{seen.Command}' (no Edit Sketch offered)";
+        string what = seen.Sketch != null ? $"the sketch {seen.Sketch} (Edit Sketch)" : $"the command '{seen.Command}' (not a sketch edit)";
         Assert.True(busy.Error.Details!.ContainsKey("sketch") || busy.Error.Details.ContainsKey("command"), "busy names neither a sketch nor a command");
         var waited = await FreeAfter("exit the sketch (the exit-sketch icon in the corner of the graphics area), or press Esc to end the line tool");
         return $"busy, user_editing, {what}, detected before ({busy.Message}); worked again {waited.TotalSeconds:0} s after asking for it to be closed";

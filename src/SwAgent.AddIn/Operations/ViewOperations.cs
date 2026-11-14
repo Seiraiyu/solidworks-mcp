@@ -390,11 +390,15 @@ public sealed class ViewEntitiesOperation : Operation<ViewEntitiesRequest, ViewE
         var t = drawing.Transform(view) ?? throw new SwAgentException(ErrorCode.ApiError, $"SOLIDWORKS gives no transform for {view}");
         var kinds = request.Kinds == null || request.Kinds.Count == 0 ? new[] { ViewEntityKind.Edge, ViewEntityKind.Vertex }.ToList() : request.Kinds;
         var result = new ViewEntitiesResult { View = view, Model = info.Path ?? info.Title, Scale = t.Scale };
-        foreach (var e in drawing.VisibleEntities(view, kinds.Contains(ViewEntityKind.Edge), kinds.Contains(ViewEntityKind.Vertex)).OrderBy(e => e.Vertex))
+        var shown = drawing.VisibleEntities(view, kinds.Contains(ViewEntityKind.Edge), kinds.Contains(ViewEntityKind.Vertex)).OrderBy(e => e.Vertex).ToList();
+        // Each reference from the model's own entity, verified, and none two entities would share (ShownEntities).
+        var references = ShownEntities.References(_services.References, model, drawing, view, shown.Select(e => e.Entity).ToList());
+        for (int i = 0; i < shown.Count; i++)
         {
-            var described = _services.References.Describe(model, e.Entity);
+            var e = shown[i];
+            var described = model.Describe(e.Entity);
             var drawn = ViewGeometry.Draw(t, described, e.Vertex);
-            drawn.Reference = described.Reference;
+            drawn.Reference = references[i];
             drawn.Kind = e.Vertex ? ReferenceKind.Vertex : ReferenceKind.Edge;
             drawn.Silhouette = e.Silhouette;
             described.Reference = null;

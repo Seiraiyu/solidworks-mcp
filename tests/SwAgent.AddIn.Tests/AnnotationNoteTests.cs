@@ -31,6 +31,7 @@ public class AnnotationNoteTests : AnnotationTestBase
         Assert.Equal(Front.Facts.Name, r.Annotation.View);
         Assert.Equal(On(Hole).Reference, Assert.Single(r.Annotation.Attached).Reference);
         Assert.Equal(130, r.Annotation.Position!.X, 9);
+        Assert.Equal(1, Drw.Settled);
     }
 
     [Fact]
@@ -54,6 +55,7 @@ public class AnnotationNoteTests : AnnotationTestBase
         Assert.Equal(ErrorCode.VerificationFailed, e.Code);
         Assert.Equal(check, e.Error.Details!["check"]);
         Assert.Empty(Drw.Annotated);
+        Assert.Equal(1, Drw.Settled);
     }
 
     [Fact]
